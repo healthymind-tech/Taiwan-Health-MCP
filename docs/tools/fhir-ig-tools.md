@@ -594,6 +594,49 @@ IG 本身規定的值不需要、也不會出現在病歷中。grounding（`G-UN
 - 上述各工具都遵守同一條：沒有 `source_text` 且沒有發現時輸出不變。
 - 有輸出時，`provenance` 增加 `recordChecksVersion`、`recordChecksLexicon`、`recordChecksLexiconSha256`。病歷原文不寫入 log。
 
+## 事實涵蓋與放行判斷 {#release-gate}
+
+兩個工具都在 FHIR IG 群組（模組閘門 `ig`、與 `fhir_validate_bundle` 相同的 metrics / 錯誤邊界 / 重量級工具併發上限），完全決定性（不呼叫 LLM），對所有 IG 通用，不寫入病歷原文、quote 或事實值到 log。
+
+### fhir_check_fact_coverage（v18 R3 = v20 R4）{#fact-coverage}
+
+輸入 `bundle`、`source_text`、`facts: [{item, attribute, value, quote, resource_type?}]`、`package_id?`、`version?`。每個事實依序判斷：
+
+1. **quote 在病歷中**：NFKC（全形 → 半形、小寫）並合併空白後比對，再以 grounding 的正規化（去掉空白與多數標點）比對；兩者都找不到 → `quote_not_in_record`（依據是捏造的）。
+2. **可用**：quote 所在子句（以 ，,；;。、括號、清單編號切開）若有否定（grounding `NEG_CUES`，前置、10 字內）、未確立（record checks 的 `cuesIn`：疑似、r/o、待排除…）、舊值 / 前次（`OBS_HIST_CUES` 與 v17.4 stale 詞彙）、待補 / 不適用 / 未做（`clausesOf` 的缺漏類別）→ `not_usable`。事實本身就在說這個狀態時（值是「無」「negative」「provisional」「inactive」…，或值 / attribute 含該詞）仍可用。不可用的事實不可寫成目前的值；轉換目標需要它時應回報 insufficient_information。
+3. **寫在結構化元素**：只找事實所屬 resource type 的 entry（由 `item` / `attribute` 推得，例如 藥 / 劑量 / 途徑 → MedicationRequest 等、體溫 / 檢驗 → Observation、診斷 → Condition、就診 → Encounter；也可用 `resource_type` 指定）。`text`（Narrative、CodeableConcept.text、Dosage.text）、`note`、`display`（單獨）、`comment`、`patientInstruction` 不算；HumanName / Address 的 `text` 算。術語等價：
+   - 途徑：PO / 口服 / oral ↔ code、display 或術語名稱指向該途徑的 Coding（SNOMED `26643006` 或 IG 途徑值集的代碼）；
+   - 頻次：BID / 一天兩次 / Q12H ↔ `Timing.repeat` 每日次數相同（frequency 2 / period 1 / periodUnit d），或 `timing.code`；
+   - 日期：民國（114/06/02、114年6月2日）與西元寫法 ↔ FHIR date / dateTime / Period，比到事實的精度；
+   - 數量：同數值且單位相容，或可換算（0.5 g = 500 mg、cm ↔ m），各種數字寫法（12.50、中文數字）；多個數字（120/80 mmHg）每個都要找到；
+   - 代碼：`Coding.code`，或該 Coding 的 display / 術語名稱（同義詞、中文名稱）相同或大部分重疊；
+   - 性別（男 / M ↔ male）、布林、其他字串（正規化後相等；HumanName 也比 family + given）。識別碼必須完整相等（`醫字第035190號` ≠ `035190`）。
+   
+   找到 → `covered`（`found_at`）；否則 `missing`，若值只出現在別的 resource type 則 `reason_code: "found-in-other-resource"` 並附 `found_elsewhere`。
+4. **建議路徑**：`missing` 的事實附 `suggested_paths`，依該類 entry 的 `meta.profile` 的 authoring fields（`fhir_get_authoring_fields` 的 `fields`，detail full）排序：attribute 對應的元素名（途徑 → `dosageInstruction.route`、天數 → `dispenseRequest.expectedSupplyDuration`…）優先，再看欄位型別能否放這個值；沒有 entry 或沒有 profile 時用 FHIR R4 的基本元素名。
+
+輸出 `data`：
+
+| 欄位 | 說明 |
+| :--- | :--- |
+| `facts[]` | `index`、`status`（`covered` \| `missing` \| `quote_not_in_record` \| `not_usable`）、`reason_code`（`fact-covered` / `fact-missing` / `found-in-other-resource` / `quote-not-in-record` / `fact-not-usable`）、`reason`、`resource_types`、`found_at?: [{pointer (RFC 6901), path, value, how}]`、`found_elsewhere?`、`suggested_paths?`、`markers?: [{cls, cue}]`（`negated` / `unconfirmed` / `stale` / `pending` / `not-applicable` / `not-done`）、`clause?`、`quote_match?`（`exact` / `normalized`） |
+| `summary` | `total`、`covered`、`missing`、`quote_not_in_record`、`not_usable`、`coverage`（covered ÷（total − not_usable），無可判斷時 null）、`complete`（無 missing 且無 quote_not_in_record） |
+
+### fhir_release_check（v18 R4 + v20 R1）{#release-check}
+
+輸入 `bundle`、`source_text`、`facts?`、`targets?: [{resourceType?, profile?, what?, code?: {system?, code}, min?, facts?: [index]}]`、`site_config?`、`package_id?`、`version?`、`bundle_profile?`、`require_official?`（預設 true）。**以下全部成立才回傳 `release: true`**：
+
+1. **官方驗證 0 error**：以 `fhir_validate_bundle` 相同的管線驗證（有設定官方 validator 時用官方引擎，見「[官方 HL7 validator 作為判準](#official-engine)」）。結果必須是 `official_verdict: true` 且不是 `checked_fully: false`；MCP fallback、未驗證代碼、沒有官方引擎 → `not-officially-verified`。`require_official=false` 只供開發環境使用（接受 MCP 判定並在 `validation.note` 註明）。
+2. **grounding 與 record checks 0 error**：同一次驗證帶 `source_text`（`source: "grounding"` / `"record-checks"` 的 error）。
+3. **事實涵蓋完整**（有 `facts` 時）：`missing` → `fact-missing` / `fact-in-other-resource`；`quote_not_in_record` → `quote-not-in-record`；不可用卻寫進 Bundle → `unusable-fact-written`。
+4. **完整性（v20 R1）**：每個 `targets` 項目在 Bundle 中的數量 ≥ `min`（預設 1；依 resourceType、meta.profile、code 比對），否則 `missing-target`。缺的項目所需的事實（`facts` 索引，預設為推得該 resource type 的事實）全部不可用或沒有依據時，改報 `insufficient-information`。沒有 `targets` 時：Bundle 剖面（`bundle_profile` 或 `meta.profile`）必填的 entry slice 要在（`missing-entry-slice`）；事實推得 ≥ 2 種 resource type 而 Bundle 只有 ≤ 1 筆內容 entry（Composition / MessageHeader 不算）→ `suspected-empty-bundle`。
+
+輸出 `data`：`release`、`next`（`send` \| `fix` \| `insufficient_information`）、`reasons: [{code, message, pointer?, count, check}]`（`check` = `validation` / `content` / `facts` / `completeness`；每類 issue 最多列 25 筆，其餘合併成一筆 `count`）、`validation {completed, errors, warnings, source, engine, official_verdict, checked_fully, officially_verified, fallback_reason?, unverified?}`、`content {completed, source_text, grounding_errors, record_check_errors, warnings}`、`facts`（同 `fhir_check_fact_coverage` 的 `summary` 加 `results`，沒有 facts 時為 null）、`completeness {entries, targets? | entry_slices?, fact_resource_types?, suspected_empty?}`。
+
+理由代碼：`validation-failed`、`validation-error`、`not-officially-verified`、`grounding-error`、`record-check-error`、`no-source-text`、`fact-missing`、`fact-in-other-resource`、`quote-not-in-record`、`unusable-fact-written`、`missing-target`、`insufficient-information`、`missing-entry-slice`、`suspected-empty-bundle`。`next` 為 `insufficient_information` 時不可送出，案件轉為「無法自動轉換」；`release: false` 的 Bundle 一律不可送出。
+
+**限制**：resource type 與元素的對應是以中英關鍵字推得（可用 `resource_type` 指定）；缺項目「沒有任何事實」時也視為病歷未提供（insufficient_information），若事實清單漏列會被誤判。途徑 / 頻次等價以 grounding 詞彙表與術語名稱為準，IG 自訂代碼的 display 沒有指出途徑時不會被認出。
+
 ## 工具版本 {#tool-versions}
 
 行為由固定測資鎖定的工具各有自己的版本（`node-server/src/toolVersions.ts`）；同一輸入的輸出改變時就會升版。`health_check` 的 `tools_version` 回報目前值，其餘工具沿用伺服器版本（`version`，目前 `1.1.0`）。
@@ -613,6 +656,8 @@ IG 本身規定的值不需要、也不會出現在病歷中。grounding（`G-UN
 | `fhir_normalize_code` | 1.8.0（節錄版 CodeSystem 改查已安裝的完整版、候選 `linked`、別名解析到預設 IG 以外的 CodeSystem） |
 | `fhir_check_grounding` | 1.4.0（v17.4：[IG 定義值](#ig-defined-values)的豁免收窄為 fixed / pattern、invariant 字面值與國家級給付 / 主管機關的範例身分值；範例醫院等不再豁免；`fhir_validate_bundle` 1.29.0、`fhir_validate_resource` 1.26.0、`fhir_finalize_bundle` 1.18.0、`fhir_finalize_resource` 1.23.0、`fhir_author_resources` / `fhir_assemble_bundle` 1.19.0 同步，沒有 `source_text` 時輸出不變）；1.1.0 |
 | `fhir_check_completeness` | 1.1.1 |
+| `fhir_check_fact_coverage` | 1.0.0（v18 R3 / v20 R4：事實契約檢查，見「[事實涵蓋](#fact-coverage)」） |
+| `fhir_release_check` | 1.0.0（v18 R4 + v20 R1：放行判斷與完整性檢查，見「[放行判斷](#release-check)」） |
 | `fhir_author_resources` | 1.6.1（R6：無依據日期附修正建議）；1.6.0（驗證同 `fhir_validate_resource` 1.9.0：帶 `source_text` 時的 record checks v15.1）；1.5.2（同 `fhir_finalize_bundle` 1.3.2）；1.5.1（內容修正同 `fhir_finalize_bundle` 1.3.1；context 的 `site_config` 時區行可作為 site 時區）；1.5.0（[record checks](#record-checks) 的 issue 出現在 `results[].issues`、可選 `source_text`）；1.4.0（system 修正與 display 檢查改用共用修正層：display 只在同一概念時才替換，意思不同則保留並以 warning 附候選；UCUM / 民國年 / system 名稱 / 結構修正與 finalize 工具一致；修正不新增驗證錯誤）；1.3.0（含 filter 的 ValueSet 寫在 system 時也能修正並註明成員資格 confirmed / unverifiable；未修正的 ValueSet system 為 error，驗證同 1.7.0）；1.2.0（ValueSet URL / 解析不到的 URL 寫在 `Coding.system` 時，答案唯一才自動改成正確的 CodeSystem 並加 note）；1.1.0（display 由代碼決定、單一值包成陣列、預設值只補必填欄位與 `apply_defaults`、`site_config`、結果的 `notes` / `settings`；1.0.0：從欄位值撰寫資源，見「[從欄位值撰寫資源](#authoring)」） |
 | `fhir_assemble_bundle` | 1.6.0（R6，驗證同 `fhir_validate_bundle` 1.13.0）；1.5.0（資源同 `fhir_author_resources` 1.6.0、驗證同 `fhir_validate_bundle` 1.12.0）；1.4.2（同 `fhir_finalize_bundle` 1.3.2）；1.4.1（資源依 `fhir_author_resources` 1.5.1、定稿依 `fhir_finalize_bundle` 1.3.1）；1.4.0（驗證依 `fhir_validate_bundle` 1.11.0，含 [record checks](#record-checks)）；1.3.0（定稿一律 `repair="content"`、`repair_issues`，資源依 `fhir_author_resources` 1.4.0）；1.2.0（資源依 `fhir_author_resources` 1.3.0、驗證依 `fhir_validate_bundle` 1.9.0）；1.1.0（`site_config` 與 context 的合併後交給 grounding；1.0.0：由 key 清單組 Bundle） |
 | `fhir_get_authoring_fields` | 1.2.0（record link：連到同一 IG 其他紀錄資源的 backbone（`Encounter.diagnosis`）列為欄位並附子欄位與 `{condition: {ref}}` 範例，直接 reference 列在 `more` 並附 `targets`；長度上限改以整個回應計算，新增 `response_chars`）；1.1.0（預設值只在必填欄位上是 `auto`，選填欄位改為提示慣例值；1.0.0：剖面的填寫表） |

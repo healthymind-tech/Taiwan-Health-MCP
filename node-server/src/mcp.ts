@@ -49,6 +49,7 @@ import { DEFAULT_FINALIZE_REPAIR, REPAIR_MODES, type RepairMode } from "./fhirRe
 import { EXPOSED_ERRORS_MODES, type ExposedErrorsMode } from "./fhirRepair/autoFix.js";
 import { registerAuthoringTools } from "./authoring/index.js";
 import { registerBlueprintTools } from "./igBlueprint/index.js";
+import { dbReleaseToolDeps, registerReleaseTools } from "./releaseCheck/tools.js";
 import { dbIgDefinedValues } from "./igBlueprint/tools.js";
 import { LEXICON_SHA256, LEXICON_VERSION, groundingInputShape, validateBundleGroundingShape } from "./grounding/index.js";
 import { completenessInputShape, type CompletenessInput } from "./grounding/completeness/index.js";
@@ -232,6 +233,8 @@ const SENSITIVE_ARGUMENT_TOOLS: ReadonlySet<string> = new Set([
   "fhir_check_completeness",
   "fhir_validate_bundle",
   "fhir_validate_resource",
+  "fhir_check_fact_coverage",
+  "fhir_release_check",
 ]);
 
 /**
@@ -1552,7 +1555,51 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         ...validateBundleGroundingShape,
       },
     },
-    async ({ bundle, package_id, version, normalize_ids, repair, bundle_profile, ...g }, extra) => {
+    async ({ bundle, package_id, version, normalize_ids, repair, bundle_profile, ...g }, extra) =>
+      rawResult(await validateBundlePipeline({ bundle, package_id, version, normalize_ids, repair, bundle_profile, ...g }, extra)),
+  );
+
+  // fhir_check_fact_coverage + fhir_release_check (releaseCheck/, ISSUES_v18 R3 / R4, v20 R1 / R4): same group, module gate
+  // and wrappers; the release gate validates through the fhir_validate_bundle pipeline above (validator + grounding + record checks).
+  registerReleaseTools(server, () =>
+    dbReleaseToolDeps(
+      (a) =>
+        validateBundlePipeline({
+          bundle: a.bundle,
+          package_id: a.package_id,
+          version: a.version,
+          normalize_ids: false,
+          repair: "ids",
+          bundle_profile: a.bundle_profile,
+          source_text: a.source_text,
+          site_config: a.site_config,
+          evidence_map: null,
+          grounding: null,
+          grounding_verbosity: "warnings",
+          content_checks_severity: null,
+        }),
+      () => groundingDeps.terminology,
+    ),
+  );
+
+  /** fhir_validate_bundle: validator → grounding → record checks → JSON Pointers (the envelope text). */
+  async function validateBundlePipeline(
+    { bundle, package_id, version, normalize_ids, repair, bundle_profile, ...g }: {
+      bundle: Record<string, any>;
+      package_id?: string | null;
+      version?: string | null;
+      normalize_ids?: boolean | null;
+      repair?: RepairMode | null;
+      bundle_profile?: string | null;
+      source_text?: string | null;
+      site_config?: string | null;
+      evidence_map?: unknown;
+      grounding?: "off" | "auto" | "strict" | null;
+      grounding_verbosity?: "errors" | "warnings" | "all" | null;
+      content_checks_severity?: "warning" | "error" | null;
+    },
+    extra?: { requestId?: string | number },
+  ): Promise<string> {
       const conformance = await svc.validateBundle(
         bundle as Record<string, any>,
         package_id ?? null,
@@ -1571,9 +1618,8 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       // ISSUES_v17 R2-2: the declared profiles' mustSupport / required elements (content coverage; only with source_text)
       const profileElements = g.source_text ? await svc.profileElementUse(bundle as Record<string, any>, package_id ?? null, version ?? null).catch(() => null) : null;
       // ISSUES_v19 R3: JSON Pointers into the Bundle as sent + verified JSON Patch candidates (fhirSuggestions/pointers.ts), last.
-      return rawResult(addValidationPointers(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, igDefined, ...looked }), bundle));
-    },
-  );
+      return addValidationPointers(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, igDefined, ...looked }), bundle);
+  }
 
   server.registerTool(
     "fhir_check_grounding",

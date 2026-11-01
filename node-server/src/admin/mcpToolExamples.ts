@@ -25,7 +25,7 @@ import {
   TWCORE_PATIENT_EXAMPLE,
 } from "./mcpToolExampleFixtures.js";
 
-export const MCP_TOOL_EXAMPLES_VERSION = "4";
+export const MCP_TOOL_EXAMPLES_VERSION = "5";
 
 export interface ToolExample {
   /** Stable id within the tool (used by the UI and in tests). */
@@ -51,6 +51,15 @@ const PANADOL_LICENSE = "衛署藥製字第048683號";
 
 const example = (id: string, label: string, args: Record<string, unknown>, description?: string): ToolExample =>
   description ? { id, label, description, args } : { id, label, args };
+
+/** Fact list for the GROUNDING_VALID_INPUT record (fictional): covered, covered, covered, not usable, no record basis. */
+const FACT_LIST = [
+  { item: "就診", attribute: "日期", value: "115/09/16", quote: "就診日期：115/09/16", resource_type: null },
+  { item: "病人", attribute: "性別", value: "男", quote: "性別：男", resource_type: null },
+  { item: "診斷", attribute: "代碼", value: "J01.90", quote: "Acute sinusitis　急性鼻竇炎", resource_type: null },
+  { item: "症狀", attribute: "發燒", value: "高燒", quote: "高燒", resource_type: "Observation" },
+  { item: "用藥", attribute: "劑量", value: "1000 mg", quote: "Amoxicillin 1000 mg", resource_type: null },
+];
 
 /** A small TW Core Condition used by the Condition validator presets. */
 const CONDITION_JSON = {
@@ -524,6 +533,41 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
     examples: [
       example("complete", "資料齊全", COMPLETENESS_COMPLETE_INPUT, "糖尿病追蹤門診（虛構）"),
       example("insufficient", "資料不足：缺 HbA1c 數值與 Metformin 劑量、頻次", COMPLETENESS_INSUFFICIENT_INPUT),
+    ],
+  },
+  fhir_check_fact_coverage: {
+    title: "事實清單涵蓋檢查（quote 在病歷中、可用、寫在結構化欄位）",
+    examples: [
+      example(
+        "outpatient",
+        "耳鼻喉科門診（虛構）：民國日期、性別、ICD 代碼",
+        { bundle: GROUNDING_VALID_INPUT.bundle, source_text: GROUNDING_VALID_INPUT.source_text, facts: FACT_LIST, package_id: TWCORE, version: TWCORE_VERSION },
+        "否認高燒 → not_usable；病歷沒有的 quote → quote_not_in_record",
+      ),
+    ],
+  },
+  fhir_release_check: {
+    title: "放行判斷（官方驗證、內容檢查、事實涵蓋、完整性）",
+    examples: [
+      example(
+        "targets",
+        "轉換目標：病人、就診、診斷、生命徵象",
+        {
+          bundle: GROUNDING_VALID_INPUT.bundle,
+          source_text: GROUNDING_VALID_INPUT.source_text,
+          site_config: GROUNDING_VALID_INPUT.site_config,
+          facts: FACT_LIST.slice(0, 3),
+          targets: [
+            { resourceType: "Patient", what: "病人" },
+            { resourceType: "Encounter", what: "就診" },
+            { resourceType: "Condition", what: "診斷" },
+            { resourceType: "Observation", what: "心跳" },
+          ],
+          package_id: TWCORE,
+          version: TWCORE_VERSION,
+        },
+        "未設定官方 validator 時回傳 not-officially-verified（release=false）",
+      ),
     ],
   },
   fhir_get_resource_skeleton: {

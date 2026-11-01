@@ -22,6 +22,9 @@ export const HEAVY_TOOLS: ReadonlySet<string> = new Set([
   "fhir_assemble_bundle",
   "fhir_check_grounding",
   "fhir_check_completeness",
+  // ISSUES_v18 R3 / R4: fact coverage walks the whole Bundle; the release gate runs the full fhir_validate_bundle pipeline
+  "fhir_check_fact_coverage",
+  "fhir_release_check",
 ]);
 
 export interface GateOptions {

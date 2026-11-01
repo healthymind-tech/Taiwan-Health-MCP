@@ -474,6 +474,16 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   Bundle-level rules relating entries (element added to the target entry, `when` on the Bundle); unparsed rules attached
   //   raw to the placeholder they read (`rules`). Pure one-of conditional rows of the skeleton become `choose_one`
   //   (required). Compaction cites rules by key (`rule_text`, `conditions`) and keeps examples longer; URI examples unclipped.
+  // 1.0.0 (ISSUES_v18 R3 = v20 R4, factCoverage/): fact contract check — per fact {item, attribute, value, quote}: quote in
+  //   source_text (else quote_not_in_record), clause markers (negated / unconfirmed / stale / pending / not applicable /
+  //   not done → not_usable), value in a structured element of the fact's resource type under terminology equivalence
+  //   (route codes, Timing, ROC dates, unit conversion, coding names) → covered | missing (+ found_elsewhere), and
+  //   suggested_paths from the entry profile's authoring fields.
+  fhir_check_fact_coverage: "1.0.0",
+  // 1.0.0 (ISSUES_v18 R4 + v20 R1, releaseCheck/): release gate — official validator 0 errors (else not-officially-verified),
+  //   grounding + record checks 0 errors, complete fact coverage, completeness (targets → missing-target; without targets the
+  //   Bundle profile's required entry slices and suspected-empty-bundle); release / next / reasons / per-check summaries.
+  fhir_release_check: "1.0.0",
   // 1.1.0 (evaluation feedback): (1) a model display the validator's terminology rule rejects for a resolvable code is
   //   replaced by the code's display (provenance lookup; the model wording moves to CodeableConcept.text when empty;
   //   case-only differences are valid, whitespace-only ones take the valid spelling); (2) a single object / scalar where
