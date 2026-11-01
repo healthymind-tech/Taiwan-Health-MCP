@@ -331,7 +331,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   near_codes (only for codes no copy defines) carry accepted_by_validator.
   fhir_lookup_code: "1.4.0",
   // 1.3.0 (v13): LOINC `=` / `in` property filters decided from loinc.concepts (unverifiable → valid / invalid).
-  fhir_validate_code: "1.3.0",
+  // 1.4.0 (parity v3, REVIEW_port_2 G29): include systems resolved by exact canonical; a member the CodeSystem rejects (validator Unknown code) is invalid.
+  fhir_validate_code: "1.4.0",
   // 1.3.0: IG CodeSystems use the concept-search engine (designations in any language, supplements, linked
   // names, abbreviation expansion, hybrid lexical + semantic): candidates carry matched_term / matched_language /
   // category / group / siblings; `system` may be a CodeSystem id or alias; search_mode=keyword_only when degraded;

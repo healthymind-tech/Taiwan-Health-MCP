@@ -124,7 +124,7 @@ export async function txValidateCode(
 ): Promise<TxValidateResult> {
   const issues: TxIssue[] = [];
   const lenient = req.params["lenient-display-validation"] === true;
-  const langs = typeof req.params.displayLanguage === "string" && req.params.displayLanguage ? String(req.params.displayLanguage).split(",").map((s) => s.trim().split(";")[0]) : ["en"];
+  const langs = typeof req.params.displayLanguage === "string" && req.params.displayLanguage ? String(req.params.displayLanguage).split(",").map((s) => s.trim().split(";")[0]) : ["en"]; // (G30 "no languages → all ok" not applied: the runner does not pass the request's Accept-Language / ValueSet language, and accepting all made 3 bad-language cases pass)
   const activeOnlyParam = req.params.activeOnly === true;
   const rules = req.systemVersions ?? [];
   let codings: Array<{ c: Record<string, any>; path: string }>;
@@ -269,6 +269,7 @@ export async function txValidateCode(
   let anyOk = false;
   let anyUnknown = false;
   let anyCodingError = false;
+  const unknownInCC: TxIssue[] = [];
   let anyInVs = false;
   const notInVs: TxIssue[] = [];
   for (const { c, path } of codings) {
@@ -315,7 +316,10 @@ export async function txValidateCode(
             : { severity: "error", type: "not-found", id: "UNKNOWN_CODESYSTEM", path: p ? `${p}.system` : "system", message: `A definition for CodeSystem '${system}' could not be found, so the code cannot be validated` },
         );
         csOk = false;
-        anyCodingError = true;
+        // REVIEW_port_2 G30 (VSV:444): in a CodeableConcept an unknown system is only an error when no other coding is
+        // in the value set (else UNKNOWN_CODESYSTEM_CODING_NOT_CHECKED, a warning) — settled after the loop
+        if (!isVs && req.codeableConcept) unknownInCC.push(issues[issues.length - 1]);
+        else anyCodingError = true;
         if (!isVs) anyUnknown = true;
       }
     } else {
@@ -384,9 +388,14 @@ export async function txValidateCode(
   if (req.mode === "codesystem") return { result: anyOk && !anyCodingError, issues };
   // CodeableConcept: any coding in the value set and no coding with an error → valid
   if (anyInVs) {
+    for (const u of unknownInCC) {
+      const sys = /CodeSystem '([^']*)'/.exec(u.message)?.[1] ?? "";
+      Object.assign(u, { severity: "warning", id: "UNKNOWN_CODESYSTEM_CODING_NOT_CHECKED", message: `A definition for the code system '${sys}' could not be found, so this coding was not checked. The CodeableConcept is still valid: another coding is in the value set` });
+    }
     if (req.codeableConcept) for (const i of notInVs) issues.push(i);
     return { result: anyOk && !anyCodingError, issues };
   }
+  if (unknownInCC.length) anyCodingError = true;
   if (anyUnknown && !anyCodingError) return { result: undefined, issues };
   for (const i of notInVs) issues.push(i);
   if (req.codeableConcept && notInVs.length) issues.push({ severity: "error", type: "not-in-vs", id: "TX_GENERAL_CC_ERROR_MESSAGE", path: "", message: `No valid coding was found for the value set '${vsUrl}'` });

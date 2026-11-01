@@ -1371,10 +1371,19 @@ export class FHIRIGService {
     const vs = await this.loadValueset(pkg, valueSet);
     if (vs === null) return this.err("VALUESET_NOT_FOUND", await this.notFound("ValueSet", valueSet));
     // Rule-based membership: nested CodeSystem hierarchies and filters, no expansion cap.
-    const membership = vs.url
-      ? await terminology.valueSetMembership(vs.url, system, code, pkg)
+    // REVIEW_port_2 G29: the validator's semantics — include systems by exact canonical (no id fallback), and a member
+    // whose CodeSystem rejects the code is not valid (ValueSetValidator checks the code in its CodeSystem first)
+    let membership = vs.url
+      ? await terminology.valueSetMembership(vs.url, system, code, pkg, true)
       : await composeMembership(vs, system, code, pkg);
     const warnings: string[] = [];
+    if (membership === true && system) {
+      const r = await new DbValidatorResolver(pkg).checkCode(system, code, null).catch(() => null);
+      if (r && r.status === "invalid-code" && r.severity === "error") {
+        membership = false;
+        warnings.push(r.message);
+      }
+    }
     let result: string;
     if (membership === true) {
       result = "valid";

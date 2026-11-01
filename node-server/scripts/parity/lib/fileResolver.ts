@@ -188,7 +188,7 @@ export class FileValidatorResolver implements ValidatorResolver {
     if (idx && version && idx.version !== version) {
       const vidx = this.codeSystem(`${system}|${version}`);
       if (vidx) idx = vidx;
-      else return unknownCodeSystemVersion(system, version, display);
+      else return unknownCodeSystemVersion(system, version, display, idx, code);
     }
     if (idx) {
       const r = judgeHeldCodeSystem(idx, system, code, display, langs && langs.length ? langs : undefined);

@@ -5064,8 +5064,8 @@ export class InstanceValidator {
       issues.push({ severity: r.severity, path: `${item.path}.display`, code: "code-invalid", message: r.message });
     } else if (r.status === "display-unchecked") {
       issues.push({ severity: r.severity ?? "information", path: `${item.path}.display`, code: "informational", message: r.message, ...(r.undecided ? { unchecked: { kind: "code" as const, canonical: system } } : {}) });
-    } else if (r.status === "silent" && r.undecided) {
-      issues.push({ severity: "information", path: `${item.path}.code`, code: "informational", message: `Code '${code}' not checked: no local terminology for ${system}`, unchecked: { kind: "code", canonical: system } });
+    } else if ((r.status === "silent" || r.status === "ok") && r.undecided) {
+      issues.push({ severity: "information", path: `${item.path}.code`, code: "informational", message: version ? `Code '${code}' not checked: version '${version}' of ${system} is not held locally` : `Code '${code}' not checked: no local terminology for ${system}`, unchecked: { kind: "code", canonical: version ? `${system}|${version}` : system } });
     }
   }
 

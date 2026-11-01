@@ -296,9 +296,16 @@ export function judgeHeldCodeSystem(idx: CodeSystemIndex, system: string, code: 
  * the server knows no version of (UNKNOWN_CODESYSTEM_VERSION_NONE); HL7 / THO systems, whose other versions the server
  * holds, stay undecided.
  */
-export function unknownCodeSystemVersion(system: string, version: string, display: string | null): CodeCheck {
+export function unknownCodeSystemVersion(system: string, version: string, display: string | null, held: CodeSystemIndex | null = null, code: string | null = null): CodeCheck {
   const base = { ...noLocalDisplay(system, display), undecided: true as const };
-  if (/^https?:\/\/(terminology\.)?hl7\.org\//.test(system)) return base;
+  if (/^https?:\/\/(terminology\.)?hl7\.org\//.test(system)) {
+    // the server holds that (older) version of an HL7 / THO code system: a code the held copy does not define either is
+    // reported as unknown in that version (codes are deprecated, not removed); a known code stays undecided there
+    if (held && code !== null && held.content === "complete" && !findConcept(held, code) && !findSpecialConcept(system, code)) {
+      return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}' version '${version}'` };
+    }
+    return base;
+  }
   return {
     ...base,
     extra: [{ severity: "warning", message: `A definition for CodeSystem '${system}' version '${version}' could not be found, so the code cannot be validated. No versions of this code system are known` }],
@@ -353,7 +360,8 @@ export function judgeSpecialSystem(system: string, code: string, display: string
   if (reason !== null) {
     return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}'`, extra: [{ severity: "information", message: reason }] };
   }
-  return noLocalDisplay(system, display);
+  // a display is judged by the terminology server's rules for these systems (not reproduced): undecided
+  return display === null ? noLocalDisplay(system, display) : { ...noLocalDisplay(system, display), undecided: true };
 }
 
 /**
@@ -629,7 +637,22 @@ export class DbValidatorResolver implements ValidatorResolver {
 
   checkCode(system: string, code: string, display: string | null, version: string | null = null, langs?: string[]): Promise<CodeCheck> {
     const lk = langs && langs.length ? langs.join(",") : "";
-    return memoised(codeCheckMemo, `${this.closure}\0${system}\0${code}\0${display}\0${version}\0${lk}`, () => this.checkCodeUncached(system, code, display, version, langs));
+    return memoised(codeCheckMemo, `${this.closure}\0${system}\0${code}\0${display}\0${version}\0${lk}`, async () => {
+      const r = await this.checkCodeUncached(system, code, display, version, langs);
+      return version && (await this.versionUnknownHere(system, version)) && (r.status === "ok" || r.status === "silent" || r.status === "display-unchecked") ? { ...r, undecided: true } : r;
+    });
+  }
+
+  /**
+   * REVIEW_port_2 G1 / G3: a Coding.version of a terminology answered from local tables (LOINC, SNOMED CT, ISO 3166,
+   * RFC 3986, BCP-47 / 13) that is not the edition held here: validator_cli resolves that version at the terminology
+   * server (UNKNOWN_CODESYSTEM_VERSION when it has none) — the local verdict does not settle it.
+   */
+  private async versionUnknownHere(system: string, version: string): Promise<boolean> {
+    if (system === "http://loinc.org") return version !== ((await terminology.loincEdition())?.version ?? null);
+    if (system === "http://snomed.info/sct") return !/^http:\/\/snomed\.info\/sct\/\d+(\/version\/\d{8})?$/.test(version);
+    if (system === ISO3166) return version !== ISO3166_VERSION;
+    return system === "urn:ietf:rfc:3986" || system === "urn:ietf:bcp:47" || system === "urn:ietf:bcp:13";
   }
 
   private async checkCodeUncached(system: string, code: string, display: string | null, version: string | null = null, langs?: string[]): Promise<CodeCheck> {
@@ -664,7 +687,7 @@ export class DbValidatorResolver implements ValidatorResolver {
       // REVIEW_port_2 G3: Coding.version names the CodeSystem version to check against (resolveCodeSystem(system, version))
       const vidx = await terminology.loadCodeSystemIndex(`${system}|${version}`, this.pkg, true);
       if (vidx) idx = vidx;
-      else return unknownCodeSystemVersion(system, version, display);
+      else return unknownCodeSystemVersion(system, version, display, idx, code);
     }
     if (idx) {
       const base = judgeHeldCodeSystem(idx, system, code, display, langs && langs.length ? langs : undefined);
