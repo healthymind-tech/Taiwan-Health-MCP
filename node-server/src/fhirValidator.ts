@@ -35,10 +35,12 @@
  */
 
 import { createHash } from "node:crypto";
-import { evaluateConstraint, fhirPathBase, invariantExpression, primitiveValueAlias, type FhirPathEnv } from "./fhirPath.js";
+import { evaluateConstraint, evaluateExpression, fhirPathBase, invariantExpression, primitiveValueAlias, type FhirPathEnv } from "./fhirPath.js";
 import { fixedPattern } from "./fhirSnapshot.js";
+import { generateSnapshotAsync } from "./fhirSnapshotGenerator.js";
 import { pushAll } from "./arrayUtils.js";
-import { UCUM_SYSTEM, checkUcumCode, ucumUnknownCodeMessage } from "./fhirUcum.js";
+import { UCUM_SYSTEM, checkUcumCode, convertUcum, ucumUnknownCodeMessage } from "./fhirUcum.js";
+import { XVER_SOURCE, xverDefinition, xverElementId, xverMatchingUrl, xverStatus, xverVersion } from "./fhirXver.js";
 import { hl7UrlMustResolve, uriResolutionExempt, urlResolveMessage, urnSyntaxIssue } from "./fhirUriRules.js";
 import { codingVersionIssue } from "./fhirExternalTerminology.js";
 
@@ -855,12 +857,12 @@ class SdIndex {
       if (el === els[0]) continue;
       const segs = id.split(".");
       const last = segs[segs.length - 1];
-      if (segs.slice(0, -1).some((s) => s.includes("/"))) continue; // inside a re-slice
+      // (re-slices — `identifier:a/b` — stay in their element's slice list, in definition order, and their children
+      // are indexed under the re-slice's own id: InstanceValidator iterates every child definition of the path)
       const parentId = segs.slice(0, -1).join(".");
       const colon = last.indexOf(":");
       const name = colon >= 0 ? last.slice(0, colon) : last;
       const sliceName = colon >= 0 ? last.slice(colon + 1) : null;
-      if (sliceName && sliceName.includes("/")) continue; // re-slices are not evaluated
       let g = this.groups.get(parentId);
       if (!g) {
         g = new Map();
@@ -928,6 +930,11 @@ interface ResourceCtx {
   bundle: BundleCtx | null;
   /** Bundle entry the resource belongs to (contained resources inherit their container's). */
   entry?: BundleEntryCtx | null;
+  /**
+   * NodeStack.getIds (7.0.1): element ids seen in this validation pass of the resource (DUPLICATE_ID), and contained
+   * resource ids as "!"+id (RESOURCE_DUPLICATE_CONTAINED_ID). A fresh map per pass (stack.resetIds()).
+   */
+  ids?: Map<string, object>;
 }
 
 interface BundleEntryCtx {
@@ -989,6 +996,37 @@ const R4_RESOURCE_NAMES = new Set(
     "TerminologyCapabilities TestReport TestScript ValueSet VerificationResult VisionPrescription"
   ).split(" "),
 );
+
+/**
+ * PackageHackerR5 (7.0.1, l. 119-133): in the R4 core (4.0.1) vital-signs profiles the ucum-vitals-common binding of
+ * Observation.component.value[x] is backed off to extensible when the package is loaded ("the R4 profile wrongly
+ * applies this value set to all types").
+ */
+function vitalsUnitsHack(sdx: SdIndex | null, el: Record<string, any>): boolean {
+  const sd = sdx?.sd;
+  if (!sd || typeof sd.url !== "string" || !sd.url.startsWith(CORE) || sd.version !== "4.0.1" || sd.type !== "Observation") return false;
+  const vitals = CORE + "vitalsigns";
+  if (sd.url !== vitals && sd.baseDefinition !== vitals) return false;
+  return el.path === "Observation.component.value[x]" && isObject(el.binding) && el.binding.valueSet === "http://hl7.org/fhir/ValueSet/ucum-vitals-common|4.0.1";
+}
+
+/**
+ * The UCUM codes a ValueSet enumerates, when its compose is only `include`s of http://unitsofmeasure.org with a
+ * concept list (no filter, no imported value set, no exclude) — membership is then a plain lookup. Null otherwise
+ * (tx.fhir.org decides; not reproduced locally).
+ */
+function ucumEnumeration(vs: Record<string, any>): Set<string> | null {
+  const c = isObject(vs.compose) ? vs.compose : null;
+  if (!c || !Array.isArray(c.include) || !c.include.length || (Array.isArray(c.exclude) && c.exclude.length)) return null;
+  const out = new Set<string>();
+  for (const inc of c.include) {
+    if (!isObject(inc) || inc.system !== UCUM_SYSTEM || inc.valueSet || inc.filter || !Array.isArray(inc.concept) || !inc.concept.length) return null;
+    for (const cc of inc.concept) if (isObject(cc) && typeof cc.code === "string") out.add(cc.code);
+  }
+  return out;
+}
+
+const IMPOSE_PROFILE_EXT = "http://hl7.org/fhir/StructureDefinition/structuredefinition-imposeProfile";
 
 /** BaseValidator.urlRegex (URI_REGEX_XVER with the R4 resource names), matched as a whole (String.matches). */
 const BUNDLE_URL_REGEX = new RegExp(
@@ -2045,6 +2083,28 @@ export class InstanceValidator {
         continue;
       }
       pushAll(issues, await this.conformance(rctx, p, path, depth));
+      // validateResource l. 6916-6936 / 6982-6998: a profile's structuredefinition-imposeProfile extensions name
+      // further profiles the resource is validated against (one level); one that cannot be resolved is
+      // VALIDATION_VAL_PROFILE_DEPENDS_NOT_RESOLVED (warning)
+      const exts: any[] = Array.isArray(sdx.sd.extension) ? sdx.sd.extension : [];
+      for (const x of exts) {
+        if (!isObject(x) || x.url !== IMPOSE_PROFILE_EXT) continue;
+        const ip = typeof x.valueCanonical === "string" ? x.valueCanonical : typeof x.valueUri === "string" ? x.valueUri : null;
+        if (!ip) continue;
+        const isdx = await this.sdx(ip);
+        if (!isdx) {
+          const idx = metaProfiles.findIndex((m: any) => m === p);
+          issues.push({
+            severity: "warning",
+            path: idx >= 0 ? `${path}.meta.profile[${idx}]` : path,
+            code: "business-rule",
+            message: `Profile ${this.versionedUrl(sdx)} identifies ${ip} as a dependency (using the extension http://hl7.org/fhir/StructureDefinition/structuredefinition-dependencies), but this profile could not be found`,
+            unchecked: { kind: "profile", canonical: ip },
+          });
+          continue;
+        }
+        pushAll(issues, await this.conformance(rctx, ip, path, depth));
+      }
     }
   }
 
@@ -2068,6 +2128,8 @@ export class InstanceValidator {
       }
       running.add(url);
       const done = running;
+      // validateResource / startInner: stack.resetIds() before each profile pass — element ids are tracked per pass
+      const passCtx: ResourceCtx = { ...rctx, ids: new Map() };
       p = (async () => {
         const sdx = await this.sdx(url);
         const out: Issue[] = [];
@@ -2092,7 +2154,7 @@ export class InstanceValidator {
             lp: [rctx.resource.resourceType],
           },
           rctx.resource.resourceType,
-          rctx,
+          passCtx,
           out,
           depth + 1,
           true,
@@ -2194,9 +2256,31 @@ export class InstanceValidator {
     }
     const v = item.value;
 
+    // InstanceValidator.validateElement l. 7711-7722: DUPLICATE_ID — an element id already used by another element of
+    // the resource in this pass (a reset point, the resource root, is not recorded); StructureDefinition.snapshot
+    // starts a new id scope (ids are duplicated in snapshot and differential)
+    // An embedded resource (contained, Bundle.entry.resource …) is validated on a reset stack (validateContains
+    // l. 7547 / checkChildByDefinition l. 8169: stack.resetIds()): its own id is neither checked nor recorded.
+    const idHolder = isObject(v) ? (typeof v.resourceType === "string" ? null : v) : isPrimitive(typeCode) && isObject(item.ext) ? item.ext : null;
+    if (idHolder && typeof idHolder.id === "string" && idHolder.id !== "" && rctx.ids) {
+      const seen = rctx.ids.get(idHolder.id);
+      if (seen !== undefined && seen !== idHolder) {
+        issues.push({ severity: "error", path: item.path, code: "business-rule", message: `Duplicate id value '${idHolder.id}'` });
+      }
+      if (!isResourceRoot) rctx.ids.set(idHolder.id, idHolder);
+    }
+    if (el.path === "StructureDefinition.snapshot" && rctx.ids) rctx = { ...rctx, ids: new Map() };
+
     if (isPrimitive(typeCode)) {
       this.checkPrimitive(v, item, typeCode, el, issues, sdx.sd);
-      if (item.ext !== undefined && item.ext !== null) await this.validatePrimitiveExtensions(item, rctx, issues, depth);
+      if (item.ext !== undefined && item.ext !== null) {
+        await this.validatePrimitiveExtensions(item, rctx, issues, depth);
+        // InstanceValidator.checkChildByDefinition l. 8164-8176: when the profile constrains the element's children
+        // inline (extension slices on a primitive …) the element is validated against those too, after its type
+        if (sdx.hasChildren(el) && isObject(item.ext)) {
+          await this.walkChildren(sdx, el, { ...item, value: item.ext, ext: undefined }, rctx, issues, depth, false, null, true);
+        }
+      }
       if (v === null || v === undefined) {
         await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
         return;
@@ -2207,6 +2291,7 @@ export class InstanceValidator {
         const p = String(el.path || "");
         if (["uri", "url", "canonical", "oid", "uuid"].includes(typeCode) && p !== "Bundle.entry.fullUrl" && !/^[A-Z][A-Za-z]*\.url$/.test(p)) {
           this.noteInternalRef(rctx, v);
+          if (v.startsWith("#") && typeCode !== "uuid") this.checkInternalUrl(v, item, typeCode, el, rctx, issues);
         }
         await this.checkUri(v, item, typeCode, el, issues);
       }
@@ -2222,9 +2307,68 @@ export class InstanceValidator {
         issues.push({ severity: "error", path: item.path, code: "structure", message: "The value must be a JSON object (a resource)" });
         return;
       }
+      // Port of InstanceValidator.validateContains l. 7502-7519 / 7633-7648 (+ checkChildByDefinition l. 7876-7895):
+      // the type the resource is validated as is the first of the element's types that is Resource or the
+      // resource's own type, and only its profiles apply
+      const resourceName = typeof v.resourceType === "string" ? v.resourceType : "";
+      const elTypes: any[] = Array.isArray(el.type) ? el.type : [];
+      let typeForResource: any = null;
+      const bt: string[] = [];
+      for (const t of elTypes) {
+        const c = typeCodeOf(t);
+        bt.push(c);
+        if (c === "Resource" || c === resourceName) {
+          typeForResource = t;
+          break;
+        }
+      }
+      if (resourceName && elTypes.length && !isResourceRoot) {
+        if (elTypes.length === 1 && typeCodeOf(elTypes[0]) !== resourceName && !(await this.isAbstractType(typeCodeOf(elTypes[0])))) {
+          // EXTENSION_PROF_TYPE (checkChildByDefinition, one non-abstract type)
+          issues.push({
+            severity: "error",
+            path: item.path,
+            code: "structure",
+            message: `The Profile '${sdx.url}${sdx.sd?.version ? `|${sdx.sd.version}` : ""}' definition allows for the type ${typeCodeOf(elTypes[0])} but found type ${resourceName}`,
+          });
+        }
+        if (!typeForResource) {
+          issues.push({ severity: "error", path: item.path, code: "informational", message: `The type '${resourceName}' is not valid - no resources allowed here (allowed = ${bt.join(", ")})` });
+          return;
+        }
+        if (!(await this.isValidResourceType(resourceName, typeForResource))) {
+          const types: string[] = [];
+          for (const u of typeForResource.profile || []) {
+            const t = await this.sdx(String(u));
+            if (t && !types.includes(t.type)) types.push(t.type);
+          }
+          issues.push({
+            severity: "error",
+            path: item.path,
+            code: "informational",
+            message:
+              types.length === 1
+                ? `The type '${resourceName}' is not valid - must be ${types[0]} (allowed = {2})`
+                : `The type '${resourceName}' is not valid - must be one of ${types.length} types: [${types.join(", ")}]`,
+          });
+          return;
+        }
+      }
       const profiles: string[] = [];
-      for (const t of el.type || []) for (const p of t.profile || []) if (typeof p === "string" && p) profiles.push(p);
+      for (const t of typeForResource ? [typeForResource] : elTypes) for (const p of t.profile || []) if (typeof p === "string" && p) profiles.push(p);
       const isContained = /\.contained$/.test(String(el.path || ""));
+      if (isContained) {
+        // InstanceValidator.validateContains l. 7533-7545: RESOURCE_DUPLICATE_CONTAINED_ID, in the container's id scope
+        // (once per contained resource: validator_contained_Id); validateResource l. 9017: a contained resource's id
+        // is REQUIRED (RESOURCE_RES_ID_MISSING)
+        const cid = v.id;
+        if (typeof cid === "string" && rctx.ids) {
+          const seen = rctx.ids.get("!" + cid);
+          if (seen !== undefined && seen !== v) issues.push({ severity: "error", path: item.path, code: "duplicate", message: `Duplicate ID for contained resource: ${cid}` });
+          rctx.ids.set("!" + cid, v);
+        }
+        if (v.id === undefined && v._id === undefined) issues.push({ severity: "error", path: item.path, code: "invalid", message: "Resource requires an id, but none is present" });
+      }
       // a nested Bundle (entry / contained / parameter) resolves its own entries' references and gets the
       // BundleValidator rules at its path (InstanceValidator.checkSpecials → BundleValidator.validateBundle)
       const nested = v.resourceType === "Bundle" ? this.bundleCtx(v, item.path) : null;
@@ -2354,6 +2498,7 @@ export class InstanceValidator {
     }
 
     // Which definition supplies the children?
+    let typeProfilePass: SdIndex | null = null;
     let childSdx = sdx;
     let childEl: Record<string, any> = el;
     const typeRootConstraints: Array<[SdIndex, Record<string, any>]> = [];
@@ -2368,11 +2513,10 @@ export class InstanceValidator {
           tsdx = await this.extensionDefinition(sdx, item, issues);
         } else {
           tsdx = typeProfile ? await this.sdx(typeProfile) : null;
-          if (typeProfile && !tsdx && splitCanonicalVersion(typeProfile).version !== null) {
-            // Port of InstanceValidator.checkChildByDefinition (7.0.1): a type profile
-            // that cannot be resolved is Validation_VAL_Unknown_Profile (error); here a
-            // `|version` that is not installed. The value is still checked against the
-            // core datatype.
+          if (typeProfile && !tsdx) {
+            // Port of InstanceValidator.checkChildByDefinition (7.0.1) l. 8104-8113: a type profile that cannot be
+            // resolved — with or without a version — is Validation_VAL_Unknown_Profile (error). The value is still
+            // checked against the core datatype.
             issues.push({
               severity: "error",
               path: item.path,
@@ -2405,6 +2549,20 @@ export class InstanceValidator {
       // Profile defines the children; datatype-level invariants still apply (ref-1, per-1 ...).
       const tsdx = await this.sdx(CORE + typeCode);
       if (tsdx) typeRootConstraints.push([tsdx, tsdx.root]);
+      // InstanceValidator.checkChildByDefinition l. 7880-7900 / 8094-8113 / 8160-8176: a type profile is validated as
+      // well as the inline children (one profile of the element's single type, or of the matched choice type
+      // except Reference); an unresolvable one is Validation_VAL_Unknown_Profile
+      const tr = (el.type || []).find((t: any) => typeCodeOf(t) === typeCode);
+      const profs: string[] = tr && Array.isArray(tr.profile) ? tr.profile.map(String) : [];
+      if (profs.length === 1 && !((el.type || []).length > 1 && typeCode === "Reference")) {
+        const psdx = await this.sdx(profs[0]);
+        if (!psdx) {
+          issues.push({ severity: "error", path: item.path, code: "structure", message: `Unknown profile ${profs[0]}`, unchecked: { kind: "profile", canonical: profs[0] } });
+        } else {
+          typeProfilePass = psdx;
+          typeRootConstraints.push([psdx, psdx.root]);
+        }
+      }
     }
 
     // InstanceValidator.validateElement (7.0.1): a choice element whose profile constrains its children (e.g. only an
@@ -2414,13 +2572,14 @@ export class InstanceValidator {
       const tsdx = await this.sdx(CORE + typeCode);
       if (tsdx) merge = { sdx: tsdx, el: tsdx.root };
     }
+    if (typeProfilePass) await this.walkChildren(typeProfilePass, typeProfilePass.root, item, rctx, issues, depth, false, null);
     await this.walkChildren(childSdx, childEl, item, rctx, issues, depth, isResourceRoot, merge);
 
     if (!isResourceRoot) this.checkFixedPattern(el, v, item, sdx, issues);
     await this.checkBinding(el, v, typeCode, item, issues, null);
     await this.checkLanguageDisplay(el, v, typeCode, item, rctx, issues);
     if (typeCode === "Coding") await this.checkCoding(v, item, issues, el);
-    if (QUANTITY_TYPES.includes(typeCode)) await this.checkQuantity(v, item, issues);
+    if (QUANTITY_TYPES.includes(typeCode)) await this.checkQuantity(v, item, issues, el, sdx);
     if (typeCode === "Identifier") this.checkIdentifier(v, item, issues);
     if (typeCode === "Attachment") this.checkAttachment(v, el, item, issues);
     if (typeCode === "Reference") await this.checkReference(el, v, item, rctx, issues, depth);
@@ -2432,6 +2591,51 @@ export class InstanceValidator {
   }
 
   private datatypeCache = new Map<string, Promise<boolean>>();
+  private xverCache = new Map<string, Promise<SdIndex | null>>();
+
+  /** A generated cross-version extension definition (fhirXver.ts) with its snapshot (ContextUtilities.generateSnapshot). */
+  private xverSdx(url: string): Promise<SdIndex | null> {
+    let p = this.xverCache.get(url);
+    if (!p) {
+      p = (async () => {
+        const sd = xverDefinition(url, (n) => R4_RESOURCE_NAMES.has(n));
+        if (!sd) return null;
+        const full = await generateSnapshotAsync(sd, (u) => this.resolver.fetchStructureDefinition(u));
+        return full && Array.isArray(full.snapshot?.element) && full.snapshot.element.length ? indexOf(full) : null;
+      })();
+      this.xverCache.set(url, p);
+    }
+    return p;
+  }
+
+  /** InstanceValidator.isAbstractType: the type's definition is abstract. */
+  private async isAbstractType(type: string): Promise<boolean> {
+    const t = await this.sdx(/^[a-z][a-z0-9+.-]*:/i.test(type) ? type : CORE + type);
+    return !!t && t.sd.abstract === true;
+  }
+
+  /** Port of InstanceValidator.isValidResourceType (7.0.1, l. 7661-7690). */
+  private async isValidResourceType(type: string, def: Record<string, any>): Promise<boolean> {
+    const code = typeCodeOf(def);
+    const profs: string[] = Array.isArray(def.profile) ? def.profile.map(String) : [];
+    if (!profs.length && code === "Resource") return true;
+    if (code === type) return true;
+    const list: SdIndex[] = [];
+    for (const u of profs) {
+      const t = await this.sdx(u);
+      if (t) list.push(t);
+    }
+    let sdt = await this.sdx(CORE + type);
+    const seen = new Set<string>();
+    while (sdt && !seen.has(sdt.url)) {
+      seen.add(sdt.url);
+      if (code === "Resource") {
+        for (const sd of list) if (sd.url === sdt.url || sd.type === sdt.type) return true;
+      }
+      sdt = typeof sdt.sd.baseDefinition === "string" ? await this.sdx(sdt.sd.baseDefinition) : null;
+    }
+    return false;
+  }
 
   private isDatatype(typeCode: string): Promise<boolean> {
     let p = this.datatypeCache.get(typeCode);
@@ -2470,6 +2674,24 @@ export class InstanceValidator {
     if (absolute) {
       const ext = await this.sdx(url);
       if (ext) return ext;
+      if (xverMatchingUrl(url)) {
+        // BaseValidator.getXverExt (7.0.1, l. 1698-1728): a cross-version extension url — generated definition, or
+        // the reason it is not valid (and no "unknown extension" error)
+        const at = `${item.path}[url='${url}']`;
+        const st = xverStatus(url);
+        if (st === "Valid") {
+          const x = await this.xverSdx(url);
+          if (x) return x;
+          issues.push({ severity: "error", path: at, code: "invalid", message: `Extension url '${url}' evaluation state invalid` });
+        } else if (st === "BadVersion") {
+          issues.push({ severity: "error", path: at, code: "invalid", message: `Extension url '${url}' is not valid (invalid Version '${xverVersion(url)}')` });
+        } else if (st === "Unknown") {
+          issues.push({ severity: "error", path: at, code: "invalid", message: `Extension url '${url}' is not valid (invalid Element id '${xverElementId(url)}')` });
+        } else {
+          issues.push({ severity: "error", path: at, code: "invalid", message: `Extension url '${url}' is not valid (Element id '${xverElementId(url)}' is valid, but cannot be used in a cross-version paradigm because there has been no changes across the relevant versions)` });
+        }
+        return this.sdx(CORE + "Extension");
+      }
     }
     const insideDefinedExtension = parentSdx.type === "Extension" && parentSdx.url !== CORE + "Extension";
     // Base-element pass of a sub-extension that already matched a slice of the
@@ -2527,7 +2749,8 @@ export class InstanceValidator {
       value: item.value,
       plist: [...new Set([literal, ...(item.lp || [])])].sort(),
       isResource: false,
-      extUrl: null,
+      // checkExtensionContext l. 2838-2846: the value[x] of an extension is that extension for an `extension` context
+      extUrl: item.parentExtUrl ?? null,
       typeCode: item.typeCode || "",
       defPath: "",
       modifier: false,
@@ -2557,6 +2780,8 @@ export class InstanceValidator {
     isResourceRoot: boolean,
     /** (parity v1) Children of the actual type merged in (InstanceValidator.mergeChildLists). */
     merge: { sdx: SdIndex; el: Record<string, any> } | null = null,
+    /** The `_x` object of a primitive (its id / extension); the definition's `value` child is the JSON value itself. */
+    primitiveInline = false,
   ): Promise<void> {
     const node = item.value as Record<string, any>;
     const groups = sdx.children(el);
@@ -2594,6 +2819,7 @@ export class InstanceValidator {
       const def = grp.base || grp.slices[0];
       if (!def) continue;
       const name = grp.name;
+      if (primitiveInline && name === "value") continue;
       const items: Item[] = [];
       const allowedTypes: string[] = (def.type || []).map(typeCodeOf);
       const typedItems: Array<{ item: Item; type: string }> = [];
@@ -2721,13 +2947,23 @@ export class InstanceValidator {
           }
           if (!t) {
             if (KNOWN_TYPE_SUFFIX.has(suffix)) {
+              // InstanceValidator.checkChildByDefinition l. 7950-7956 (several types, none matching the name): when
+              // the first type is Reference the value is validated as a Reference, otherwise
+              // VALIDATION_VAL_PROFILE_NOTYPE
+              if (allowedTypes[0] === "Reference") {
+                accepted++;
+                if (accepted > 1) continue;
+                profileTypeKeys.add(key);
+                collect(key, "Reference");
+                continue;
+              }
               used.add(key);
               used.add("_" + key);
               issues.push({
                 severity: "error",
-                path: `${item.path}.${key}`,
+                path: `${item.path}.${stem}.ofType(${KNOWN_TYPE_SUFFIX.get(suffix)})`,
                 code: "structure",
-                message: `The type '${KNOWN_TYPE_SUFFIX.get(suffix)}' is not allowed for ${def.path} (allowed: ${allowedTypes.join(", ")})${gsdx.url !== CORE + gsdx.type ? ` by profile ${gsdx.url}` : ""}`,
+                message: `The type of element ${key} is not known - it could not be determined from the information available. Valid types at this point are ${allowedTypes.join(", ")}`,
                 element: def.id,
               });
             }
@@ -2957,7 +3193,12 @@ export class InstanceValidator {
     }
     for (const s of grp.slices) {
       if (indeterminate.has(s)) continue;
-      const n = counts.get(s) || 0;
+      // checkCardinalities l. 8334-8350: a slice that re-slices (has its own slicing) also counts the members of its
+      // re-slices (ProfileUtilities.getSliceList)
+      let n = counts.get(s) || 0;
+      if (s.slicing && sliceNameOf(s)) {
+        for (const r of grp.slices) if (r !== s && sliceNameOf(r).startsWith(`${sliceNameOf(s)}/`)) n += counts.get(r) || 0;
+      }
       const min = typeof s.min === "number" ? s.min : 0;
       const max = s.max === undefined ? "*" : String(s.max);
       const id = String(s.id ?? s.path);
@@ -3270,7 +3511,8 @@ export class InstanceValidator {
         if (!psdx) continue;
         const trial: Issue[] = [];
         const sub: Item = { value: r, ext: undefined, key: dpath.split(".").pop() || it.key, path: this.pathOf(it, dpath) };
-        await this.validateItemAgainst(psdx, psdx.root, sub, psdx.type, rctx, trial, depth + 1);
+        // FHIRPath conformsTo (InstanceValidator.conformsToProfile): a new NodeStack, so a fresh id scope
+        await this.validateItemAgainst(psdx, psdx.root, sub, psdx.type, { ...rctx, ids: new Map() }, trial, depth + 1);
         if (isValid(trial.filter((i) => !isParseIssue(i)))) return true;
       }
       return false;
@@ -3498,7 +3740,11 @@ export class InstanceValidator {
     if (v === null || v === undefined) {
       if (item.ext === undefined || item.ext === null) {
         issues.push({ severity: "error", path, code: "structure", message: `The property ${item.key} has no value` });
+        return;
       }
+      // InstanceValidator.checkPrimitive l. 3235-3256: an element with no value (only `_x` with id / extensions) still
+      // gets the blank-value checks — required binding, mustHaveValue, valueAlternatives
+      this.checkBlankPrimitive(item, el, profile, issues);
       return;
     }
     if (isObject(v) || Array.isArray(v)) {
@@ -3519,6 +3765,50 @@ export class InstanceValidator {
       // checks it as the element's type — those value errors take part in slice / profile matching like any other
     } else if (spec.json === "boolean") return;
     this.checkPrimitiveValue(String(v), item, typeCode, el, profile, issues);
+  }
+
+  /**
+   * InstanceValidator.checkPrimitive (7.0.1) l. 3245-3264, the part of the blank-value branch that does not depend on
+   * how the value is blank (no value at all / "" / whitespace): a required binding with no code is
+   * Terminology_TX_Code_ValueSet_MISSING (a warning, Terminology_TX_Code_ValueSet_XVER_SOURCE, when a cross-version
+   * extension — XVerExtensionManager.matchingUrl — is present), then PRIMITIVE_MUSTHAVEVALUE_MESSAGE and
+   * PRIMITIVE_VALUE_ALTERNATIVES_MESSAGE.
+   */
+  private checkBlankPrimitive(item: Item, el: Record<string, any>, profile: Record<string, any> | null, issues: Issue[]): void {
+    const path = item.path;
+    const exts: any[] = isObject(item.ext) && Array.isArray(item.ext.extension) ? item.ext.extension : [];
+    if (isObject(el.binding) && el.binding.strength === "required") {
+      const xver = exts.find((x) => isObject(x) && xverMatchingUrl(x.url));
+      if (xver) {
+        // ex.getNamedChildValue("value"): the value[x] primitive
+        const val = Object.keys(xver).find((k) => k.startsWith("value"));
+        const shown = val && !isObject(xver[val]) && !Array.isArray(xver[val]) ? String(xver[val]) : "null";
+        issues.push({
+          severity: "warning",
+          path,
+          code: "code-invalid",
+          message: `Though a code is required, no code has been provided; instead, an alternative code '${shown}' is provided in the cross-version extension '${xver.url}'. Many systems will not support this extension, or may not understand or support the alternative code`,
+        });
+      } else {
+        issues.push({ severity: "error", path, code: "code-invalid", message: "No code provided, and a code is required from the value set" });
+      }
+    }
+    const versioned = profile ? (profile.version ? `${profile.url}|${profile.version}` : String(profile.url ?? "")) : "";
+    if (el.mustHaveValue === true) {
+      issues.push({ severity: "error", path, code: "invalid", message: `The element definition \`\`${el.id}\`\` in the profile '${versioned}' requires that a value be present in this element` });
+    }
+    const alts: string[] = Array.isArray(el.valueAlternatives) ? el.valueAlternatives.map(String) : [];
+    if (alts.length && !alts.some((u) => exts.some((x) => isObject(x) && x.url === u))) {
+      issues.push({
+        severity: "error",
+        path,
+        code: "invalid",
+        message:
+          alts.length === 1
+            ? `The element definition \`\`${el.id}\`\` in the profile '${versioned}' requires that if a value is not present, the extension '${alts[0]}' must be present`
+            : `The element definition \`\`${el.id}\`\` in the profile '${versioned}' requires that if a value is not present, one of the extensions '${alts.join(", ")}' must be present`,
+      });
+    }
   }
 
   /**
@@ -3563,8 +3853,7 @@ export class InstanceValidator {
         if (this.xmlSource && !hasChildren) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
       }
       else warning(hasChildren, "Primitive types should not only be whitespace"); // TYPE_SPECIFIC_CHECKS_DT_PRIMITIVE_WS
-      // PRIMITIVE_MUSTHAVEVALUE_MESSAGE
-      if (el.mustHaveValue === true) rule(false, `The element definition \`\`${el.id}\`\` in the profile '${versioned}' requires that a value be present in this element`);
+      this.checkBlankPrimitive(item, el, profile, issues);
       return;
     }
     // UNICODE_XML_BAD_CHARS (plural)
@@ -3814,6 +4103,50 @@ export class InstanceValidator {
       } else {
         codings.forEach((c, i) => this.fixedValuePort(issues, `${path}.coding`, c, fixedCodings[i], "Coding", source, "coding", false, context));
       }
+    } else if (type === "HumanName") {
+      // InstanceValidator.checkHumanName (7.0.1, l. 3139-3195): use / text / period, then family / given / prefix / suffix
+      // counted into ONE list (Element.getNamedChildren appends — the counts include the earlier parts) and compared
+      // with the fixed list's length, items pairwise
+      const sub = (k: string): void => this.fixedValuePort(issues, `${path}.${k}`, focus[k], fixed[k], "", source, k, pattern, context);
+      sub("use");
+      sub("text");
+      sub("period");
+      const kids = (k: string): any[] => (Array.isArray(focus[k]) ? focus[k] : focus[k] === undefined || focus[k] === null ? [] : [focus[k]]);
+      const parts: any[] = [];
+      if (!pattern || fixed.family !== undefined) {
+        parts.push(...kids("family"));
+        const has = fixed.family !== undefined && fixed.family !== null;
+        if ((parts.length > 0) === has) {
+          for (const x of parts) this.fixedValuePort(issues, `${path}.family`, x, fixed.family, "", source, "family", pattern, context);
+        } else issues.push({ severity: "error", path, code: "value", message: `Expected ${has ? "1" : "0"} but found ${parts.length} family elements` });
+      }
+      for (const k of ["given", "prefix", "suffix"]) {
+        const fl: any[] = Array.isArray(fixed[k]) ? fixed[k] : [];
+        if (pattern && !fl.length) continue;
+        parts.push(...kids(k));
+        if (parts.length === fl.length) {
+          parts.forEach((x, i) => this.fixedValuePort(issues, `${path}.${k}`, x, fl[i], "", source, k, pattern, context));
+        } else issues.push({ severity: "error", path, code: "value", message: `Expected ${fl.length} but found ${parts.length} ${k} elements` });
+      }
+    } else if (type === "Timing") {
+      // InstanceValidator.checkTiming (7.0.1, l. 5663-5675): repeat (reported as 'value'), then the events pairwise after
+      // a count check (Bundle_MSG_Event_Count); Timing.code is not compared
+      this.fixedValuePort(issues, `${path}.repeat`, focus.repeat, fixed.repeat, "", source, "value", pattern, context);
+      const ev: any[] = Array.isArray(focus.event) ? focus.event : [];
+      const fe: any[] = Array.isArray(fixed.event) ? fixed.event : [];
+      if (ev.length === fe.length) ev.forEach((x, i) => this.fixedValuePort(issues, `${path}.event`, x, fe[i], "", source, "event", pattern, context));
+      else issues.push({ severity: "error", path, code: "value", message: `Expected ${fe.length} but found ${ev.length} event elements` });
+    } else if (type === "Address") {
+      // InstanceValidator.checkAddress (7.0.1, l. 1171-1221): use / text / city / state / country; postalCode is read from a
+      // `zip` child (never present — a fixed postalCode is reported missing); district / type / period are not compared;
+      // a pattern's unmatched line is recorded in a discarded list (not reported)
+      for (const k of ["use", "text", "city", "state", "country"]) this.fixedValuePort(issues, `${path}.${k}`, focus[k], fixed[k], "", source, k, pattern, context);
+      this.fixedValuePort(issues, `${path}.zip`, focus.zip, fixed.postalCode, "", source, "postalCode", pattern, context);
+      const lines: any[] = Array.isArray(focus.line) ? focus.line : [];
+      const fl: any[] = Array.isArray(fixed.line) ? fixed.line : [];
+      if (pattern ? lines.length >= fl.length : lines.length === fl.length) {
+        if (!pattern) lines.forEach((x, i) => this.fixedValuePort(issues, `${path}.line`, x, fl[i], "", source, "line", false, context));
+      } else issues.push({ severity: "error", path, code: "value", message: `Expected ${fl.length} but found ${lines.length} line elements` });
     } else {
       // every other datatype: its fields one by one (lists: each fixed item matched — by any item for a pattern, in order
       // for a fixed value)
@@ -4120,6 +4453,29 @@ export class InstanceValidator {
    */
   // Port of InstanceValidator.checkPrimitive (uri/url/canonical/oid/uuid branch)
   // + validateReference/resolveUrl (7.0.1); see fhirUriRules.ts.
+  /**
+   * InstanceValidator.validateReference (7.0.1) l. 3946-3984 for a '#…' url: the fragment must match an element id,
+   * an xhtml id or a/@name in the root resource (countTargetMatches; then the whole Bundle). Unmatched:
+   * TYPE_SPECIFIC_CHECKS_DT_URL_INTERNAL (error) for canonical / Reference, ValueSet.compose.include|exclude.system and
+   * textLink extensions; a hint for Meta.source; otherwise TYPE_SPECIFIC_CHECKS_DT_URL_INTERNAL_WARN (warning).
+   */
+  private checkInternalUrl(v: string, item: Item, typeCode: string, el: Record<string, any>, rctx: ResourceCtx, issues: Issue[]): void {
+    const frag = v.slice(1);
+    let count = fragmentMatches(rctx.container ?? rctx.resource, frag);
+    if (count === 0 && rctx.bundle) count = fragmentMatches(rctx.bundle.bundle, frag);
+    if (count > 0) return;
+    const basePath = isObject(el.base) && typeof el.base.path === "string" ? el.base.path : String(el.path || "");
+    const extMatters = item.parentExtUrl === "http://hl7.org/fhir/StructureDefinition/textLink";
+    const warnMsg = `The URL value '${v}' might be wrong because it appears to point to an internal target, but there is no matching target`;
+    if (basePath === "Meta.source" && (typeCode === "uri" || typeCode === "url") && !extMatters) {
+      issues.push({ severity: "information", path: item.path, code: "invalid", message: warnMsg });
+    } else if (typeCode === "canonical" || typeCode === "Reference" || basePath === "ValueSet.compose.include.system" || basePath === "ValueSet.compose.exclude.system" || extMatters) {
+      issues.push({ severity: "error", path: item.path, code: "invalid", message: `The URL value '${v}' is invalid because there is no matching target` });
+    } else {
+      issues.push({ severity: "warning", path: item.path, code: "invalid", message: warnMsg });
+    }
+  }
+
   private async checkUri(v: string, item: Item, typeCode: string, el: Record<string, any>, issues: Issue[]): Promise<void> {
     if (!["uri", "url", "canonical", "oid", "uuid"].includes(typeCode)) return;
     const syn = urnSyntaxIssue(v, typeCode);
@@ -4294,23 +4650,113 @@ export class InstanceValidator {
     }
   }
 
-  private async checkQuantity(v: Record<string, any>, item: Item, issues: Issue[]): Promise<void> {
-    const system = v.system;
-    const code = v.code;
-    if (typeof system !== "string" || !system || typeof code !== "string" || !code) return;
-    if (system === UCUM_SYSTEM) {
-      if (checkUcumCode(code) === "invalid") {
-        issues.push({ severity: "error", path: `${item.path}.code`, code: "code-invalid", message: ucumUnknownCodeMessage(code) });
-      }
-      return;
+  /**
+   * Port of InstanceValidator.checkQuantity (7.0.1, l. 4618-4712): maxDecimalPlaces (TYPE_SPECIFIC_CHECKS_DT_DECIMAL_CHARS);
+   * the coded part through checkCodedElement (l. 2400-2452) — a non-example binding to a resolvable ValueSet is the
+   * check (non-UCUM units: checkBinding; UCUM units here, decided locally only for a ValueSet that enumerates its UCUM
+   * codes: TERMINOLOGY_TX_CONFIRM_4a), otherwise the system / code themselves (TERMINOLOGY_TX_SYSTEM_RELATIVE,
+   * TERMINOLOGY_TX_SYSTEM_VALUESET2, checkCode: UCUM validity, the CodeSystem's codes); then minValue / maxValue
+   * Quantity with UCUM conversion. Messages keep Java's argument quirks ({2} / {3} left unformatted).
+   */
+  private async checkQuantity(v: Record<string, any>, item: Item, issues: Issue[], el: Record<string, any> | null = null, sdx: SdIndex | null = null): Promise<void> {
+    const path = item.path;
+    const prim = (x: unknown): string | null => (x === undefined || x === null || isObject(x) || Array.isArray(x) ? null : String(x));
+    const value = prim(v.value);
+    const unit = prim(v.unit);
+    const system = prim(v.system);
+    const code = prim(v.code);
+    const err = (message: string, code0 = "invalid"): void => void issues.push({ severity: "error", path, code: code0, message });
+    const warn = (pass: boolean, message: string): boolean => {
+      if (!pass) issues.push({ severity: "warning", path, code: "invalid", message });
+      return pass;
+    };
+    const maxDp = el ? extString(el, "http://hl7.org/fhir/StructureDefinition/maxDecimalPlaces") : null;
+    if (value !== null && value !== "" && maxDp !== null && /^-?\d+$/.test(maxDp)) {
+      const dp = value.includes(".") ? value.slice(value.indexOf(".") + 1).length : 0;
+      if (dp > Number(maxDp)) issues.push({ severity: "error", path, code: "structure", message: `Found ${dp} decimal places which exceeds the stated limit of ${maxDp} digits` });
     }
-    if (await this.isValueSetUrl(system)) {
-      issues.push({
-        severity: "error",
-        path: item.path,
-        code: "code-invalid",
-        message: `The Coding references a value set, not a code system ('${system}')`,
-      });
+
+    if (system !== null && code !== null) {
+      let checked = false;
+      const b = el && isObject(el.binding) ? el.binding : null;
+      if (b && typeof b.valueSet === "string" && b.valueSet) {
+        const vs = await this.vsHeader(b.valueSet);
+        if (vs && b.strength !== "example") {
+          checked = true;
+          if (system === UCUM_SYSTEM && b.strength === "required" && !vitalsUnitsHack(sdx, el!)) {
+            const listed = ucumEnumeration(vs);
+            if (listed && !listed.has(code)) {
+              const vsv = `${vs.url}${vs.version ? `|${vs.version}` : ""}`;
+              const desc = `'${vs.title || vs.name || b.valueSet}' (${vsv})`;
+              err(`The code provided (${system}#${code}) was not found in the value set ${desc}, and a code from this value set is required: The provided code '${system}#${code}' was not found in the value set '${vsv}'`, "code-invalid");
+            }
+          }
+        }
+      }
+      if (!checked) {
+        let ok = true;
+        if (!/^[a-z][a-z0-9+.-]*:/i.test(system)) {
+          issues.push({ severity: "error", path, code: "code-invalid", message: "Coding.system must be an absolute reference, not a local reference" });
+          ok = false;
+        }
+        if (system !== UCUM_SYSTEM && (await this.isValueSetUrl(system))) {
+          issues.push({ severity: "error", path, code: "code-invalid", message: `The Coding references a value set, not a code system ('${system}')` });
+          ok = false;
+        }
+        if (ok && code !== "") {
+          if (system === UCUM_SYSTEM) {
+            if (checkUcumCode(code) === "invalid") issues.push({ severity: "error", path: `${path}.code`, code: "code-invalid", message: ucumUnknownCodeMessage(code) });
+          } else {
+            const r = await this.codeCheck(system, code, null, null);
+            if (r.status === "invalid-code") issues.push({ severity: r.severity, path: `${path}.code`, code: "code-invalid", message: r.message });
+            else if (r.status === "unknown-system") {
+              issues.push({ severity: "warning", path: `${path}.system`, code: "not-found", message: `A definition for CodeSystem '${system}' could not be found, so the code cannot be validated` });
+            }
+          }
+        }
+      }
+    }
+
+    if (!el) return;
+    for (const which of ["min", "max"] as const) {
+      const key = Object.keys(el).find((k) => k.startsWith(`${which}Value`) && k.length > `${which}Value`.length);
+      if (!key) continue;
+      const label = which === "min" ? "minValue" : "maxValue";
+      const word = which === "min" ? "minimum" : "maximum";
+      if (!warn(value !== null && value !== "", `The quantity doesn't have an actual value, so the ${word} value can't be checked`)) continue;
+      if (key !== `${which}ValueQuantity`) {
+        const t = key.slice(`${which}Value`.length);
+        // getMinValue().fhirType(): every other minValue[x] type is a primitive (integer, decimal, date …)
+        err(`Found ${t.charAt(0).toLowerCase() + t.slice(1)} of type {2} in the profile validating a Quantity (so it must be a Quantity)`);
+        continue;
+      }
+      const lim = isObject(el[key]) ? el[key] : {};
+      const lsys = prim(lim.system);
+      const lcode = prim(lim.code);
+      if (
+        !(
+          warn(lsys !== null && lsys !== "", `The ${label} in the profile has no system so the ${word} value cannot be checked`) &&
+          warn(system !== null && system !== "", `The value has no system so the ${word} value cannot be checked`) &&
+          warn(system === lsys, `The ${label} in the profile has a system of ${system} which is different to the system in the value ${lsys} so the ${word} value cannot be checked`) &&
+          warn(lcode !== null && lcode !== "", `The ${label} in the profile has no code so the ${word} value cannot be checked`) &&
+          warn(code !== null && code !== "", `The value has no code so the ${word} value cannot be checked`)
+        )
+      ) continue;
+      const lval = prim(lim.value);
+      if (lval === null) {
+        err(`The ${label} in the profile doesn't have an actual value, so the ${word} value can't be checked`);
+        continue;
+      }
+      const cmp = (a: number, b0: number): boolean => (which === "min" ? a >= b0 : a <= b0);
+      if (code === lcode) {
+        if (!cmp(Number(value), Number(lval))) err(`The value in the instance ({2}) is ${which === "min" ? "less" : "greater"} than the specified ${word} value ({3})`);
+      } else if (system === UCUM_SYSTEM) {
+        const conv = convertUcum(Number(value), code!, lcode!);
+        if (conv === null) err(`Unable to convert value ${value} from unit ${code} to ${label} unit ${lcode} based on UCUM definitions; ${word} value is not valid`);
+        else if (!cmp(conv, Number(lval))) err(`The value in the instance (${value} ${code}) is ${which === "min" ? "less" : "greater"} than the specified ${label} (${lval} ${lcode}) after UCUM conversion`);
+      } else {
+        warn(false, `The ${label} in the profile has a system code of ${code} which is different to the system code in the value ${lcode} so the ${word} value cannot be checked`);
+      }
     }
   }
 
@@ -4408,28 +4854,15 @@ export class InstanceValidator {
     for (const p of targetProfiles) {
       const psdx = await this.sdx(p);
       if (!psdx) {
-        if (splitCanonicalVersion(p).version !== null) {
-          // Port of InstanceValidator.checkReference (7.0.1): a target profile that
-          // cannot be resolved is Reference_REF_CantResolveProfile (error); a
-          // `|version` that is not installed is exactly that case.
-          issues.push({
-            severity: "error",
-            path: item.path,
-            code: "not-found",
-            message: `Unable to resolve the profile reference '${p}'`,
-            unchecked: { kind: "profile", canonical: p },
-          });
-          continue;
-        }
-        // Unversioned and unknown (not in the closure): not judged (unchanged), but reported.
+        // Port of InstanceValidator.checkReference (7.0.1) l. 5361-5371: a target profile that cannot be resolved —
+        // with or without a version — is Reference_REF_CantResolveProfile (error), and does not add a target type
         issues.push({
-          severity: "information",
+          severity: "error",
           path: item.path,
           code: "not-found",
-          message: `Target profile '${p}' could not be found, so the reference target was not checked against it`,
+          message: `Unable to resolve the profile reference '${p}'`,
           unchecked: { kind: "profile", canonical: p },
         });
-        anyType = true;
         continue;
       }
       if (psdx.type === "Resource" || psdx.type === "DomainResource") anyType = true;
@@ -4527,19 +4960,39 @@ export class InstanceValidator {
         else if (en === "Resource" && host.isResource) ok = true;
         else if (en === "CanonicalResource" && plist.some((p) => CANONICAL_RESOURCE_TYPES.has(p))) ok = true;
         else if (pu === null && hasElementName(plist, en)) ok = true;
-        else if (pu !== null) ok = true; // profile-scoped context: conformance to that profile not checked here
-        else ok = await this.contextByBaseType(plist, en);
+        // checkConformsToProfile (l. 2973-3001) gates the path match of a `profile#path` context
+        else if (pu === null || (await this.contextProfileConforms(pu, expr, ext.url, host, rctx, issues))) ok = await this.contextByBaseType(plist, en);
       } else if (c.type === "extension") {
         shown.push(`x:${expr}`);
         if (host.extUrl !== null && stripVersion(expr) === stripVersion(host.extUrl)) ok = true;
+      } else if (c.type === "fhirpath") {
+        shown.push(`p:${expr}`);
+        // l. 2852-2858: the context is every element the expression selects from the resource
+        try {
+          const env: FhirPathEnv = { resource: rctx.resource, rootResource: rctx.container || rctx.resource, resolveReference: (ref: string) => this.resolveRefForFhirPath(ref, rctx) };
+          const res = evaluateExpression(rctx.resource, String(rctx.resource.resourceType), expr, env);
+          if (res.some((r) => r === host.value)) ok = true;
+        } catch {
+          ok = true; // not evaluable locally: not judged
+        }
       } else {
-        if (c.type === "fhirpath") shown.push(`p:${expr}`);
-        ok = true; // fhirpath (or unknown) context: not evaluated locally
+        ok = true; // unknown context type
       }
     }
     if (!ok) {
       const allowed = shown.join(", ");
       const elementIs = `[${plist.join(", ")}]`;
+      if (typeof sd[XVER_SOURCE] === "string") {
+        // EXTENSION_EXTP / EXTM_CONTEXT_WRONG_XVER: a warning for a cross-version extension
+        issues.push({
+          severity: "warning",
+          path: host.path,
+          code: "structure",
+          message: `The ${host.modifier ? "modifier extension" : "extension"} ${label} from FHIR version ${sd[XVER_SOURCE]} is not allowed to be used at this point (this element is ${elementIs}; allowed for this version = ${allowed}; this is a warning since contexts may be renamed between FHIR versions)`,
+          profile: ext.url,
+        });
+        return;
+      }
       issues.push({
         severity: "error",
         path: host.path,
@@ -4571,6 +5024,27 @@ export class InstanceValidator {
       });
       return;
     }
+  }
+
+  /**
+   * InstanceValidator.checkConformsToProfile (7.0.1, l. 2973-3001) for a `profile#path` element context: the
+   * resource's own core type passes; an unknown profile is EXTENSION_CONTEXT_UNABLE_TO_FIND_PROFILE (error, fails);
+   * a profile of the resource's type must validate without errors; another type cannot be checked (warning, passes).
+   */
+  private async contextProfileConforms(pu: string, expression: string, extUrl: string, host: ExtensionHost, rctx: ResourceCtx, issues: Issue[]): Promise<boolean> {
+    const rt = String(rctx.resource.resourceType ?? "");
+    if (pu === CORE + rt) return true;
+    const psdx = await this.sdx(pu);
+    if (!psdx) {
+      issues.push({ severity: "error", path: host.path, code: "unknown", message: `The extension ${extUrl} specifies a context of ${expression} but the validator cannot find that profile` });
+      return false;
+    }
+    if (psdx.type === rt) {
+      const res = await this.conformance({ ...rctx }, pu, ROOT_TOKEN, 0);
+      return !res.some((i) => i.severity === "error" || i.severity === "fatal");
+    }
+    issues.push({ severity: "warning", path: host.path, code: "unknown", message: `The extension ${extUrl} specifies a context of ${expression} but the validator cannot check whether the profile is valid or not at this time` });
+    return true;
   }
 
   /** checkExtensionContext's fallback: `<Type><rest>` where Type is the path's leading type or one of its bases. */
@@ -5054,6 +5528,30 @@ function tryParseRefType(ref: string): string | null {
   if (parts.length === 2) return known(parts[0]);
   if (parts[parts.length - 2] === "_history" && parts.length >= 4) return known(parts[parts.length - 4]);
   return known(parts[parts.length - 2]);
+}
+
+/**
+ * BaseValidator.findFragmentMatches (7.0.1) count: element ids (resources, datatypes, a primitive's `_x.id`), xhtml
+ * id attributes and a/@name anchors anywhere under `node` equal to the fragment.
+ */
+function fragmentMatches(node: any, fragment: string): number {
+  let n = 0;
+  const walk = (x: any, d: number): void => {
+    if (d > 60 || !x || typeof x !== "object") return;
+    if (Array.isArray(x)) return void x.forEach((y) => walk(y, d + 1));
+    if (x.id === fragment) n++;
+    if (typeof x.div === "string") {
+      for (const m of x.div.matchAll(/<([A-Za-z][\w:-]*)\b([^>]*)>/gu)) {
+        for (const a of m[2].matchAll(/\s(id|name)\s*=\s*(?:"([^"]*)"|'([^']*)')/gu)) {
+          const val = a[2] ?? a[3];
+          if (val === fragment && (a[1] === "id" || m[1].toLowerCase() === "a")) n++;
+        }
+      }
+    }
+    for (const v of Object.values(x)) if (v && typeof v === "object") walk(v, d + 1);
+  };
+  walk(node, 0);
+  return n;
 }
 
 /** BaseValidator.countFragmentMatches: element ids and xhtml id attributes inside an entry equal to the fragment. */

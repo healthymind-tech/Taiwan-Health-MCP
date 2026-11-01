@@ -61,6 +61,21 @@ export function checkUcumCode(code: string): UcumVerdict {
   return verdict;
 }
 
+/**
+ * UcumService.convert (InstanceValidator.convertUcumValue): `value` in unit `from` expressed in unit `to`, or null
+ * when the units cannot be converted (either invalid, or not commensurable).
+ */
+export function convertUcum(value: number, from: string, to: string): number | null {
+  const u = ucum() as (UcumUtils & { convertUnitTo?(f: string, v: number, t: string): { status: string; toVal?: number } }) | null;
+  if (!u || typeof u.convertUnitTo !== "function") return null;
+  try {
+    const r = u.convertUnitTo(from, value, to);
+    return r && r.status === "succeeded" && typeof r.toVal === "number" && Number.isFinite(r.toVal) ? r.toVal : null;
+  } catch {
+    return null;
+  }
+}
+
 export function ucumUnknownCodeMessage(code: string): string {
   return `Unknown code '${code}' in the CodeSystem '${UCUM_SYSTEM}' version '${UCUM_VERSION}'`;
 }

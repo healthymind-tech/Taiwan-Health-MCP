@@ -13,6 +13,7 @@ writes. Both Docker images copy this directory (`node-server/Dockerfile` → `/a
 | `abbreviations/lrabr-<release>.tsv.gz` | Abbreviation lexicon (`fhir.abbreviation_lexicon`) for IG concept search query expansion |
 | `terminology/loinc-tx-display.json.gz` | English displays the reference terminology server (tx.fhir.org, LOINC 2.83) accepts for the LOINC codes whose names differ from the locally held release (renamed codes such as 30954-2 '… note', and LOINC's DisplayName), read by `src/txCodeTables.ts` while the installed LOINC is older than 2.83 — validation (validator_cli's Wrong Display Name) and the display repair (ISSUES_v17.5). Importing a newer LOINC makes the local table the source again |
 | `terminology/atc-tx-check.json.gz` | Verdicts of the validator's reference terminology server (tx.fhir.org) on WHO ATC codes, read by `src/txCodeTables.ts` (not loaded into the DB): validation (ATC codes ATC 2026 lacks → validator_cli's Unknown-code error) and the search / suggestion / repair rule that offers an ATC coding only when the validator accepts it (ISSUES_v15.2) |
+| `xver/xver-paths-<v>.json.gz` | Cross-version extension tables (`http://hl7.org/fhir/<v>/StructureDefinition/extension-<path>`), read by `src/fhirXver.ts`: the validator generates those extension definitions the way validator_cli does (XVerExtensionManagerOld) instead of reporting them unknown (not loaded into the DB) |
 
 ## How they are applied
 
@@ -41,6 +42,7 @@ writes. Both Docker images copy this directory (`node-server/Dockerfile` → `/a
 | `lrabr-2024AA.tsv.gz` | SPECIALIST Lexicon `LEX/LRABR` (NLM Lexical Systems Group), as shipped with UMLS 2024AA (file dated 2023-07-14, sha256 `43311352…eb10b233`); 115,233 rows after the loader's filter | 2024AA | SPECIALIST Lexicon and tools: open source, freely available from the National Library of Medicine (https://lhncbc.nlm.nih.gov/LSG/Projects/lexicon/) — no UMLS licence is needed for the lexicon. Courtesy of the U.S. National Library of Medicine. |
 
 | `terminology/atc-tx-check.json.gz` | tx.fhir.org (r4) `ValueSet/$expand` of `http://www.whocc.no/atc` (one expansion per anatomical group A … V, `count` 3000), fetched 2026-10-26, edition `2026`; code scope: TW Core 1.0.0 ValueSet `medcation-atc-tw` ∪ the `atc` property of `CodeSystem-nhi-medication-supplement` (3,434 known, 171 unknown; 3,191 TW Core displays verified equal to the server's, case-insensitive) | ATC 2026 | Derived facts only — per code "known / unknown to the server" and "TW Core's display = the server's"; **no ATC names or structure are bundled** (the codes are those TW Core / NHI open data already publish). WHO ATC © WHO Collaborating Centre for Drug Statistics Methodology. |
+| `xver/xver-paths-{1.0,1.4,3.0,4.0,5.0,r2}.json.gz` | `other/xver-paths-*.json` of the package `hl7.fhir.xver-extensions` 0.1.0 (the package validator_cli 7.0.1 loads), gzip of the unmodified files (sha256 of 4.0: `0659c64c…`, 5.0: `2c01febf…`) | 0.1.0 | HL7 / FHIR Project, CC0-1.0 |
 
 Full sha256 of the inputs used for the files in this directory:
 

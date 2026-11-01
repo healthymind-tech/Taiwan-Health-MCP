@@ -172,7 +172,8 @@ put(
 );
 const anyRef = (id: string, min: number, max: string): El =>
   el(id, min, max, [], { type: [{ code: "Reference", targetProfile: [CORE + "Resource"] }] });
-put(sd(CORE + "Resource", "Resource", "resource", [el("Resource", 0, "*"), el("Resource.id", 0, "1", ["id"])]));
+// abstract like the R4 core definition (InstanceValidator.isAbstractType: no Extension_PROF_Type for a Resource-typed element)
+put(sd(CORE + "Resource", "Resource", "resource", [el("Resource", 0, "*"), el("Resource.id", 0, "1", ["id"])], { abstract: true }));
 put(
   sd(CORE + "Composition", "Composition", "resource", [
     el("Composition", 0, "*"),

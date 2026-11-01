@@ -81,7 +81,10 @@ test("checkPrimitive: uri family (URI_OID / URI_UUID / URI_WS / OID_START / UUID
   await only({ oidX: "oid:1.2.3.4" }, ["URI values cannot start with oid:", "OIDs must start with urn:oid:"]);
   await only({ uuidX: "uuid:abc" }, ["URI values cannot start with uuid:", "UUIDs must start with urn:uuid:"]);
   await only({ canonicalX: "StructureDefinition/x" }, ["Canonical URLs must be absolute URLs if they are not fragment references (StructureDefinition/x)"]);
-  await only({ canonicalX: "#frag" }, []);
+  // a fragment reference is exempt from CANONICAL_ABSOLUTE; it must match an element id (validateReference l. 3946-3982,
+  // TYPE_SPECIFIC_CHECKS_DT_URL_INTERNAL for a canonical without a target)
+  await only({ canonicalX: "#frag", identifierX: { id: "frag", value: "1" } }, []);
+  await only({ canonicalX: "#frag" }, ["The URL value '#frag' is invalid because there is no matching target"]);
 });
 
 test("checkPrimitive: id / code / string whitespace rules", async () => {
