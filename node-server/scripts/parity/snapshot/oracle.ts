@@ -28,7 +28,14 @@ const specs = pkgs.length ? pkgs : ["tw.gov.mohw.twcore#1.0.0", "hl7.fhir.uv.ips
 type ED = Record<string, any>;
 /** canonical without |version (newer publishers version core canonicals; validation resolves both alike). */
 const norm = (u: any): string => String(u ?? "").split("|")[0];
-const CATS = ["missing-id", "extra-id", "order", "min", "max", "type", "fixed", "pattern", "binding", "constraint", "mustSupport", "slicing", "contentReference", "failed"] as const;
+const CATS = ["missing-id", "extra-id", "order", "min", "max", "type", "fixed", "pattern", "binding", "constraint", "mustSupport", "slicing", "contentReference", "failed", "publisher-slicer"] as const;
+/**
+ * Not a generator difference: the published value is the one the differential sets on the SLICER's element (the same
+ * id with the slice names removed) and the slice element itself does not set it — older IG publishers copied slicer
+ * properties onto slices; validator_cli 7.0.1 does not (ProfilePathProcessor.APPLY_PROPERTIES_FROM_SLICER = false,
+ * PPP:51-59, "the community decided not to apply this fix"), and neither do we. Reported apart from the real diffs.
+ */
+const PUBLISHER_SLICER_CATS = new Set<string>(["binding", "mustSupport", "min", "type"]);
 type Cat = (typeof CATS)[number];
 
 function typeSig(ed: ED): string {
@@ -91,7 +98,25 @@ function fold(list: ED[]): ED[] {
 }
 const crSig = (ed: ED): string => (ed.contentReference ? "#" + String(ed.contentReference).split("#")[1] : "");
 
-function compare(pub0: ED[], gen0: ED[]): Array<{ cat: Cat; id: string; pub?: any; gen?: any }> {
+const unsliced = (id: string): string => id.split(".").map((seg) => seg.split(":")[0]).join(".");
+function sigOf(cat: string, ed: ED): any {
+  if (cat === "binding") return bindingSig(ed);
+  if (cat === "mustSupport") return !!ed.mustSupport;
+  if (cat === "min") return ed.min ?? 0;
+  return typeSig(ed);
+}
+const PROP: Record<string, string> = { binding: "binding", mustSupport: "mustSupport", min: "min", type: "type" };
+function fromSlicer(cat: string, id: string, pubValue: any, diff: ED[]): boolean {
+  if (!PUBLISHER_SLICER_CATS.has(cat) || !id.includes(":")) return false;
+  const own = diff.find((e) => e.id === id);
+  if (own && own[PROP[cat]] !== undefined) return false;
+  const slicerId = unsliced(id);
+  if (slicerId === id) return false;
+  const slicer = diff.find((e) => e.id === slicerId);
+  return !!slicer && slicer[PROP[cat]] !== undefined && JSON.stringify(sigOf(cat, slicer)) === JSON.stringify(pubValue);
+}
+
+function compare(pub0: ED[], gen0: ED[], diff: ED[] = []): Array<{ cat: Cat; id: string; pub?: any; gen?: any }> {
   const pub = fold(pub0);
   const gen = fold(gen0);
   const out: Array<{ cat: Cat; id: string; pub?: any; gen?: any }> = [];
@@ -105,7 +130,7 @@ function compare(pub0: ED[], gen0: ED[]): Array<{ cat: Cat; id: string; pub?: an
       continue;
     }
     const chk = (cat: Cat, a: any, b: any): void => {
-      if (a !== b) out.push({ cat, id, pub: a, gen: b });
+      if (a !== b) out.push({ cat: fromSlicer(cat, id, a, diff) ? "publisher-slicer" : cat, id, pub: a, gen: b });
     };
     chk("min", p.min ?? 0, g.min ?? 0);
     chk("max", p.max ?? "", g.max ?? "");
@@ -165,12 +190,12 @@ for (const spec of specs) {
     const byCat: Record<string, number> = {};
     let diffs: Array<{ cat: Cat; id: string; pub?: any; gen?: any }>;
     if (!res) diffs = [{ cat: "failed", id: String(sd.url), gen: gen.messages.map((m) => m.message).join(" / ") }];
-    else diffs = compare(sd.snapshot.element, res.snapshot.element);
+    else diffs = compare(sd.snapshot.element, res.snapshot.element, sd.differential.element);
     for (const d of diffs) {
       byCat[d.cat] = (byCat[d.cat] ?? 0) + 1;
       totals[d.cat]++;
     }
-    if (!diffs.length) exact++;
+    if (!diffs.some((d) => d.cat !== "publisher-slicer")) exact++;
     perProfile.push({ url: String(sd.url), diffs: diffs.length, byCat, sample: diffs.slice(0, 12), messages: gen.messages.length ? gen.messages.slice(0, 5) : undefined });
     if (verbose && diffs.length) {
       console.log(`\n${sd.url}  (${diffs.length})`);
@@ -178,7 +203,7 @@ for (const spec of specs) {
     }
   }
 }
-const total = Object.values(totals).reduce((a, b) => a + b, 0);
-console.log(`\nprofiles ${profiles}, identical ${exact} (${((100 * exact) / Math.max(1, profiles)).toFixed(1)}%), differences ${total}`);
+const total = Object.entries(totals).reduce((a, [c, n]) => (c === "publisher-slicer" ? a : a + n), 0);
+console.log(`\nprofiles ${profiles}, identical ${exact} (${((100 * exact) / Math.max(1, profiles)).toFixed(1)}%), differences ${total} (+ ${totals["publisher-slicer"]} publisher-slicer, not generator differences)`);
 for (const c of CATS) if (totals[c]) console.log(`  ${c.padEnd(16)} ${totals[c]}`);
 if (jsonOut) writeFileSync(jsonOut, JSON.stringify({ specs, profiles, exact, totals, perProfile }, null, 1));
