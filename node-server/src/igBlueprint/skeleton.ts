@@ -11,10 +11,15 @@
  * value_source (all data-driven, IG-agnostic):
  *   ig-constant   fixed[x] / pattern[x] of the profile (also extension urls), or a value that is
  *                 IDENTICAL in every one of the IG's own example instances of the profile (>= 2
- *                 instances; never a value that varies) and is eligible:
- *                   - administrative entity resources (Organization, Location, HealthcareService,
- *                     Endpoint, OrganizationAffiliation — not persons): any element, when the IG
- *                     reuses the same entity in all its examples (e.g. the payer agency);
+ *                 instances; never a value that varies) and is eligible (1.6.0, ISSUES_v17.4: never
+ *                 for identity resources — IDENTITY_TYPES — nor for name / telecom / address /
+ *                 identifier / contact of any resource, which are `record`):
+ *                   - a national payer / authority Organization profile (nationalOrgs.ts: type
+ *                     pinned to govt / pay / ins, or the only target of the IG's payer / insurer
+ *                     references — e.g. TWPAS Coverage.payor -> Organization-govt-twcore): any
+ *                     element, when the IG reuses the same agency in all its examples;
+ *                   - administrative entity resources that do not identify a site (HealthcareService,
+ *                     Endpoint, OrganizationAffiliation): any non-identity element;
  *                   - any other resource: only workflow / derived codes (status-like elements with a
  *                     required or extensible binding, booleans) constant across >= 2 DISTINCT
  *                     instances — never source facts (dates, values, names, identifiers, gender)
@@ -47,6 +52,7 @@ import {
   type ProjectedElement,
   type RequiredElementRow,
 } from "../fhirRequiredElements.js";
+import { nationalOrganizationBasis } from "./nationalOrgs.js";
 import {
   BlueprintError,
   compactProvenance,
@@ -508,8 +514,10 @@ interface ClassifyCtx {
   deps: BlueprintDeps;
   loaded: LoadedProfile;
   vsCache: Map<string, { codes: Array<{ code: string; display: string | null; system: string | null }>; total: number; truncated: boolean } | null>;
-  /** SkeletonModelOptions.strictExamples. */
+  /** SkeletonModelOptions.strictExamples (false for a national payer / authority organization). */
   strictExamples?: boolean;
+  /** nationalOrgs.ts basis when the profile is a national payer / authority organization. */
+  nationalBasis?: string | null;
 }
 
 async function bindingCodes(ctx: ClassifyCtx, vs: string): Promise<{ codes: Array<{ code: string; display: string | null; system: string | null }>; total: number; truncated: boolean } | null> {
@@ -601,9 +609,11 @@ async function classify(ctx: ClassifyCtx, row: RequiredElementRow, inheritedBind
         item.source = "ig-constant";
         item.placeholder = clone(c.value);
         item.exampleBasis = `identical in ${c.n}/${c.n} IG example instances (${ctx.distinct} distinct)`;
-        item.how = entity
-          ? `${item.exampleBasis}: the IG reuses this ${rt} in every example — copy it unless the record or site_config names a different ${rt.toLowerCase()}`
-          : `${item.exampleBasis} — copy it unless the record says otherwise`;
+        item.how = ctx.nationalBasis
+          ? `${item.exampleBasis}: the IG's national payer / authority organization (${ctx.nationalBasis}) — copy it unless the record names a different one`
+          : entity
+            ? `${item.exampleBasis}: the IG reuses this ${rt} in every example — copy it unless the record or site_config names a different ${rt.toLowerCase()}`
+            : `${item.exampleBasis} — copy it unless the record says otherwise`;
         return item;
       }
     }
@@ -1058,12 +1068,17 @@ export interface SkeletonModelOptions {
   /** Place the conditional rows into the skeleton too (with a pointer each). */
   placeConditional?: boolean;
   /**
-   * (fhir_get_bundle_form v1.1) Never take a value from the IG's example instances for identity
-   * resources (IDENTITY_TYPES) or identity / contact elements (IDENTITY_ELEMENTS) — only fixed /
-   * pattern values of the profiles. fhir_get_minimal_skeleton keeps the v17 rule (its ig-constants
-   * feed the grounding exemption of example values).
+   * (fhir_get_bundle_form v1.1; fhir_get_minimal_skeleton 1.6.0) Never take a value from the IG's
+   * example instances for identity resources (IDENTITY_TYPES) or identity / contact elements
+   * (IDENTITY_ELEMENTS) — only fixed / pattern values of the profiles (and, with
+   * `nationalOrganizations`, the example identity of a national payer / authority organization).
    */
   strictExamples?: boolean;
+  /**
+   * (ISSUES_v17.4, fhir_get_minimal_skeleton) A national payer / authority Organization profile
+   * (nationalOrgs.ts) is exempt from `strictExamples`: the IG's examples of it are the one agency.
+   */
+  nationalOrganizations?: boolean;
 }
 
 /** The skeleton before serialisation (shared by fhir_get_minimal_skeleton and fhir_get_bundle_form). */
@@ -1226,7 +1241,9 @@ export async function skeletonModel(req: SkeletonRequest, deps: BlueprintDeps, o
   if (ectx.missing.length) warnings.push(`extension definition(s) not installed: ${[...new Set(ectx.missing)].slice(0, 4).join(", ")} — only their url is listed`);
 
   const distinct = new Set(instances.map((x) => normalizedInstance(x.resource))).size;
-  const cctx: ClassifyCtx = { rt, E, rowsById, codeFixed: profileFixesCode(rt, els), instances, distinct, deps, loaded, vsCache: new Map(), strictExamples: Boolean(opts.strictExamples) };
+  const nationalBasis = opts.nationalOrganizations && rt === "Organization" ? await nationalOrganizationBasis(loaded, deps).catch(() => null) : null;
+  const strict = Boolean(opts.strictExamples) && !nationalBasis;
+  const cctx: ClassifyCtx = { rt, E, rowsById, codeFixed: profileFixesCode(rt, els), instances, distinct, deps, loaded, vsCache: new Map(), strictExamples: strict, nationalBasis };
   const groups = sliceGroups(rt, sd, E, rows, requiredIds);
   await bindSliceTemplates(groups, E, cctx);
   const groupById = new Map(groups.map((g) => [g.id, g]));
@@ -1318,7 +1335,7 @@ export async function skeletonModel(req: SkeletonRequest, deps: BlueprintDeps, o
     for (const [k, v] of Object.entries(first)) {
       if (["resourceType", "id", "meta", "text", "contained", "implicitRules", "language"].includes(k) || k in builder.root || hasRef(v)) continue;
       const elId = `${rt}.${k}`;
-      if (E.get(elId)?.max === "0" || !exampleValueAllowed(rt, elId, Boolean(opts.strictExamples))) continue;
+      if (E.get(elId)?.max === "0" || !exampleValueAllowed(rt, elId, strict)) continue;
       const key = stable(v);
       if (!instances.every((x) => stable(x.resource[k]) === key)) continue;
       builder.root[k] = clone(v);
@@ -1327,7 +1344,9 @@ export async function skeletonModel(req: SkeletonRequest, deps: BlueprintDeps, o
         id: elId,
         path: k,
         source: "ig-constant",
-        how: `optional; identical in ${instances.length}/${instances.length} IG example instances (${distinct} distinct): the IG's own ${rt} — keep it unless the record or site_config names another`,
+        how: nationalBasis
+          ? `optional; identical in ${instances.length}/${instances.length} IG example instances (${distinct} distinct): the IG's national payer / authority organization (${nationalBasis}) — keep it unless the record names another`
+          : `optional; identical in ${instances.length}/${instances.length} IG example instances (${distinct} distinct): the IG's own ${rt} — keep it unless the record or site_config names another`,
         placeholder: v,
         exampleBasis: `identical in ${instances.length}/${instances.length} IG example instances (${distinct} distinct)`,
       });
@@ -1342,7 +1361,7 @@ export async function skeletonModel(req: SkeletonRequest, deps: BlueprintDeps, o
       const segs = e.id.split(".");
       if (segs.length !== 2 || e.max === "0" || listed.has(e.id) || requiredIds.has(e.id)) continue;
       if (["id", "meta", "text", "implicitRules", "language", "contained", "extension", "modifierExtension"].includes(segs[1])) continue;
-      if ((e.types || []).some((t) => shortType(t.code) === "Reference") || !exampleValueAllowed(rt, e.id, Boolean(opts.strictExamples))) continue;
+      if ((e.types || []).some((t) => shortType(t.code) === "Reference") || !exampleValueAllowed(rt, e.id, strict)) continue;
       const c = exampleConstant(cctx, e.id);
       if (c === undefined) continue;
       const basis = `identical in ${c.n}/${c.n} IG example instances (${distinct} distinct)`;
@@ -1350,7 +1369,9 @@ export async function skeletonModel(req: SkeletonRequest, deps: BlueprintDeps, o
         id: e.id,
         path: displayPath(e.id, rt, E),
         source: "ig-constant",
-        how: `optional; ${basis}: the IG uses this ${rt} in every example — copy it unless the record or site_config names a different one`,
+        how: nationalBasis
+          ? `optional; ${basis}: the IG's national payer / authority organization (${nationalBasis}) — copy it unless the record names a different one`
+          : `optional; ${basis}: the IG uses this ${rt} in every example — copy it unless the record or site_config names a different one`,
         placeholder: clone(c.value),
         exampleBasis: basis,
         pointer: builder.place(e.id, clone(c.value)),
@@ -1412,7 +1433,7 @@ export async function skeletonModel(req: SkeletonRequest, deps: BlueprintDeps, o
 }
 
 export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps): Promise<SkeletonResult> {
-  const { loaded, rt, canonical, skeleton, items, conditional, conditionText, invariants, instances, distinct, warnings, groups } = await skeletonModel(req, deps);
+  const { loaded, rt, canonical, skeleton, items, conditional, conditionText, invariants, instances, distinct, warnings, groups } = await skeletonModel(req, deps, { strictExamples: true, nationalOrganizations: true });
   const ectx = { invariants };
   const summary = Object.fromEntries(VALUE_SOURCES.map((s) => [s, items.filter((i) => i.source === s).length]));
   const rules = ectx.invariants.filter((i) => !parseImpliesExists(i.expression) || !conditional.length);

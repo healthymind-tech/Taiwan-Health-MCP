@@ -29,6 +29,12 @@ export interface BlueprintDeps {
   expandValueSet(p: LoadedProfile, valueSet: string, limit: number): Promise<ExpandedCodes | null>;
   /** ISSUES_v17.3: IG known defects of the profile's closure (igKnownDefects.ts); absent / [] = none known. */
   knownDefects?(p: LoadedProfile): Promise<KnownDefect[]>;
+  /**
+   * ISSUES_v17.4: the constraint StructureDefinitions of the IG being written for (the requested package;
+   * the same array per package while cached) — nationalOrgs.ts reads their payer / authority references.
+   * Absent = only the profile's own Organization.type pattern marks a national organization.
+   */
+  igProfiles?(p: LoadedProfile): Promise<Record<string, any>[]>;
 }
 
 export interface ExampleInstance {

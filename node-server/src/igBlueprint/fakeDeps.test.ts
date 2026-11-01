@@ -27,6 +27,9 @@ export function fakeDeps(sds: R[], opts: { examples?: R[]; valueSets?: Record<st
     async exampleInstances(_p, canonical) {
       return (opts.examples ?? []).map((r, i): ExampleInstance => ({ source: `ex${i}`, resource: r })).filter((x) => (x.resource.meta?.profile ?? []).includes(canonical));
     },
+    async igProfiles() {
+      return sds;
+    },
     async expandValueSet(_p, vs, limit) {
       const codes = opts.valueSets?.[vs];
       if (!codes) return null;

@@ -4,7 +4,9 @@
  * every ig-constant of fhir_get_minimal_skeleton for the same profile — the same function the skeleton
  * tool runs, so the two cannot disagree. For an administrative entity (Organization …) in the instance,
  * the profiles the IG's own examples of that type declare are read too, so the IG's payer agency is
- * exempt wherever it is written. IG-agnostic; fail-open per profile.
+ * exempt wherever it is written. Since ISSUES_v17.4 the skeleton takes example identity values only for a
+ * national payer / authority organization (nationalOrgs.ts), so an example hospital's name / identifier is
+ * a record fact here too. IG-agnostic; fail-open per profile.
  */
 
 import { allLeaves, normIgValue, type IgDefinedValues } from "../grounding/igDefined.js";

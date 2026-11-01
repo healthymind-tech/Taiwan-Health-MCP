@@ -30,6 +30,7 @@ export const FORM_TOOL_NAME = "fhir_get_bundle_form";
 
 const sdMemo = new TtlMemo<Record<string, any> | null>(10 * 60_000, 600);
 const examplesMemo = new TtlMemo<ExampleInstance[]>(10 * 60_000, 16);
+const profilesMemo = new TtlMemo<Record<string, any>[]>(10 * 60_000, 16);
 const EXAMPLES_CAP = 400;
 
 function jsonValue(raw: unknown): Record<string, any> {
@@ -101,6 +102,22 @@ export function dbBlueprintDeps(): BlueprintDeps {
       return (await packageExamples(p.packageId, p.packageVersion)).filter(has);
     },
 
+    igProfiles(p) {
+      const pkg = pkgOf(p);
+      return profilesMemo.get(`${pkg.package_id}#${pkg.version}`, async () =>
+        (
+          await query<{ raw_json: unknown }>(
+            `SELECT raw_json FROM fhir.artifacts
+             WHERE package_id = $1 AND package_version = $2 AND resource_type = 'StructureDefinition' AND derivation = 'constraint'
+             ORDER BY artifact_key LIMIT 2000`,
+            [pkg.package_id, pkg.version],
+          )
+        ).rows
+          .map((r) => jsonValue(r.raw_json))
+          .filter((sd) => sd.resourceType === "StructureDefinition"),
+      );
+    },
+
     knownDefects(p) {
       const pkg = pkgOf(p);
       return knownDefects((pkg._closure ?? [[pkg.package_id, pkg.version]]).map(([id, v]) => ({ package_id: id, version: v })));
@@ -134,7 +151,9 @@ export const SKELETON_TOOL_DESCRIPTION =
   "for profiles with many required elements. Returns `skeleton` (JSON with every required element, recursively: required slices, " +
   "extensions (url + value), fixed / pattern values already filled in, meta.profile set; replace each <...> placeholder) and `table` " +
   "rows [path, value_source, how]. value_source: ig-constant = fixed / pattern of the profile, or a value IDENTICAL in every one of the " +
-  "IG's own example instances (>= 2; e.g. the national payer agency's identifier, a workflow status the IG always uses) — copy it; " +
+  "IG's own example instances (>= 2): a workflow status the IG always uses, or the identity of a NATIONAL payer / authority organization " +
+  "(an Organization profile the IG's payor / insurer references target, or typed govt / pay / ins) — copy it; an example hospital, clinic, " +
+  "lab, practitioner or patient is never ig-constant (its name / identifier / telecom / address are `record`); " +
   "code-lookup = pick a code (small bindings list their codes, larger ones name the ValueSet: fhir_normalize_code / fhir_expand_valueset); " +
   "text-allowed = {text} alone is valid (the binding is not required and coding is optional); derivable = computed without a record fact " +
   "(a reference = the target entry's fullUrl, 1-2-3 numbering, a workflow default, a derivation rule, the date a request was written = " +

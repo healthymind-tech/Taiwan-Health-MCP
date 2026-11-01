@@ -148,14 +148,14 @@ test("skeleton: sequence placeholders of sibling slices are numbered 1, 2, …",
 const ORG = sd(B + "Org-payer", "Organization", "resource", [
   el("Organization", 0, "*"),
   el("Organization.identifier", 0, "*", ["Identifier"], { baseMax: "*", mustSupport: true }),
-  el("Organization.type", 1, "*", ["CodeableConcept"], { baseMax: "*", patternCodeableConcept: { coding: [{ system: "t", code: "govt" }] } }),
+  el("Organization.type", 1, "*", ["CodeableConcept"], { baseMax: "*", patternCodeableConcept: { coding: [{ system: "http://terminology.hl7.org/CodeSystem/organization-type", code: "govt" }] } }),
   el("Organization.name", 0, "1", ["string"], { mustSupport: true }),
 ], { id: "Org-payer" });
 const orgEx = (id: string, value: string, name: string): R => ({
-  resourceType: "Organization", id, meta: { profile: [B + "Org-payer"] }, identifier: [{ system: "urn:oid:x", value }], type: [{ coding: [{ system: "t", code: "govt" }] }], name,
+  resourceType: "Organization", id, meta: { profile: [B + "Org-payer"] }, identifier: [{ system: "urn:oid:x", value }], type: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/organization-type", code: "govt" }] }], name,
 });
 
-test("example constants: an administrative entity the IG reuses in every example is an ig-constant", async () => {
+test("example constants: a national payer / authority organization (type pinned to govt) the IG reuses in every example is an ig-constant", async () => {
   const same = [orgEx("a", "A123", "Agency"), orgEx("b", "A123", "Agency")];
   const { data } = await minimalSkeleton({ profile: "Org-payer" }, fakeDeps([ORG], { examples: same }));
   const t = rows(data);
@@ -174,6 +174,69 @@ test("example constants: values that vary, or a single example, are never consta
   assert.equal((data.skeleton as R).identifier, undefined);
   const one = await minimalSkeleton({ profile: "Org-payer" }, fakeDeps([ORG], { examples: [orgEx("a", "A123", "Agency")] }));
   assert.equal(rows(one.data).get("identifier"), undefined, "one example is not a basis");
+});
+
+// ISSUES_v17.4: an example hospital is one of many — its identity values are never IG constants.
+const HOSP = sd(B + "Org-hosp", "Organization", "resource", [
+  el("Organization", 0, "*"),
+  el("Organization.identifier", 1, "*", ["Identifier"], { baseMax: "*" }),
+  el("Organization.identifier.system", 1, "1", ["uri"], { patternUri: "https://example.org/hospital-id" }),
+  el("Organization.identifier.value", 1, "1", ["string"]),
+  el("Organization.type", 1, "*", ["CodeableConcept"], { baseMax: "*", patternCodeableConcept: { coding: [{ system: "http://terminology.hl7.org/CodeSystem/organization-type", code: "prov" }] } }),
+  el("Organization.name", 1, "1", ["string"]),
+  el("Organization.telecom", 0, "*", ["ContactPoint"], { baseMax: "*" }),
+  el("Organization.address", 0, "*", ["Address"], { baseMax: "*" }),
+], { id: "Org-hosp" });
+const hospEx = (id: string): R => ({
+  resourceType: "Organization",
+  id,
+  meta: { profile: [B + "Org-hosp"] },
+  identifier: [{ system: "https://example.org/hospital-id", value: "0101090517" }],
+  type: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/organization-type", code: "prov" }] }],
+  name: "Example City Hospital",
+  telecom: [{ system: "phone", value: "02-2311-0000" }],
+  address: [{ text: "No. 1, Example Rd." }],
+});
+
+test("example constants (v17.4): an example-only hospital name / phone / address is record; a profile pattern stays ig-constant", async () => {
+  const { data, igConstants } = await minimalSkeleton({ profile: "Org-hosp" }, fakeDeps([HOSP], { examples: [hospEx("a"), hospEx("b"), hospEx("c")] }));
+  const t = rows(data);
+  assert.equal(t.get("name")?.[0], "record", "the example hospital's name is the record's");
+  assert.equal(t.get("identifier.value")?.[0], "record");
+  assert.equal(t.get("telecom"), undefined, "optional example phone is not prefilled");
+  assert.equal(t.get("address"), undefined, "optional example address is not prefilled");
+  const sk = data.skeleton as R;
+  assert.equal(sk.telecom, undefined);
+  assert.equal(sk.address, undefined);
+  assert.notEqual(sk.name, "Example City Hospital");
+  assert.equal(sk.identifier[0].system, "https://example.org/hospital-id", "pattern value filled");
+  const leaves = JSON.stringify(igConstants);
+  assert.ok(leaves.includes("https://example.org/hospital-id") && leaves.includes('"prov"'), "pattern values remain ig-constant");
+  assert.ok(!/Example City Hospital|0101090517|02-2311-0000|Example Rd/.test(leaves), "no example identity value is an ig-constant");
+});
+
+// A payer profile without a type pattern: national because the IG's payer references target only it.
+const ORG_INS = sd(B + "Org-ins", "Organization", "resource", [
+  el("Organization", 0, "*"),
+  el("Organization.identifier", 0, "*", ["Identifier"], { baseMax: "*" }),
+  el("Organization.name", 0, "1", ["string"]),
+], { id: "Org-ins", derivation: "constraint" });
+const covWith = (target: string): R =>
+  sd(B + "Cov", "Coverage", "resource", [el("Coverage", 0, "*"), el("Coverage.payor", 1, "*", [], { baseMax: "*", type: [{ code: "Reference", targetProfile: [B + target] }] })], { id: "Cov", derivation: "constraint" });
+const compWith = (target: string): R =>
+  sd(B + "Comp", "Composition", "resource", [el("Composition", 0, "*"), el("Composition.custodian", 0, "1", [], { type: [{ code: "Reference", targetProfile: [B + target] }] })], { id: "Comp", derivation: "constraint" });
+const insEx = (id: string): R => ({ resourceType: "Organization", id, meta: { profile: [B + "Org-ins"] }, identifier: [{ system: "urn:oid:9.9", value: "N1" }], name: "National Insurer" });
+
+test("example constants (v17.4): the only target of the IG's payer references is national; a profile also used as custodian is not", async () => {
+  const ex = [insEx("a"), insEx("b")];
+  const payer = await minimalSkeleton({ profile: "Org-ins" }, fakeDeps([ORG_INS, covWith("Org-ins")], { examples: ex }));
+  const t = rows(payer.data);
+  assert.equal(t.get("name")?.[0], "ig-constant");
+  assert.match(t.get("name")![1], /national payer \/ authority organization \(.*Coverage\.payor/);
+  assert.equal((payer.data.skeleton as R).name, "National Insurer");
+  const generic = await minimalSkeleton({ profile: "Org-ins" }, fakeDeps([ORG_INS, covWith("Org-ins"), compWith("Org-ins")], { examples: ex }));
+  assert.equal(rows(generic.data).get("name"), undefined, "a generic organization profile (custodian too) is never national");
+  assert.equal((generic.data.skeleton as R).name, undefined);
 });
 
 const PAT = sd(B + "Pat", "Patient", "resource", [

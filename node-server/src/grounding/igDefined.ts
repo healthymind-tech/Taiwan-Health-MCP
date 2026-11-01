@@ -3,7 +3,9 @@
  * G-CONTEXT-LABEL …) and the record checks (ungrounded-value, information-absent …) exempt them,
  * wherever in a resource they appear. Collected per IG by igBlueprint/igValues.ts:
  *   constants  fixed[x] / pattern[x] of the declared profiles, and every value fhir_get_minimal_skeleton
- *              marks ig-constant (e.g. the payer agency's name and OID the IG reuses in all its examples);
+ *              marks ig-constant — since ISSUES_v17.4 an example-derived identity value only for a national
+ *              payer / authority organization (igBlueprint/nationalOrgs.ts; e.g. the payer agency's name and OID
+ *              the IG reuses in all its examples), never an example hospital / clinic / lab / practitioner;
  *   literals   answer literals the profiles' invariants allow for value[x] (pat-ast-value: 'class1').
  * Literals exempt only a value[x] string (never codings, identifiers, quantities or other elements); a structured value
  * is exempt when every significant leaf of it is a constant. Pure; no clinical content is kept.

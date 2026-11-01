@@ -77,6 +77,7 @@ export function fileBlueprintDeps(specs: string[]): BlueprintDeps | null {
     }
   }
   const examples = new Map<string, ExampleInstance[]>();
+  let ownProfiles: Res[] | null = null;
   const examplesOf = (spec: string): ExampleInstance[] => {
     if (!examples.has(spec)) examples.set(spec, exampleResources(pkgDir(spec)!));
     return examples.get(spec)!;
@@ -120,6 +121,11 @@ export function fileBlueprintDeps(specs: string[]): BlueprintDeps | null {
       if (target.length) return target;
       const owner = specs.find((s) => s === `${p.packageId}#${p.packageVersion}`);
       return owner ? examplesOf(owner).filter(has) : [];
+    },
+    async igProfiles() {
+      return (ownProfiles ??= packageResources(dirs[0]!)
+        .map(([, r]) => r)
+        .filter((r) => r.resourceType === "StructureDefinition" && r.derivation === "constraint"));
     },
     async expandValueSet(_p, valueSet, limit) {
       const vs = await term.loadValueSet(valueSet);

@@ -59,7 +59,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // (pat-ast-value 'class1') are exempt from G-UNGROUNDED / G-CONTEXT-* / G-STATED-ABSENT wherever they appear (summary.exempt);
   // a dose / frequency evidence quote cut from a record line listing several medicines is judged on the segment from the
   // medicine named before it (no G-CONTEXT-LABEL when that is this resource's medicine).
-  fhir_check_grounding: "1.3.0",
+  // 1.4.0 (ISSUES_v17.4): the IG-defined exemption (igBlueprint/igValues.ts) is narrowed: profile fixed / pattern values, invariant answer literals and the example identity (name / identifier …) of a national payer / authority organization (igBlueprint/nationalOrgs.ts: an Organization profile whose type is pinned to govt / pay / ins, or the only target of the IG's payor / insurer / payer / authority references — TWPAS Coverage.payor / ClaimResponse.insurer -> Organization-govt-twcore); an example hospital / clinic / lab / practitioner / patient value is no longer exempt (reported when the record names another), as fhir_get_minimal_skeleton 1.6.0.
+  fhir_check_grounding: "1.4.0",
   // 1.1.0: stated absences by whole-label matching (shared with fhir_check_grounding, lexicon 0.3.0).
   // 1.1.1: instruction / site-config lines never join a value or duration window, even when no blank line
   // separates them from the item line (a value on the 【轉換目標】 line was reported as found).
@@ -231,7 +232,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.28.0 also (release v1): normalize_ids + repair="content" — the shared content repairs of fhir_finalize_bundle 1.17.0
   //   (a required coding slice is not added next to a coding of its system with another code: reported instead).
   //   Default output unchanged.
-  fhir_validate_bundle: "1.28.0",
+  // 1.29.0 (ISSUES_v17.4, with source_text): grounding (fhir_check_grounding 1.4.0) and the record checks — the IG-defined exemption (igBlueprint/igValues.ts) is narrowed: profile fixed / pattern values, invariant answer literals and the example identity (name / identifier …) of a national payer / authority organization (igBlueprint/nationalOrgs.ts: an Organization profile whose type is pinned to govt / pay / ins, or the only target of the IG's payor / insurer / payer / authority references — TWPAS Coverage.payor / ClaimResponse.insurer -> Organization-govt-twcore); an example hospital / clinic / lab / practitioner / patient value is no longer exempt (reported when the record names another), as fhir_get_minimal_skeleton 1.6.0. Output without source_text unchanged.
+  fhir_validate_bundle: "1.29.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -258,7 +260,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.23.0 (ISSUES_v19 R1 round 2): the STU3 rename table (fhirR3Renames.ts) knows Composition.class → category: an "Unrecognized property 'class'" on a Composition gets that rename suggestion.
   // 1.24.0 (v18 R1 / parity v2, officialValidator.ts): when a resident official HL7 validator serves the package (OFFICIAL_VALIDATOR_URLS), structure / slicing / profile / invariant / document / terminology issues are its OperationOutcome (data.source "hl7-validator_cli-7.0.1", data.engine "hl7-official"; "mcp-fallback" + a warning when it is unavailable); MCP adds suggestions, slice_match, pointers / patches and content checks only. Without one, output unchanged. Record checks without source_text are warnings only (content errors need the record).
   // 1.25.0 (release v1): official engine — terminology-server failures in data.unverified (not errors; checked_fully false; the validator is restarted to drop the cached failure), official_verdict / fallback_reason, a fallback is never checked_fully; reachable / Can't find issues carry location_path (validator_cli's off-by-one entry index) and their pointer / entry follow it.
-  fhir_validate_resource: "1.25.0",
+  // 1.26.0 (ISSUES_v17.4, with source_text): as fhir_validate_bundle 1.29.0 (narrowed IG-defined exemption).
+  fhir_validate_resource: "1.26.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -376,7 +379,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.21.0 (ISSUES_v19 R1 round 2): the shared content repairs of fhir_finalize_bundle 1.15.0 (Composition.class → category, performer.reference → performer.actor.reference, STU3 duplicates of a value the R4 element holds removed, a code element written as a CodeableConcept whose system is the THO / core twin of the ValueSet's CodeSystem).
   // 1.22.0 (v18 R1): the no-new-error guard and the reported errors use the official validator when one serves the package (as fhir_validate_bundle 1.27.0).
   // 1.22.1 (release v1): content repairs as fhir_finalize_bundle 1.17.0 (fixed-slice conflict reported, never added).
-  fhir_finalize_resource: "1.22.1",
+  // 1.23.0 (ISSUES_v17.4, with source_text): validation as fhir_validate_resource 1.26.0 (narrowed IG-defined exemption).
+  fhir_finalize_resource: "1.23.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -428,7 +432,16 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   the first type, e.g. medicationReference holding {text}); a required coding slice with its own required binding
   //   decides the codes / system; a slice's pinned parts complete the coded value's placeholder coding instead of a
   //   second coding; a choice's type slices no longer replace the coded value by the first slice's "<record>".
-  fhir_get_minimal_skeleton: "1.5.0",
+  // 1.6.0 (ISSUES_v17.4, evaluator decision): example-derived ig-constants follow the strict rule of
+  //   fhir_get_bundle_form 1.1.0 — never for identity resources (Organization / Location / Practitioner(Role) / Patient /
+  //   RelatedPerson / Person / Group) nor for name / telecom / address / identifier / contact … of any resource (they are
+  //   `record`); only profile fixed / pattern values, workflow codes of non-identity resources (unchanged) and the example
+  //   identity of a national payer / authority organization (igBlueprint/nationalOrgs.ts: Organization.type pinned to
+  //   govt / pay / ins, or the only target of the IG's payor / insurer / payer / authority references, or derived from
+  //   one; its `how` names the basis). Before: TWPAS Organization-twpas name / type / identifier.value and TW Core
+  //   Organization-hosp-twcore identifier / type / name / telecom were ig-constant (the example hospital). The IG-defined
+  //   grounding exemption follows (fhir_check_grounding 1.4.0).
+  fhir_get_minimal_skeleton: "1.6.0",
   // 1.0.0 (ISSUES_v19 R2, igBlueprint/form.ts): a prefilled form of a Bundle profile — every required entry slice plus
   //   the planned `entries`, each a complete resource skeleton (skeletonModel + closed-slice choice by the IG examples,
   //   conditional rows placed as required=false), entries required references need, deterministic urn:uuid fullUrls,
@@ -507,7 +520,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.17.0: validation as fhir_validate_bundle 1.24.0 (validator parity v1).
   // 1.18.0 (ISSUES_v19 R1 round 2): the shared content repairs of fhir_finalize_bundle 1.15.0 (Composition.class → category, performer.reference → performer.actor.reference, STU3 duplicates of a value the R4 element holds removed, a code element written as a CodeableConcept whose system is the THO / core twin of the ValueSet's CodeSystem).
   // 1.18.1 (release v1): shared content repairs as fhir_finalize_bundle 1.17.0 (fixed-slice conflict reported, never added).
-  fhir_author_resources: "1.18.1",
+  // 1.19.0 (ISSUES_v17.4, with source_text): validation as fhir_validate_resource 1.26.0 (narrowed IG-defined exemption).
+  fhir_author_resources: "1.19.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -549,7 +563,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.17.0: validation as fhir_validate_bundle 1.24.0 (validator parity v1).
   // 1.18.0 (ISSUES_v19 R1 round 2): the shared content repairs of fhir_finalize_bundle 1.15.0 (Composition.class → category, performer.reference → performer.actor.reference, STU3 duplicates of a value the R4 element holds removed, a code element written as a CodeableConcept whose system is the THO / core twin of the ValueSet's CodeSystem) and its document completion (section entries of a type the section slice does not take moved to the one section that takes them).
   // 1.18.1 (release v1): finalize as fhir_finalize_bundle 1.17.0 content repairs (fixed-slice conflict reported, never added).
-  fhir_assemble_bundle: "1.18.1",
+  // 1.19.0 (ISSUES_v17.4, with source_text): grounding / validation as fhir_validate_bundle 1.29.0 (narrowed IG-defined exemption).
+  fhir_assemble_bundle: "1.19.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -625,7 +640,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   changes (same value, same place). ambiguous items: `pointer` always resolves in the sent Bundle (else its nearest
   //   existing ancestor + `pointer_note`), new `pointer_out` (the returned Bundle, when different) and candidate
   //   `patch_out` (the returned Bundle, verified to apply, when paths / values differ).
-  fhir_finalize_bundle: "1.17.0",
+  // 1.18.0 (ISSUES_v17.4, with source_text): data.record_issues as fhir_validate_bundle 1.29.0 (narrowed IG-defined exemption).
+  fhir_finalize_bundle: "1.18.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add
