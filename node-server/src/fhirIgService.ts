@@ -55,7 +55,7 @@ import { KEYWORD_ONLY_MODE, KEYWORD_ONLY_NOTE } from "./searchQuality.js";
 import { attachSuggestions } from "./fhirSuggestions/index.js";
 import { dbSuggestionDeps, type ServiceHooks } from "./fhirSuggestions/dbDeps.js";
 import type { CodeAlternatives, ImplicitProfiles } from "./fhirSuggestions/types.js";
-import { attachIdSuggestions, isIdClassIssue, normalizationIssues } from "./fhirSuggestions/ids.js";
+import { attachIdSuggestions, inInputPositions, isIdClassIssue, normalizationIssues } from "./fhirSuggestions/ids.js";
 import { BUNDLE_TYPES, bundleRules, finalizeBundle as runBundleFinalize, losslessFinalizedBundle, type FinalizeDeps, type FinalizeResult } from "./fhirBundleFinalize.js";
 import { restoreNumbers, stringifyLossless, toPlain } from "./losslessJson.js";
 import { bundleEnvelopeProblem, cloneTree, countByRule, DEFAULT_FINALIZE_REPAIR, repairBundle, repairBundleEnvelope, repairResource, siteTimezone, type RepairChange, type RepairIssue, type RepairMode, type RepairResult } from "./fhirRepair/index.js";
@@ -2226,7 +2226,8 @@ export class FHIRIGService {
       try {
         const f = await runBundleFinalize(bundle, new DbValidatorResolver(pkg), {});
         if (f.changes.length || f.unresolved.length) {
-          attachIdSuggestions(core.issues as Record<string, any>[], f);
+          // v19 R3: the finalizer's change paths name its output (document-reordered) positions; the issues name the sent ones.
+          attachIdSuggestions(core.issues as Record<string, any>[], inInputPositions(f, Array.isArray(bundle.entry) ? bundle.entry.length : 0));
           idBlock.id_map = f.id_map;
           idBlock.id_changes = f.changes;
           idBlock.id_unresolved = f.unresolved;

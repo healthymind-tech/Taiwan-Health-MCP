@@ -64,6 +64,7 @@ import {
   type ValidateGroundingArgs,
 } from "./groundingTools.js";
 import { addRecordChecksToFinalize, addRecordChecksToFinalizeResource, addRecordChecksToValidation } from "./recordChecks/envelope.js";
+import { addValidationPointers } from "./fhirSuggestions/pointers.js";
 import { recordCheckLookups } from "./recordChecks/lookups.js";
 import {
   bmiInputShape,
@@ -1502,7 +1503,8 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       // ISSUES_v17 R2-2: the declared profiles' mustSupport / required elements (content coverage; only with source_text)
       const withProfile = withProfile0;
       const profileElements = g.source_text ? await svc.profileElementUse(withProfile, package_id ?? null, version ?? null).catch(() => null) : null;
-      return rawResult(addRecordChecksToValidation(grounded, resource as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, igDefined, ...looked }));
+      // ISSUES_v19 R3: JSON Pointers into the resource as sent + verified JSON Patch candidates (fhirSuggestions/pointers.ts), last.
+      return rawResult(addValidationPointers(addRecordChecksToValidation(grounded, resource as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, igDefined, ...looked }), resource));
     },
   );
 
@@ -1558,7 +1560,8 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       const looked = await recordCheckLookups(bundle as Record<string, any>, groundingDeps.terminology, g.source_text);
       // ISSUES_v17 R2-2: the declared profiles' mustSupport / required elements (content coverage; only with source_text)
       const profileElements = g.source_text ? await svc.profileElementUse(bundle as Record<string, any>, package_id ?? null, version ?? null).catch(() => null) : null;
-      return rawResult(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, igDefined, ...looked }));
+      // ISSUES_v19 R3: JSON Pointers into the Bundle as sent + verified JSON Patch candidates (fhirSuggestions/pointers.ts), last.
+      return rawResult(addValidationPointers(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, igDefined, ...looked }), bundle));
     },
   );
 

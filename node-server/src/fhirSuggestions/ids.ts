@@ -6,7 +6,7 @@
  * messages never change.
  */
 
-import type { FinalizeChange, FinalizeResult, FinalizeUnresolved } from "../fhirBundleFinalize.js";
+import { entryOrderOf, type FinalizeChange, type FinalizeResult, type FinalizeUnresolved } from "../fhirBundleFinalize.js";
 import type { Suggestion } from "./types.js";
 
 /** Validator messages about Bundle identity / reference wiring (any severity). */
@@ -110,6 +110,25 @@ export function attachIdSuggestions(issues: Array<Record<string, any>>, fin: Fin
     attached++;
   }
   return attached;
+}
+
+/**
+ * ISSUES_v19 R3: the finalizer reorders a document's entries first (Composition → entry[0]), so the
+ * paths of its later changes / unresolved references name OUTPUT positions. For suggestions on the
+ * issues of the Bundle as sent (fhir_validate_bundle default mode), map them back to the input
+ * positions; the document-order change itself already names the input position. Returns `fin`
+ * itself when nothing was reordered.
+ */
+export function inInputPositions(fin: FinalizeResult, entryCount: number): FinalizeResult {
+  const order = entryOrderOf(fin.changes, entryCount);
+  if (order.every((v, i) => v === i)) return fin;
+  const back = (path: string): string =>
+    path.replace(/^Bundle\.entry\[(\d+)\]/, (m, k) => (Number(k) < order.length ? `Bundle.entry[${order[Number(k)]}]` : m));
+  return {
+    ...fin,
+    changes: fin.changes.map((c) => (c.rule === "document-order" ? c : { ...c, path: back(c.path) })),
+    unresolved: fin.unresolved.map((u) => ({ ...u, path: back(u.path) })),
+  };
 }
 
 /** The `information` issues fhir_validate_bundle(normalize_ids=true) reports for what it normalised. */

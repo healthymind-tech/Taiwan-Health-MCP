@@ -213,7 +213,19 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.22.0 also (ISSUES_v17.4, record checks 1.5.0): stale-value (a value the record states only in clauses marking it old / not applicable / pending) and unconfirmed-as-confirmed for not-established text in diagnosis / required CodeableConcepts.
   // 1.23.0: validator_cli parity on document Bundles (ISSUES_v17.5, IPS): every unresolved reference of a document / message entry is an error on the Bundle ('Can't find … in the bundle (<path>)', with the fullUrl near-miss note); local narrative links that resolve to no anchor are errors (and so fail profile / slice matching); a uri written `url|version` must resolve that version; a coding bound to an enumerated ValueSet in a non-English resource (language zh-TW …) needs the ValueSet's display (SNOMED CT / LOINC); LOINC displays follow the reference server's release (bundled loinc-tx-display, LOINC 2.83) while the local LOINC is older.
   // 1.24.0: validator parity v1 (ported from validator_cli 7.0.1 source): new argument bundle_profile (as -profile); parser stage rules (ele-1 after unknown / wrong-shaped properties are dropped, a choice type the base does not allow is an Unrecognized property, HL7 JSON shape messages); Extension_PROF_Type / Extension_EXT_Type with the value validated as the profile's type; UNABLE_TO_INFER_CODESYSTEM + NoValid_16 for required code bindings; checkFixedValue (_DT_Fixed_Wrong, TYPE_CHECKS_PATTERN_CC …); a member with a wrong display fails a required binding (Confirm_4a / NoValid_1_CC); a multi-type choice merges the actual type's children; profile matching ignores parser errors; the same rule from another profile is kept (dedupe by full message); a document whose first entry is not a Composition reports it and still checks reachability.
-  fhir_validate_bundle: "1.24.0",
+  // --- v19 R3 (fhirSuggestions/pointers.ts, jsonPatch.ts) ---
+  // 1.25.0 (ISSUES_v19 R3): every issue carries `pointer` (RFC 6901 JSON Pointer into the Bundle AS SENT; a missing element →
+  //   the nearest existing ancestor, `pointer_kind`: element | ancestor; normalize_ids' document reorder mapped back through
+  //   the finalizer's entry permutation and checked by fullUrl) and every error with a fix `patches`: [{ops (RFC 6902, pointers
+  //   into the sent Bundle), reason, kind, confidence}] from suggestions[].patch, shape fixes (wrap / unwrap array, empty / null
+  //   values, profile-fixed strings), fixes of related issues (a renamed / moved property that supplies a required element,
+  //   ele-1 on an object of unrecognised properties, slice / profile matches blocked only by fixable errors) and slice
+  //   discriminator values; each candidate verified to apply to a copy of the sent Bundle. entries[i].pointer = /entry/<sent
+  //   index>. replace_fullurl candidates include the references that name the fullUrl. Default-mode ID suggestions on a
+  //   reordered document name the sent entry positions (were the finalizer's output positions). Issue set, severities,
+  //   messages, path, suggestions and valid unchanged.
+  // --- end v19 R3 ---
+  fhir_validate_bundle: "1.25.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -234,7 +246,10 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.19.0: as fhir_validate_bundle 1.22.0 (IG known defects (v17.3, igKnownDefects.ts); STU3 rename suggestions).
   // 1.20.0: validator_cli parity on document Bundles (ISSUES_v17.5, IPS): every unresolved reference of a document / message entry is an error on the Bundle ('Can't find … in the bundle (<path>)', with the fullUrl near-miss note); local narrative links that resolve to no anchor are errors (and so fail profile / slice matching); a uri written `url|version` must resolve that version; a coding bound to an enumerated ValueSet in a non-English resource (language zh-TW …) needs the ValueSet's display (SNOMED CT / LOINC); LOINC displays follow the reference server's release (bundled loinc-tx-display, LOINC 2.83) while the local LOINC is older.
   // 1.21.0: validation as fhir_validate_bundle 1.24.0 (all but bundle_profile: validator parity v1).
-  fhir_validate_resource: "1.21.0",
+  // --- v19 R3 ---
+  // 1.22.0 (ISSUES_v19 R3): `pointer` / `pointer_kind` / `patches` on the issues as fhir_validate_bundle 1.25.0 (pointers into the resource as sent).
+  // --- end v19 R3 ---
+  fhir_validate_resource: "1.22.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
