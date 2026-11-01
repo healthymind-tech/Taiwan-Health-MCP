@@ -429,16 +429,6 @@ export function impliedVitalSignProfile(code: any): string | null {
  */
 const QUANTITY_TYPES = ["Quantity"];
 
-/** BaseValidator.isExampleUrl. */
-function isExampleUrl(url: string): boolean {
-  return (
-    ["example.org/", "acme.com/", "acme.org/", "example.com/", "example.net/"].some((x) => url.includes(x)) ||
-    ["example.org", "acme.com", "acme.org", "example.com", "example.net"].some((x) => url.endsWith(x)) ||
-    url.startsWith("urn:oid:1.3.6.1.4.1.32473.") ||
-    url.startsWith("urn:oid:2.999.")
-  );
-}
-
 /** BaseValidator.isExampleUrl (7.0.1). */
 export function isExampleUrl(url: string): boolean {
   const hosts = ["example.org", "acme.com", "acme.org", "example.com", "example.net"];
