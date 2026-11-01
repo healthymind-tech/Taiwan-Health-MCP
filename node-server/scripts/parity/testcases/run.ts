@@ -12,7 +12,7 @@
  *
  *   systemd-run --user --scope -q -p MemoryMax=2G -p CPUQuota=80% nice -n 15 \
  *     node --max-old-space-size=1800 --import tsx scripts/parity/testcases/run.ts \
- *       [--only name[,name]] [--module tx,profile] [--json out.json] [--timeout ms] [-v] [--show-skipped]
+ *       [--only name[,name]] [--module tx,profile] [--format xml|json] [--json out.json] [--timeout ms] [-v] [--show-skipped]
  *
  * Output: a summary per module on stdout and per-run JSON (default scripts/parity/testcases/results.json, ignored by
  * git). Exit code 0 always (a report, not a gate) unless the suite cannot be read.
@@ -20,7 +20,8 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { InstanceValidator } from "../../../src/fhirValidator.js";
+import { InstanceValidator, type Issue } from "../../../src/fhirValidator.js";
+import { parseFhirXml } from "../../../src/fhirXml.js";
 import { errorClass } from "../classify.js";
 import { compareIssues, type Comparison, type SimpleIssue } from "../lib/compare.js";
 import { FileValidatorResolver, ResourceStore } from "../lib/fileResolver.js";
@@ -32,6 +33,7 @@ const args = process.argv.slice(2);
 const opt = (k: string): string | null => (args.includes(k) ? args[args.indexOf(k) + 1] ?? null : null);
 const only = opt("--only")?.split(",").filter(Boolean) ?? null;
 const modules = opt("--module")?.split(",").filter(Boolean) ?? null;
+const formatFilter = opt("--format"); // json | xml: runs whose instance (or profile step source) has that format
 const outFile = opt("--json") ?? join(HERE, "results.json");
 const timeoutMs = Number(opt("--timeout") ?? 60_000);
 const verbose = args.includes("-v");
@@ -117,19 +119,35 @@ export async function executeRun(run: TestRun, base: { store: ResourceStore; ids
     r.missingPackages = closure.missing;
     r.flags.push("missing-package");
   }
+  // XML conformance files are read the way validator_cli reads them (XmlParser over the base definitions)
+  const xmlResolver = new FileValidatorResolver(base.store);
+  const loadFile = async (p: string): Promise<Res | null> => {
+    if (!existsSync(p)) return null;
+    if (/\.xml$/i.test(p)) {
+      try {
+        return (await parseFhirXml(readFileSync(p, "utf8"), xmlResolver)).resource;
+      } catch {
+        return null;
+      }
+    }
+    return loadJsonFile(p);
+  };
   for (const f of run.supporting) {
     const p = join(suite, f);
-    if (!/\.json$/i.test(f)) {
+    if (!/\.(json|xml)$/i.test(f)) {
       r.flags.push(`supporting-unloaded:${f.split(".").pop()}`);
       continue;
     }
-    const res = existsSync(p) ? loadJsonFile(p) : null;
+    const res = await loadFile(p);
     if (!res) r.flags.push(`supporting-missing:${f}`);
     else store.addResource(res, `supporting:${f}`);
   }
   const profiles: string[] = [];
-  if (run.profileSource) {
-    const sd = loadJsonFile(join(suite, run.profileSource));
+  if (run.profileSource && /^https?:\/\//i.test(run.profileSource)) {
+    // the profile step names a canonical of a loaded package (ValidationTests: fetchResource by URL)
+    profiles.push(run.profileSource);
+  } else if (run.profileSource) {
+    const sd = await loadFile(join(suite, run.profileSource));
     if (!sd || typeof sd.url !== "string") {
       r.skip = "profile-unreadable";
       return r;
@@ -142,15 +160,25 @@ export async function executeRun(run: TestRun, base: { store: ResourceStore; ids
   const t0 = Date.now();
   const text = readFileSync(join(suite, run.file), "utf8");
   let resource: Res | null = null;
-  try {
-    resource = JSON.parse(text) as Res;
-  } catch (e) {
-    actual = [{ severity: "fatal", path: "", message: `JSON parse error: ${(e as Error).message}` }];
-    r.flags.push("json-parse");
+  let parseIssues: Issue[] = [];
+  if (/\.xml$/i.test(run.file)) {
+    // validator_cli's XmlParser: parse-time issues + the element model handed to the validator
+    const x = await parseFhirXml(text, resolver);
+    parseIssues = x.issues;
+    resource = x.resource;
+    r.flags.push("xml");
+    if (!resource) actual = parseIssues.map((i) => ({ severity: i.severity, path: i.path, message: i.message, code: i.code }));
+  } else {
+    try {
+      resource = JSON.parse(text) as Res;
+    } catch (e) {
+      actual = [{ severity: "fatal", path: "", message: `JSON parse error: ${(e as Error).message}` }];
+      r.flags.push("json-parse");
+    }
   }
   if (resource) {
     try {
-      const issues = await withTimeout(new InstanceValidator(resolver).validate(resource, { profiles }), timeoutMs);
+      const issues = [...parseIssues, ...(await withTimeout(new InstanceValidator(resolver).validate(resource, { profiles, format: /\.xml$/i.test(run.file) ? "xml" : "json" }), timeoutMs))];
       actual = issues.map((i) => ({ severity: i.severity, path: i.path, message: i.message, code: i.code }));
       // ValidationTests runs with allowExamples = true unless the case says "examples": false (manifest: dr-example-org
       // / pat-example-extensions are the only R4 outputs with TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE); the TS validator
@@ -243,6 +271,7 @@ async function main(): Promise<void> {
   let runs = loadRuns(suite);
   if (only) runs = runs.filter((r) => only.includes(r.name) || only.includes(r.id));
   if (modules) runs = runs.filter((r) => modules.includes(r.module));
+  if (formatFilter) runs = runs.filter((r) => [r.file, r.profileSource ?? ""].some((f) => f.toLowerCase().endsWith(`.${formatFilter}`)));
   const base = baseStore(suite);
   if (base.missing.length) console.error(`base packages missing: ${base.missing.join(", ")}`);
   console.error(`base layer: ${base.store.packages.join(", ")}; ${runs.length} runs`);

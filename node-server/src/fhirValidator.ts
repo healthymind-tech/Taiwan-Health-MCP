@@ -237,7 +237,16 @@ export interface ValidatorResolver {
 export interface ValidateOptions {
   /** Extra profiles (canonical URLs) to validate the root resource against. */
   profiles?: string[];
+  /**
+   * Source format of the instance (default json). "xml" = FHIR JSON produced by fhirXml.ts from an XML document:
+   * the JSON-parser shape errors that XML cannot produce (empty object, null value) are reported the way
+   * InstanceValidator reports the corresponding XML element model (ele-1, Type_Specific_Checks_DT_Primitive_ValueExt).
+   */
+  format?: "json" | "xml";
 }
+
+const ELE1_MESSAGE = "Constraint failed: ele-1: 'All FHIR elements must have a @value or children'";
+const PRIMITIVE_VALUEEXT_MESSAGE = "Primitive types must have a value or must have child extensions";
 
 // --------------------------------------------------------------------------- //
 // Type knowledge
@@ -255,7 +264,27 @@ const TZ = "(Z|(\\+|-)((0[0-9]|1[0-3]):[0-5][0-9]|14:00))";
 
 interface PrimitiveSpec {
   json: "string" | "number" | "boolean";
-  regex?: RegExp;
+  regex?: { test(s: string): boolean };
+}
+
+/** (\s*([0-9a-zA-Z+/=]){4}\s*)+ without backtracking: whitespace-separated runs of base64 characters, each a multiple of 4. */
+function isBase64Text(s: string): boolean {
+  let run = 0;
+  let groups = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    const ws = c === 32 || (c >= 9 && c <= 13);
+    if (ws) {
+      if (run % 4 !== 0) return false;
+      run = 0;
+      continue;
+    }
+    const ok = (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 43 || c === 47 || c === 61;
+    if (!ok) return false;
+    run++;
+    if (run % 4 === 0) groups++;
+  }
+  return run % 4 === 0 && groups > 0;
 }
 
 const PRIMITIVES: Record<string, PrimitiveSpec> = {
@@ -275,7 +304,9 @@ const PRIMITIVES: Record<string, PrimitiveSpec> = {
   canonical: { json: "string", regex: /^\S*$/ },
   oid: { json: "string", regex: /^urn:oid:[0-2](\.(0|[1-9][0-9]*))+$/ },
   uuid: { json: "string", regex: /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/ },
-  base64Binary: { json: "string", regex: /^(\s*([0-9a-zA-Z+/=]){4}\s*)+$/ },
+  // same language as the R4 regex (\s*([0-9a-zA-Z+/=]){4}\s*)+, checked linearly: a backtracking regex overflows the
+  // stack on multi-MB attachments (fhir-test-cases library-fhir-model-definition: 4.6 MB of base64)
+  base64Binary: { json: "string", regex: { test: isBase64Text } },
   date: { json: "string", regex: new RegExp(`^${YEAR}(-${MONTH}(-${DAY})?)?$`) },
   dateTime: { json: "string", regex: new RegExp(`^${YEAR}(-${MONTH}(-${DAY}(T${TIME}${TZ})?)?)?$`) },
   instant: { json: "string", regex: new RegExp(`^${YEAR}-${MONTH}-${DAY}T${TIME}${TZ}$`) },
@@ -1168,6 +1199,8 @@ export class InstanceValidator {
   private sliceMatched = new WeakSet<object>();
   /** Reference elements a Bundle resolution message was already reported for (UserDataNames.validation_bundle_error). */
   private bundleErrorFlag = new WeakSet<object>();
+  /** The instance came from an XML document (ValidateOptions.format). */
+  private xmlSource = false;
 
   constructor(private readonly resolver: ValidatorResolver) {}
 
@@ -1185,6 +1218,7 @@ export class InstanceValidator {
     this.boundValueSets = new Set();
     this.pendingVsSystems = false;
     this.bundleErrorFlag = new WeakSet();
+    this.xmlSource = opts.format === "xml";
     await this.validateResource(rctx, resource.resourceType, extra, issues, 0);
     if (bundle) await this.validateBundleRules(bundle, resource.resourceType, issues);
     await this.structuralPass(resource, resource.resourceType, issues, 0);
@@ -2271,8 +2305,10 @@ export class InstanceValidator {
     }
     if (Object.keys(v).length === 0 && !isResourceRoot) {
       // (parity v2) JsonParser.checkObject (7.0.1): OBJECT_MUST_HAVE_SOME_CONTENT, and the (empty) element is kept —
-      // validation goes on, so its required children are reported as missing; no ele-1 on top
-      issues.push({ severity: "error", path: item.path, code: "invalid", message: "Object must have some content" });
+      // validation goes on, so its required children are reported as missing; no ele-1 on top.
+      // XML: XmlParser keeps the empty element (its parse error, if any, comes from fhirXml.ts) and ele-1 fails.
+      if (this.xmlSource) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
+      else issues.push({ severity: "error", path: item.path, code: "invalid", message: "Object must have some content" });
     }
 
     // Port of InstanceValidator.checkChildByDefinition (7.0.1), several profiles on the element's one type: the
@@ -2608,7 +2644,11 @@ export class InstanceValidator {
             const val = arr[i] === undefined ? null : arr[i];
             const ex = exts[i] === undefined ? null : exts[i];
             if (val === null && ex === null) {
-              issues.push({ severity: "error", path: `${path}[${i}]`, code: "structure", message: "Array entries cannot be null" });
+              if (this.xmlSource) {
+                // XML: an element without value or children (InstanceValidator.checkPrimitive + ele-1)
+                issues.push({ severity: "error", path: `${path}[${i}]`, code: "invalid", message: PRIMITIVE_VALUEEXT_MESSAGE });
+                issues.push({ severity: "error", path: `${path}[${i}]`, code: "invariant", message: ELE1_MESSAGE });
+              } else issues.push({ severity: "error", path: `${path}[${i}]`, code: "structure", message: "Array entries cannot be null" });
               continue;
             }
             const it = mk(val, ex ?? undefined, `${path}[${i}]`);
@@ -2619,7 +2659,11 @@ export class InstanceValidator {
         }
         if (raw === undefined && rawExt === undefined) return;
         if (raw === null && rawExt === undefined) {
-          issues.push({ severity: "error", path, code: "structure", message: `The property ${key} cannot be null` });
+          if (this.xmlSource) {
+            // XML: an element without value or children (InstanceValidator.checkPrimitive + ele-1)
+            issues.push({ severity: "error", path, code: "invalid", message: PRIMITIVE_VALUEEXT_MESSAGE });
+            issues.push({ severity: "error", path, code: "invariant", message: ELE1_MESSAGE });
+          } else issues.push({ severity: "error", path, code: "structure", message: `The property ${key} cannot be null` });
           return;
         }
         const it = mk(raw === undefined ? null : raw, rawExt, path);
@@ -3513,7 +3557,11 @@ export class InstanceValidator {
     }
 
     if (isJavaBlank(s)) {
-      if (s.length === 0) rule(hasChildren, "value cannot be empty"); // TYPE_SPECIFIC_CHECKS_DT_PRIMITIVE_NOTEMPTY
+      if (s.length === 0) {
+        rule(hasChildren, "value cannot be empty"); // TYPE_SPECIFIC_CHECKS_DT_PRIMITIVE_NOTEMPTY
+        // XML value="": hasValue() is false → ele-1 as well (XmlParser element model)
+        if (this.xmlSource && !hasChildren) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
+      }
       else warning(hasChildren, "Primitive types should not only be whitespace"); // TYPE_SPECIFIC_CHECKS_DT_PRIMITIVE_WS
       // PRIMITIVE_MUSTHAVEVALUE_MESSAGE
       if (el.mustHaveValue === true) rule(false, `The element definition \`\`${el.id}\`\` in the profile '${versioned}' requires that a value be present in this element`);

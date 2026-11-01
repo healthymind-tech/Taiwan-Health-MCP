@@ -110,7 +110,7 @@ export function loadRuns(suite = SUITE_DIR): TestRun[] {
     const ext = file.split(".").pop()!.toLowerCase();
     const options = OPTION_KEYS.filter((k) => t[k] !== undefined && t[k] !== false);
     const baseSkip =
-      t["use-test"] === false ? "use-test=false" : ext === "xml" ? "xml" : ext !== "json" ? `format:${ext}` : t.logical ? "logical" : null;
+      t["use-test"] === false ? "use-test=false" : ext !== "json" && ext !== "xml" ? `format:${ext}` : t.logical ? "logical" : null;
     const supporting = [...asList(t.supporting), ...asList(t.profiles), ...asList(t.supporting5)];
     const packages = asList(t.packages);
     const common = { name: String(t.name), module: String(t.module ?? "none"), file, version: t.version ?? null, options, raw: t };
@@ -120,7 +120,7 @@ export function loadRuns(suite = SUITE_DIR): TestRun[] {
       const p = t.profile as Res;
       const src = typeof p.source === "string" ? p.source : null;
       const pexp = expectation(p.java, suite);
-      const pSkip = baseSkip ?? (!src ? "profile-without-source" : /\.json$/i.test(src) ? (pexp ? null : "no-java-expectation") : "profile-xml");
+      const pSkip = baseSkip ?? (!src ? "profile-without-source" : /\.(json|xml)$/i.test(src) || /^https?:\/\//i.test(src) ? (pexp ? null : "no-java-expectation") : `profile-format:${src.split(".").pop()}`);
       runs.push({
         ...common,
         id: `${t.name}#profile`,
