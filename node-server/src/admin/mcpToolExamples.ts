@@ -557,6 +557,14 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
       example("claim", "Claim-twpas（需安裝 TWPAS IG）", { profile: "Claim-twpas", package_id: "tw.gov.mohw.nhi.pas", version: null }, "ig-constant / code-lookup / text-allowed / derivable / record 與條件必填（invariant）"),
     ],
   },
+  fhir_get_bundle_form: {
+    title: "Bundle 剖面的預填表單（結構已正確，只需填值）",
+    examples: [
+      example("collection", "Bundle-twcore + 計畫的 entry", { bundle_profile: "Bundle-twcore", package_id: TWCORE, version: TWCORE_VERSION, entries: [{ profile: "Patient-twcore" }, { profile: "Encounter-twcore" }, { profile: "Condition-twcore" }, { profile: "MedicationRequest-twcore" }, { profile: "Observation-laboratoryResult-twcore" }] }, "每個 entry 都是完整的資源骨架、fullUrl 與 reference 已接好；<<P0:record>> 等 token 依 placeholders[n] 的 type 填值"),
+      example("document", "Bundle-document-twcore", { bundle_profile: "Bundle-document-twcore", package_id: TWCORE, version: TWCORE_VERSION }, "Composition 在第一個 entry、必要 section、identifier / timestamp 的位置"),
+      example("pas", "Bundle-twpas（需安裝 TWPAS IG）", { bundle_profile: "Bundle-twpas", package_id: "tw.gov.mohw.nhi.pas", version: null }),
+    ],
+  },
   fhir_get_authoring_fields: {
     title: "剖面的填寫欄位（供 fhir_author_resources）",
     examples: [

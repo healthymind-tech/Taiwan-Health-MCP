@@ -102,6 +102,14 @@ export interface SkeletonItem {
   exampleBasis?: string;
   /** Shorter how for the compact levels (shared by similar rows, which then merge into one). */
   compactHow?: string;
+  /** RFC 6901 pointer (relative to the resource root) of the node holding the value (skeletonModel). */
+  pointer?: string;
+  /** FHIR type codes of the element (short names). */
+  types?: string[];
+  /** First code of a binding too large to list (an example of a legal code). */
+  exampleCode?: { code: string; display: string | null; system: string | null };
+  /** Conditional extension rows: the extension slice id + url (placed with the value). */
+  extSlice?: { id: string; url: string };
 }
 
 /** Administrative entities (FHIR R4 "Entities"), not persons: their example instances may be IG-level constants. */
@@ -230,6 +238,14 @@ function allowedTypes(id: string, E: Map<string, ProjectedElement>): string[] {
   return types.filter((t) => !forbidden.has(t));
 }
 
+/**
+ * The type a choice is written as in the skeleton: the coded type when one is allowed (the value
+ * is then classified as a code / text, which is what the placeholder shape is), else the first.
+ */
+function preferredChoiceType(types: string[]): string | undefined {
+  return types.find((t) => t === "CodeableConcept") ?? types.find((t) => t === "Coding") ?? types[0];
+}
+
 /** JSON property name of one id segment (`value[x]` → `valueQuantity`, `value[x]:valueQuantity` → `valueQuantity`). */
 function jsonKey(seg: string, idSoFar: string, E: Map<string, ProjectedElement>): string {
   const [name, slice] = seg.split(":");
@@ -237,7 +253,7 @@ function jsonKey(seg: string, idSoFar: string, E: Map<string, ProjectedElement>)
   if (slice && /^[a-z]+[A-Z]/.test(slice) && slice.startsWith(name.slice(0, -3))) return slice;
   const baseId = slice ? idSoFar.slice(0, idSoFar.length - slice.length - 1) : idSoFar;
   const types = allowedTypes(slice ? idSoFar : baseId, E);
-  const t = types[0] ?? allowedTypes(baseId, E)[0];
+  const t = preferredChoiceType(types) ?? preferredChoiceType(allowedTypes(baseId, E));
   return t ? choiceProperty(name, t) : name;
 }
 
@@ -353,11 +369,72 @@ export function parseImpliesExists(expression: string): { guard: string; terms: 
   return terms.length ? { guard, terms } : null;
 }
 
-function conditionalTerms(invs: ProfileInvariant[], rt: string, E: Map<string, ProjectedElement>, requiredIds: Set<string>): ConditionalTerm[] {
+/** Top-level ` or ` operands of an expression (parentheses / quotes respected). */
+function splitOr(expr: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let quote = false;
+  let start = 0;
+  for (let i = 0; i < expr.length; i++) {
+    const ch = expr[i];
+    if (ch === "'") quote = !quote;
+    if (quote) continue;
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    else if (depth === 0 && expr.startsWith(" or ", i)) {
+      out.push(expr.slice(start, i));
+      start = i + 4;
+      i += 3;
+    }
+  }
+  out.push(expr.slice(start));
+  return out.map((x) => stripParensExpr(x));
+}
+
+/**
+ * `A or b.exists()` (b required unless A holds) / `a.exists() or b.exists()` (one of them): the
+ * exists() operands as alternative terms (the caller places the first that resolves), or null.
+ */
+export function parseOrExists(expression: string): { guard: string; terms: string[]; others?: string[] } | null {
+  const expr = String(expression ?? "").replace(/\s+/g, " ").trim();
+  if (expr.includes(" implies ")) return null;
+  const parts = splitOr(stripParensExpr(expr));
+  if (parts.length < 2) return null;
+  const terms: string[] = [];
+  const others: string[] = [];
+  for (const part of parts) {
+    const m = /^([A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)*)\.exists\(\)$/.exec(part);
+    if (m) terms.push(m[1]);
+    else others.push(part);
+  }
+  return terms.length ? { guard: others.length ? `unless ${others.join(" or ")}` : "one of them", terms, others } : null;
+}
+
+/** Error constraints of the base resource (not listed as profile invariants) on the root / required elements. */
+function baseConditionalInvariants(els: ProjectedElement[], rt: string, requiredIds: Set<string>, known: ProfileInvariant[]): ProfileInvariant[] {
+  const out: ProfileInvariant[] = [];
+  for (const e of els) {
+    if (e.id !== rt && !requiredIds.has(e.id)) continue;
+    for (const c of (e as ProjectedElement & { constraints?: Array<{ key?: string; severity?: string; human?: string; expression?: string }> }).constraints || []) {
+      if (!c.key || c.severity !== "error" || !c.expression) continue;
+      if (known.some((k) => k.key === c.key) || out.some((k) => k.key === c.key)) continue;
+      if (!parseImpliesExists(c.expression) && !parseOrExists(c.expression)) continue;
+      out.push({ key: c.key, on: [e.id], human: c.human ?? "", expression: c.expression });
+    }
+  }
+  return out;
+}
+
+function conditionalTerms(invs: ProfileInvariant[], rt: string, E: Map<string, ProjectedElement>, requiredIds: Set<string>, orShapes = false): ConditionalTerm[] {
   const out: ConditionalTerm[] = [];
   for (const inv of invs) {
-    const p = parseImpliesExists(inv.expression);
+    const implied = parseImpliesExists(inv.expression);
+    const p = implied ?? (orShapes ? parseOrExists(inv.expression) : null);
     if (!p) continue;
+    const oneOf = !implied;
+    // `x.empty() or y.exists()` (y required when x is present): only when x is in the skeleton
+    const emptyGuards = oneOf ? ((p as { others?: string[] }).others || []).map((o) => /^([A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)*)\.empty\(\)$/.exec(o)?.[1]).filter((x): x is string => Boolean(x)) : [];
+    if (oneOf && emptyGuards.length && !inv.on.some((owner) => emptyGuards.every((g) => requiredIds.has(`${owner}.${g}`) || requiredIds.has(`${owner}.${g}[x]`)))) continue;
     for (const owner of inv.on) {
       // only on the root or a required element (an optional owner is a choice of the author)
       if (owner !== rt && !requiredIds.has(owner)) continue;
@@ -381,8 +458,14 @@ function conditionalTerms(invs: ProfileInvariant[], rt: string, E: Map<string, P
           }
           id = cur;
         }
+        if (oneOf && id) {
+          const el = E.get(id);
+          if (!el || (el.types || []).every((t) => shortType(t.code) === "Reference")) continue; // prefer a value over a reference
+          if (requiredIds.has(id)) break; // already satisfied by a required element
+        }
         if (!id || requiredIds.has(id)) continue;
         if (!out.some((o) => o.id === id)) out.push({ id, condition: inv.key, text: clip(inv.human || p.guard, 90) });
+        if (oneOf) break;
       }
     }
   }
@@ -567,11 +650,17 @@ async function classify(ctx: ClassifyCtx, row: RequiredElementRow, inheritedBind
     const codingRequired = below.some((k) => !fixedOrPattern(ctx.rowsById.get(k)) && k.endsWith(".code"));
     const codingRowPresent = below.length > 0;
     const pinnedSystems = [...new Set(below.filter((k) => k.endsWith(".system")).map((k) => fixedOrPattern(ctx.rowsById.get(k))).filter((v): v is string => typeof v === "string"))];
-    const strength = binding?.strength;
+    // a required coding slice bound on its own (slice by ValueSet): its binding decides the codes
+    const sliceBinding =
+      below
+        .map((k) => ctx.rowsById.get(k))
+        .find((r) => r && /\.coding:[^.]+$/.test(choiceNorm(r.id)) && r.binding?.valueSet && (r.binding.strength === "required" || r.binding.strength === "extensible"))?.binding ?? null;
+    const bnd = sliceBinding ?? binding;
+    const strength = bnd?.strength;
     let b: Awaited<ReturnType<typeof bindingCodes>> = null;
-    if (binding?.valueSet) {
-      item.valueSet = tail(binding.valueSet);
-      b = await bindingCodes(ctx, binding.valueSet);
+    if (bnd?.valueSet) {
+      item.valueSet = tail(bnd.valueSet);
+      b = await bindingCodes(ctx, bnd.valueSet);
     }
     const small = b && !b.truncated && b.total > 0 && b.total <= CODES_CAP;
     if (small) item.codes = b!.codes;
@@ -582,23 +671,25 @@ async function classify(ctx: ClassifyCtx, row: RequiredElementRow, inheritedBind
     const binds = strength === "required" || strength === "extensible";
     // a preferred / example binding's codes are illustrations, not the list to pick from
     if (!binds) delete item.codes, delete item.codesMore;
-    const vsSystem = b && !b.truncated && new Set(b.codes.map((c) => c.system)).size === 1 ? b.codes[0]?.system ?? null : null;
+    const vsSystem =
+      b && b.codes.length && new Set(b.codes.map((c) => c.system)).size === 1 && (!b.truncated || sliceBinding) ? b.codes[0]?.system ?? null : null;
+    if (b && b.codes.length && !item.codes) item.exampleCode = { system: b.codes[0].system, code: b.codes[0].code, display: b.codes[0].display };
     const system = pinnedSystems.length === 1 ? pinnedSystems[0] : vsSystem;
     // ISSUES_v16.1 R4: a coding slice with a required binding (a coding of that system must be in the ValueSet)
     const codingSlice = [...E.entries()].find(
       ([k, e]) => k.startsWith(`${row.id}.coding:`) && !k.slice(row.id.length + 8).includes(".") && e.max !== "0" && e.binding?.strength === "required" && !!e.binding.valueSet,
     );
-    const lookup = !binding?.valueSet
+    const lookup = !bnd?.valueSet
       ? system
         ? `a code of ${system}: fhir_normalize_code(text, system)`
         : "no binding: a code of the system the record / IG uses"
       : item.codes
-        ? `${strength ?? ""} ValueSet ${tail(binding.valueSet)}`
+        ? `${strength ?? ""} ValueSet ${tail(bnd.valueSet)}`
         : binds
-          ? `${strength} ValueSet ${tail(binding.valueSet)}: fhir_normalize_code(text, value_set=${stripVersion(binding.valueSet)}) returns only its codes`
+          ? `${strength} ValueSet ${tail(bnd.valueSet)}: fhir_normalize_code(text, value_set=${stripVersion(bnd.valueSet)}) returns only its codes`
           : codingSlice
             ? `coding slice ${codingSlice[0].split(":").pop()}: required ValueSet; fhir_normalize_code(text, value_set=${stripVersion(codingSlice[1].binding!.valueSet!)})`
-            : `a code${system ? ` of ${system}` : ""} (${strength ?? ""} ValueSet ${tail(binding.valueSet)} is only illustrative): fhir_normalize_code(text, system)`;
+            : `a code${system ? ` of ${system}` : ""} (${strength ?? ""} ValueSet ${tail(bnd.valueSet)} is only illustrative): fhir_normalize_code(text, system)`;
     const shape = (code: string): unknown => (cc ? { coding: [{ ...(system ? { system } : { system: "<system>" }), code }] } : types.includes("Coding") ? { ...(system ? { system } : { system: "<system>" }), code } : code);
     if (rule) {
       item.source = "derivable";
@@ -608,7 +699,7 @@ async function classify(ctx: ClassifyCtx, row: RequiredElementRow, inheritedBind
     }
     if (cc && strength !== "required" && !codingRequired && !codingRowPresent) {
       item.source = "text-allowed";
-      item.how = `{text} alone is valid (${strength ?? "no"} binding${binding?.valueSet ? ` ${tail(binding.valueSet)}` : ""}); a coding only if a code fits`;
+      item.how = `{text} alone is valid (${strength ?? "no"} binding${bnd?.valueSet ? ` ${tail(bnd.valueSet)}` : ""}); a coding only if a code fits`;
       item.placeholder = { text: "<text>" };
       return item;
     }
@@ -652,6 +743,8 @@ function recordPlaceholder(types: string[]): unknown {
       return { system: "<system>", value: "<record>" };
     case "Address":
       return { text: "<record>" };
+    case "Narrative":
+      return { status: "generated", div: "<record>" };
     default:
       return "<record>";
   }
@@ -660,6 +753,25 @@ function recordPlaceholder(types: string[]): unknown {
 // --------------------------------------------------------------------------- //
 // Skeleton JSON                                                               //
 // --------------------------------------------------------------------------- //
+
+/** Every string leaf is a `<...>` placeholder (no value of its own yet). */
+function onlyTokens(v: unknown): boolean {
+  if (typeof v === "string") return /^<[^<>]*>$/.test(v);
+  if (Array.isArray(v)) return v.every(onlyTokens);
+  if (isObject(v)) return Object.values(v).every(onlyTokens);
+  return false;
+}
+
+/**
+ * `v` holds only placeholders, except (at `path`) `value` itself: an item a slice's pinned value
+ * can complete without contradicting it.
+ */
+function tokensOr(v: unknown, path: string[], value: unknown): boolean {
+  if (!path.length) return onlyTokens(v) || (value !== undefined && stable(v) === stable(value));
+  if (Array.isArray(v)) return v.every((x) => tokensOr(x, path, value));
+  if (isObject(v)) return Object.entries(v).every(([k, x]) => (k === path[0] ? tokensOr(x, path.slice(1), value) : onlyTokens(x)));
+  return onlyTokens(v);
+}
 
 function deepMerge(target: Record<string, any>, src: Record<string, any>): void {
   for (const [k, v] of Object.entries(src)) {
@@ -685,10 +797,14 @@ class SkeletonBuilder {
     if (canonical) this.root.meta = { profile: [canonical] };
   }
 
-  /** Place `value` (or an empty node when undefined) at element id `id`. */
-  place(id: string, value: unknown): void {
+  /**
+   * Place `value` (or an empty node when undefined) at element id `id`; returns the RFC 6901
+   * pointer (relative to the resource root) of the node that holds it.
+   */
+  place(id: string, value: unknown): string {
     const segs = id.split(".");
     let node: Record<string, any> = this.root;
+    let ptr = "";
     let so = segs[0];
     for (let i = 1; i < segs.length; i++) {
       const seg = segs[i];
@@ -697,6 +813,7 @@ class SkeletonBuilder {
       const key = jsonKey(seg, so, this.E);
       const slice = seg.includes(":") && !seg.split(":")[0].endsWith("[x]") ? seg.split(":")[1] : "";
       const arr = repeats(so, this.E);
+      ptr = `${ptr}/${key}`;
       if (arr) {
         if (!Array.isArray(node[key])) node[key] = node[key] === undefined ? [] : [node[key]];
         const list = node[key] as unknown[];
@@ -704,9 +821,12 @@ class SkeletonBuilder {
         if (!tags) this.sliceItems.set(list, (tags = new Map()));
         if (last && value !== undefined && !isObject(value)) {
           // primitive array item (meta.profile, given, line …)
-          if (Array.isArray(value)) for (const v of value) list.includes(v) || list.push(v);
-          else if (!list.includes(value)) list.push(value);
-          return;
+          if (Array.isArray(value)) {
+            for (const v of value) list.includes(v) || list.push(v);
+            return ptr;
+          }
+          if (!list.includes(value)) list.push(value);
+          return `${ptr}/${list.indexOf(value)}`;
         }
         let item = tags.get(slice);
         if (!item && slice === "") {
@@ -714,17 +834,29 @@ class SkeletonBuilder {
           const free = list.find((x) => isObject(x) && !taken.has(x as Record<string, any>)) as Record<string, any> | undefined;
           if (free) tags.set("", (item = free));
         }
+        if (!item && slice !== "") {
+          // the pinned parts of a slice complete an untagged placeholder item (a coded value's
+          // `coding: [{system: <system>, code: <code>}]` + the slice's system) instead of a second item
+          const taken = new Set([...tags.entries()].filter(([k]) => k !== "").map(([, v]) => v));
+          const rest = segs.slice(i + 1).map((x) => x.split(":")[0]);
+          const free = list.find((x) => isObject(x) && !taken.has(x as Record<string, any>) && tokensOr(x, rest, value)) as Record<string, any> | undefined;
+          if (free) {
+            for (const [k, v] of tags) if (v === free) tags.delete(k);
+            tags.set(slice, (item = free));
+          }
+        }
         if (!item) {
           if (Array.isArray(value) && last) {
             // a repeating value given as a list (example constants)
             for (const v of value) list.push(clone(v));
-            return;
+            return ptr;
           }
           item = {};
           list.push(item);
           tags.set(slice, item);
         }
         if (last && isObject(value)) deepMerge(item, value);
+        ptr = `${ptr}/${list.indexOf(item)}`;
         node = item;
       } else {
         if (last) {
@@ -732,12 +864,13 @@ class SkeletonBuilder {
             if (node[key] === undefined) node[key] = {};
           } else if (isObject(value) && isObject(node[key])) deepMerge(node[key], value);
           else if (node[key] === undefined || typeof node[key] === "string" || !isObject(value)) node[key] = clone(value);
-          return;
+          return ptr;
         }
         if (!isObject(node[key])) node[key] = {};
         node = node[key];
       }
     }
+    return ptr;
   }
 }
 
@@ -889,24 +1022,140 @@ const LEGEND =
 const LEGEND_SLICES = " `slices`: every item of a sliced element matches one listed slice (copy its values).";
 const LEGEND_LITERALS = " `literals`: IG values to copy verbatim even if they look like placeholders.";
 
-export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps): Promise<SkeletonResult> {
-  const ident = String(req.profile ?? "").trim();
-  if (!ident) throw new BlueprintError("INVALID_ARGUMENT", "profile is required");
-  const loaded = await deps.loadProfile(ident, req.package_id ?? null, req.version ?? null);
-  const sd = loaded.sd;
-  const snap: Array<Record<string, any>> = (sd?.snapshot || {}).element || [];
-  if (!sd || sd.resourceType !== "StructureDefinition" || !snap.length) throw new BlueprintError("INVALID_ARGUMENT", `${ident} is not a StructureDefinition with a snapshot`);
-  const rt = String(sd.type || snap[0].path.split(".")[0]);
-  const els = projectForRequired(snap, projectElement);
-  const E = new Map(els.map((e) => [e.id, e]));
-  const base = requiredElements(loaded.profileId, els, { includeTargetImplied: false });
-  const ectx: ExpandCtx = { deps, loaded, cache: new Map(), invariants: [...base.invariants], missing: [] };
-  const rows = await expandExtensions(base.elements, E, ectx, 0);
-  const rowsById = new Map(rows.map((r) => [r.id, r]));
-  const requiredIds = new Set(rows.map((r) => r.id));
-  const warnings = [...(loaded.warnings || [])];
-  if (ectx.missing.length) warnings.push(`extension definition(s) not installed: ${[...new Set(ectx.missing)].slice(0, 4).join(", ")} — only their url is listed`);
+export interface SkeletonModelOptions {
+  /**
+   * Element ids treated as required (min >= 1, with every ancestor) although the profile makes
+   * them optional — e.g. an optional Composition section a planned entry belongs to.
+   */
+  forceRequired?: string[];
+  /** A profile already loaded by the caller (skips deps.loadProfile). */
+  loaded?: LoadedProfile;
+  /**
+   * A required element with CLOSED slicing and no required slice gets its first allowed slice
+   * (an instance of the unsliced element matches no slice).
+   */
+  closedSlices?: boolean;
+  /** Place the conditional rows into the skeleton too (with a pointer each). */
+  placeConditional?: boolean;
+}
 
+/** The skeleton before serialisation (shared by fhir_get_minimal_skeleton and fhir_get_bundle_form). */
+export interface SkeletonModel {
+  loaded: LoadedProfile;
+  rt: string;
+  canonical: string | null;
+  skeleton: Record<string, any>;
+  items: SkeletonItem[];
+  conditional: SkeletonItem[];
+  conditionText: Record<string, string>;
+  invariants: ProfileInvariant[];
+  instances: ExampleInstance[];
+  distinct: number;
+  E: Map<string, ProjectedElement>;
+  warnings: string[];
+  /** Sliced elements of the skeleton (ISSUES_v16.1 `slices`). */
+  groups: SliceGroup[];
+}
+
+/** Snapshot with `ids` (and their ancestors) made min >= 1. */
+function forceMin(snap: Array<Record<string, any>>, ids: string[]): Array<Record<string, any>> {
+  if (!ids.length) return snap;
+  const want = new Set<string>();
+  for (const id of ids) {
+    const segs = id.split(".");
+    for (let i = 2; i <= segs.length; i++) want.add(segs.slice(0, i).join("."));
+  }
+  return snap.map((e) => (want.has(String(e.id)) && (e.min ?? 0) < 1 ? { ...e, min: 1 } : e));
+}
+
+/**
+ * Element ids of the value / pattern discriminators of every slice with min >= 1 (all of its
+ * ancestors too), when the discriminated element (or one below it) carries a fixed / pattern value.
+ */
+export function discriminatorElements(snap: Array<Record<string, any>>): string[] {
+  const byId = new Map(snap.map((e) => [String(e.id), e]));
+  const out: string[] = [];
+  const required = (id: string): boolean => {
+    const segs = id.split(".");
+    for (let i = 2; i <= segs.length; i++) if ((byId.get(segs.slice(0, i).join("."))?.min ?? 0) < 1) return false;
+    return true;
+  };
+  const pinned = (el: Record<string, any> | undefined): boolean => Boolean(el && Object.keys(el).some((k) => /^(fixed|pattern)[A-Z]/.test(k)));
+  for (const e of snap) {
+    const id = String(e.id || "");
+    const last = id.split(".").pop() || "";
+    if (!last.includes(":") || last.split(":")[0].endsWith("[x]") || !required(id)) continue;
+    const base = byId.get(`${id.slice(0, id.lastIndexOf("."))}.${last.split(":")[0]}`);
+    for (const d of (base?.slicing?.discriminator || []) as Array<{ type: string; path: string }>) {
+      if ((d.type !== "value" && d.type !== "pattern") || !/^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)*$/.test(String(d.path || ""))) continue;
+      const target = `${id}.${d.path}`;
+      if (required(target)) continue;
+      if (pinned(byId.get(target)) || snap.some((x) => String(x.id || "").startsWith(`${target}.`) && pinned(x))) out.push(target);
+      // a pin below the discriminated element (path code, pattern on code.coding.code): those too
+      for (const x of snap) {
+        const xid = String(x.id || "");
+        if (xid.startsWith(`${target}.`) && pinned(x)) out.push(xid);
+      }
+    }
+  }
+  return [...new Set(out)];
+}
+
+/** First allowed slice of every required element whose slicing is CLOSED and has no required slice. */
+export function closedSliceChoices(snap: Array<Record<string, any>>, pick: (sliceIds: string[]) => string = (ids) => ids[0]): string[] {
+  const byId = new Map(snap.map((e) => [String(e.id), e]));
+  const required = (id: string): boolean => {
+    const segs = id.split(".");
+    for (let i = 2; i <= segs.length; i++) if ((byId.get(segs.slice(0, i).join("."))?.min ?? 0) < 1) return false;
+    return true;
+  };
+  const out: string[] = [];
+  for (const e of snap) {
+    const id = String(e.id || "");
+    if (e.slicing?.rules !== "closed" || !id.includes(".") || id.endsWith("[x]") || !required(id)) continue;
+    const slices = snap.filter((x) => {
+      const xid = String(x.id || "");
+      return xid.startsWith(`${id}:`) && !xid.slice(id.length + 1).includes(".") && x.max !== "0";
+    });
+    if (!slices.length || slices.some((x) => (x.min ?? 0) >= 1)) continue;
+    out.push(pick(slices.map((x) => String(x.id))));
+  }
+  return out;
+}
+
+/**
+ * Children of slices whose unsliced counterpart is required (`section:s.text` when
+ * `section.text` is 1..1): an instance is checked against both, so they are required too.
+ */
+export function inheritedSliceMins(snap: Array<Record<string, any>>): string[] {
+  const byId = new Map(snap.map((e) => [String(e.id), e]));
+  const out: string[] = [];
+  for (const e of snap) {
+    const id = String(e.id || "");
+    const segs = id.split(".");
+    if (segs.length < 3 || (e.min ?? 0) >= 1 || e.max === "0") continue;
+    const parentSliced = segs.slice(0, -1).some((x) => x.includes(":") && !x.split(":")[0].endsWith("[x]"));
+    if (!parentSliced || segs[segs.length - 1].includes(":")) continue;
+    const base = segs.map((x, i) => (i < segs.length - 1 && x.includes(":") && !x.split(":")[0].endsWith("[x]") ? x.split(":")[0] : x)).join(".");
+    if ((byId.get(base)?.min ?? 0) >= 1) out.push(id);
+  }
+  return out;
+}
+
+/** `ids` made min >= 1 (not their ancestors: they apply only when the parent is present). */
+function forceMinOwn(snap: Array<Record<string, any>>, ids: string[]): Array<Record<string, any>> {
+  if (!ids.length) return snap;
+  const want = new Set(ids);
+  return snap.map((e) => (want.has(String(e.id)) && (e.min ?? 0) < 1 ? { ...e, min: 1 } : e));
+}
+
+export async function skeletonModel(req: SkeletonRequest, deps: BlueprintDeps, opts: SkeletonModelOptions = {}): Promise<SkeletonModel> {
+  const ident = String(req.profile ?? "").trim();
+  if (!ident && !opts.loaded) throw new BlueprintError("INVALID_ARGUMENT", "profile is required");
+  const loaded = opts.loaded ?? (await deps.loadProfile(ident, req.package_id ?? null, req.version ?? null));
+  const sd = loaded.sd;
+  const snap0: Array<Record<string, any>> = (sd?.snapshot || {}).element || [];
+  if (!sd || sd.resourceType !== "StructureDefinition" || !snap0.length) throw new BlueprintError("INVALID_ARGUMENT", `${ident} is not a StructureDefinition with a snapshot`);
   const canonical = loaded.canonical ?? (sd.url ? String(sd.url) : null);
   let instances: ExampleInstance[] = [];
   if (canonical) {
@@ -918,6 +1167,37 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
       instances = [];
     }
   }
+  let snap = forceMin(snap0, opts.forceRequired ?? []);
+  // closed-slice choice: the slice the IG's own examples use most (else the first)
+  const examplePick = (cands: string[]): string => {
+    if (instances.length === 0 || cands.length < 2) return cands[0];
+    const pE = new Map(projectForRequired(snap, projectElement).map((e) => [e.id, e]));
+    let best = cands[0];
+    let bestN = 0;
+    for (const c of cands) {
+      const n = instances.filter((x) => nodesAt(x.resource, c, pE).length > 0).length;
+      if (n > bestN) [best, bestN] = [c, n];
+    }
+    return best;
+  };
+  // the value / pattern discriminator elements of every required slice (optional in the profile,
+  // but an instance without them matches no slice); twice for slices nested in required slices
+  for (let i = 0; i < 2; i++) {
+    if (opts.closedSlices) snap = forceMin(snap, closedSliceChoices(snap, examplePick));
+    snap = forceMinOwn(snap, inheritedSliceMins(snap));
+    snap = forceMin(snap, discriminatorElements(snap));
+  }
+  const rt = String(sd.type || snap[0].path.split(".")[0]);
+  const els = projectForRequired(snap, projectElement);
+  const E = new Map(els.map((e) => [e.id, e]));
+  const base = requiredElements(loaded.profileId, els, { includeTargetImplied: false });
+  const ectx: ExpandCtx = { deps, loaded, cache: new Map(), invariants: [...base.invariants], missing: [] };
+  const rows = await expandExtensions(base.elements, E, ectx, 0);
+  const rowsById = new Map(rows.map((r) => [r.id, r]));
+  const requiredIds = new Set(rows.map((r) => r.id));
+  const warnings = [...(loaded.warnings || [])];
+  if (ectx.missing.length) warnings.push(`extension definition(s) not installed: ${[...new Set(ectx.missing)].slice(0, 4).join(", ")} — only their url is listed`);
+
   const distinct = new Set(instances.map((x) => normalizedInstance(x.resource))).size;
   const cctx: ClassifyCtx = { rt, E, rowsById, codeFixed: profileFixesCode(rt, els), instances, distinct, deps, loaded, vsCache: new Map() };
   const groups = sliceGroups(rt, sd, E, rows, requiredIds);
@@ -965,8 +1245,9 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
     const inherited = pRow?.binding?.valueSet ? pRow.binding : null;
     const item = await classify(cctx, row, inherited);
     const group = groupById.get(row.id);
-    if (group && group.rules === "closed" && !group.required.length) {
+    if (group && group.rules === "closed" && !group.required.length && !row.id.endsWith("[x]")) {
       // closed slicing and no required slice: a generic item matches no slice — template the first one
+      // (not for a choice's type slices: the value is already written as one allowed type)
       const first = group.options[0];
       item.placeholder = clone(first.item);
       item.how = `closed slicing (by ${group.by.join(", ")}): every item must be one of slices.${group.path} — the skeleton holds '${first.name}'; another kind of ${tail(group.path)} takes that slice's item`;
@@ -997,8 +1278,9 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
         if (ph.unit === "<unit>" && typeof pins.code === "string") ph.unit = pins.code;
       }
     }
+    item.types = rowTypes.length ? rowTypes : allowedTypes(row.id, E);
     items.push(item);
-    builder.place(row.id, item.placeholder);
+    item.pointer = builder.place(row.id, item.placeholder);
   }
 
   // Administrative entity reused in every IG example: its other shared top-level values (optional
@@ -1014,6 +1296,7 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
       if (!instances.every((x) => stable(x.resource[k]) === key)) continue;
       builder.root[k] = clone(v);
       items.push({
+        pointer: `/${k}`,
         id: elId,
         path: k,
         source: "ig-constant",
@@ -1043,15 +1326,16 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
         how: `optional; ${basis}: the IG uses this ${rt} in every example — copy it unless the record or site_config names a different one`,
         placeholder: clone(c.value),
         exampleBasis: basis,
+        pointer: builder.place(e.id, clone(c.value)),
       });
-      builder.place(e.id, clone(c.value));
     }
   }
 
   // Conditional rows (invariants: `<guard> implies (x.exists() and …)`).
   const conditional: SkeletonItem[] = [];
   const conditionText: Record<string, string> = {};
-  for (const term of conditionalTerms(ectx.invariants, rt, E, requiredIds)) {
+  const condInvariants = opts.placeConditional ? [...ectx.invariants, ...baseConditionalInvariants(els, rt, requiredIds, ectx.invariants)] : ectx.invariants;
+  for (const term of conditionalTerms(condInvariants, rt, E, requiredIds, Boolean(opts.placeConditional))) {
     conditionText[term.condition] = term.text;
     const valueOfExt = term.id.endsWith(".value[x]") && !E.has(term.id) ? term.id.slice(0, -".value[x]".length) : null;
     const el = E.get(valueOfExt ?? term.id);
@@ -1081,13 +1365,28 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
       if (ve && ext) ve.extName = `${ext.name ?? ""} ${ext.id ?? ""} ${tail(prof)}`;
       it = await classify(cctx, { ...pseudo, id: vid, path: `${stripSlices(valueOfExt ?? term.id)}.value[x]`, types: vTypes, binding: ve?.binding ?? null, fixed: null, pattern: null, grounding_class: "source_fact" }, null);
       it.how = `extension ${tail(prof)}${ext ? "" : " (definition not installed)"}: ${it.how}`;
+      it.extSlice = { id: valueOfExt ?? term.id, url: stripVersion(prof) };
     } else it = await classify(cctx, pseudo, null);
     it.condition = term.condition;
     conditional.push(it);
   }
 
+  if (opts.placeConditional) {
+    for (const it of conditional) {
+      if (it.extSlice) builder.place(`${it.extSlice.id}.url`, it.extSlice.url);
+      if (it.placeholder !== undefined) it.pointer = builder.place(it.id, it.placeholder);
+      it.types = it.types ?? allowedTypes(it.id, E);
+    }
+  }
+  for (const inv of condInvariants) if (!(inv.key in conditionText) && conditional.some((c) => c.condition === inv.key)) conditionText[inv.key] = clip(inv.human, 90);
   const skeleton = builder.root;
   renumber(skeleton, new Set(items.filter((i) => i.placeholder === 1 && /(^|\.)(sequence|rank)$/.test(i.path)).map((i) => i.id)));
+  return { loaded, rt, canonical, skeleton, items, conditional, conditionText, invariants: ectx.invariants, instances, distinct, E, warnings, groups };
+}
+
+export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps): Promise<SkeletonResult> {
+  const { loaded, rt, canonical, skeleton, items, conditional, conditionText, invariants, instances, distinct, warnings, groups } = await skeletonModel(req, deps);
+  const ectx = { invariants };
   const summary = Object.fromEntries(VALUE_SOURCES.map((s) => [s, items.filter((i) => i.source === s).length]));
   const rules = ectx.invariants.filter((i) => !parseImpliesExists(i.expression) || !conditional.length);
   const prov = compactProvenance({ ...(loaded.provenance || {}), ...(req.envelope_provenance || {}) });

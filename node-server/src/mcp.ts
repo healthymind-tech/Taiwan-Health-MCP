@@ -1051,7 +1051,7 @@ async function getFhirIgService(): Promise<FHIRIGService | null> {
   }
 }
 
-/** Register the FHIR IG tool group (29 tools): `_TOOL_GROUPS["FHIR IG"]` + required elements + grounding / completeness checks + Bundle finalizer + the field-value authoring layer (authoring/) + the IG structure tools (igBlueprint/). */
+/** Register the FHIR IG tool group (30 tools): `_TOOL_GROUPS["FHIR IG"]` + required elements + grounding / completeness checks + Bundle finalizer + the field-value authoring layer (authoring/) + the IG structure tools (igBlueprint/). */
 function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
   const pkg = {
     package_id: z
@@ -1665,7 +1665,8 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
   // Field-value authoring layer (authoring/index.ts): fhir_get_authoring_fields, fhir_author_resources,
   // fhir_context, fhir_assemble_bundle — same group, same module gate (ig), same wrappers.
   registerAuthoringTools(server, svc, groundingDeps);
-  // IG structure tools (igBlueprint/, ISSUES_v16 R1 / R2): fhir_get_bundle_blueprint, fhir_get_minimal_skeleton.
+  // IG structure tools (igBlueprint/, ISSUES_v16 R1 / R2, v19 R2): fhir_get_bundle_blueprint, fhir_get_minimal_skeleton,
+  // fhir_get_bundle_form.
   registerBlueprintTools(server);
 }
 

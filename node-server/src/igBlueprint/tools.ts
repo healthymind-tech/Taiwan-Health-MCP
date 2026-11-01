@@ -18,6 +18,7 @@ import { dbFieldsDeps } from "../authoring/fieldsTool.js";
 import type { AuthoringToolSpec } from "../authoring/types.js";
 import { bundleBlueprint } from "./blueprint.js";
 import { minimalSkeleton } from "./skeleton.js";
+import { bundleForm, type FormEntryPlan } from "./form.js";
 import { igDefinedValues } from "./igValues.js";
 import { knownDefects } from "../igKnownDefects.js";
 import type { IgDefinedValues } from "../grounding/igDefined.js";
@@ -25,6 +26,7 @@ import { BlueprintError, isObject, stripVersion, type BlueprintDeps, type Exampl
 
 export const BLUEPRINT_TOOL_NAME = "fhir_get_bundle_blueprint";
 export const SKELETON_TOOL_NAME = "fhir_get_minimal_skeleton";
+export const FORM_TOOL_NAME = "fhir_get_bundle_form";
 
 const sdMemo = new TtlMemo<Record<string, any> | null>(10 * 60_000, 600);
 const examplesMemo = new TtlMemo<ExampleInstance[]>(10 * 60_000, 16);
@@ -144,6 +146,21 @@ export const SKELETON_TOOL_DESCRIPTION =
   "for the Bundle). profile = id or canonical (|version honoured); pass the package_id of the IG you write for (its examples are the basis " +
   "of the example constants).";
 
+export const FORM_TOOL_DESCRIPTION =
+  "A PREFILLED FORM of a Bundle profile: a skeleton Bundle whose STRUCTURE IS ALREADY CORRECT — fill the values, do not restructure. " +
+  "Holds every required entry slice plus your planned `entries` (profile id / canonical, `count`), each entry a complete resource " +
+  "(meta.profile, required elements, fixed / pattern values, required extensions and slices), Bundle.type / meta.profile, fullUrls " +
+  "(urn:uuid) and every internal reference wired (also inside extensions; entries a required reference needs are added); a document " +
+  "Bundle has the Composition first, its required sections (+ the section a planned entry belongs to) and section.entry wired, and " +
+  "identifier / timestamp. Every value the record (or a code lookup) must give is a token \"<<P<n>:<value_source>>>\" at " +
+  "placeholders[n].pointer (RFC 6901 into `bundle`) with `type` (FHIR datatype: replace the token with a JSON value of it; Reference = " +
+  "{\"reference\": an entry fullUrl}), `what`, `value_source` (record | code-lookup | text-allowed | derivable), `required`, optional " +
+  "`allowed` (pick one; a code: also its system), `target`, `example` (an IG example value / a code of the binding — never copy it as " +
+  "a record fact), `format` (regex), `rules` (profile rules the value triggers; an allowed code with `triggers` needs more content). " +
+  "required=false = delete it when the record has no value (see if_empty). `prefilled` = defaults already set (change only if the record " +
+  "says otherwise). Then fhir_finalize_bundle / fhir_validate_bundle with bundle_profile. bundle_profile = id or canonical; package_id / " +
+  "version pick the IG as in the other fhir_* tools; bundle_type only when the profile does not fix Bundle.type.";
+
 const common = {
   package_id: z.string().nullish().default(null),
   version: z.string().nullish().default(null),
@@ -153,6 +170,17 @@ export const blueprintInputShape = {
   bundle_profile: z.string(),
   ...common,
   view: z.enum(["summary", "references"]).default("summary"),
+};
+
+export const formInputShape = {
+  bundle_profile: z.string(),
+  ...common,
+  entries: z
+    .array(z.object({ profile: z.string(), count: z.number().int().min(1).max(5).nullish() }))
+    .max(30)
+    .nullish()
+    .default(null),
+  bundle_type: z.enum(["document", "message", "transaction", "batch", "collection", "history", "searchset"]).nullish().default(null),
 };
 
 export const skeletonInputShape = {
@@ -200,6 +228,28 @@ export function makeBlueprintTools(deps: BlueprintDeps): AuthoringToolSpec[] {
         try {
           const r = await minimalSkeleton(
             { profile: String(args.profile ?? ""), package_id: str(args.package_id), version: str(args.package_id) ? str(args.version) : null, envelope_provenance: envelope },
+            deps,
+          );
+          return { ok: true, data: r.data, warnings: r.warnings, provenance: r.provenance };
+        } catch (e) {
+          const env = errorEnvelope(e);
+          if (env) return env;
+          throw e;
+        }
+      },
+    },
+    {
+      name: FORM_TOOL_NAME,
+      description: FORM_TOOL_DESCRIPTION,
+      inputShape: formInputShape,
+      async handler(args) {
+        const envelope = { tool: FORM_TOOL_NAME, toolVersion: toolVersion(FORM_TOOL_NAME) };
+        try {
+          const entries = Array.isArray(args.entries)
+            ? (args.entries as unknown[]).filter(isObject).map((e): FormEntryPlan => ({ profile: String(e.profile ?? ""), count: typeof e.count === "number" ? e.count : null }))
+            : null;
+          const r = await bundleForm(
+            { bundle_profile: String(args.bundle_profile ?? ""), package_id: str(args.package_id), version: str(args.package_id) ? str(args.version) : null, entries, bundle_type: str(args.bundle_type), envelope_provenance: envelope },
             deps,
           );
           return { ok: true, data: r.data, warnings: r.warnings, provenance: r.provenance };

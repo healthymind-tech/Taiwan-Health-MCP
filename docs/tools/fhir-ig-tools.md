@@ -247,6 +247,38 @@
 
 只有 `record` 列需要病歷；`ig-constant`、`code-lookup`、`text-allowed`、`derivable` 的值病歷沒寫並不是拒答的理由。骨架以外的元素都是選填。建議流程：`fhir_get_bundle_blueprint` → 每個 slice profile 呼叫 `fhir_get_minimal_skeleton(profile, package_id)` → 撰寫資源（自行寫 JSON，或 `fhir_author_resources` + `fhir_assemble_bundle`）→ `fhir_finalize_bundle` / `fhir_validate_bundle`（帶 `bundle_profile`）。`package_id` 請傳要撰寫的 IG——範例常數以該 IG 的範例為準（該 IG 沒有此 profile 的範例時才用 profile 所屬套件的範例）。
 
+### 預填表單（fhir_get_bundle_form，v19）{#bundle-form}
+
+`fhir_get_bundle_form` 回傳一份**結構已經正確的骨架 Bundle**，模型只需要填值，不需要再決定結構。
+
+| 參數 | 說明 |
+| :--- | :--- |
+| `bundle_profile` | Bundle profile 的 id 或 canonical（`|version` 依其版本） |
+| `package_id`、`version` | 選擇 IG，與其他 `fhir_*` 工具相同 |
+| `entries` | 選填：模型計畫寫入的 entry，`[{profile, count?}]`（profile id / canonical，或資源型別名稱；`count` 1–5） |
+| `bundle_type` | 選填：profile 沒有固定 `Bundle.type` 時使用（未給時：profile 要求 Composition 為 `document`，否則 `collection`） |
+
+骨架包含：Bundle profile 的每個必要 entry slice（依 min 次數）與計畫的 entry（對應到其 profile 所符合的 slice；slicing 為 closed 且無對應 slice 時不加入並附 warning）、必填 reference 指向的目標但 Bundle 中尚無者（加入該目標的 slice，或在 open slicing 時加入目標 profile）；每個 entry 的 resource 都是該 profile 的完整最小骨架（必填元素、fixed / pattern、`meta.profile`、必填 extension 與 slice；closed slicing 的必填元素依 IG 範例最常用的 slice）；`Bundle.meta.profile`、`Bundle.type`；可重現的 `fullUrl`（urn:uuid v5）；entry 間的 reference 全部接好（含 extension 內）——只有一個候選時直接填 fullUrl，多個候選時不猜，改為 placeholder 並在 `allowed` 列出候選；document Bundle 的 Composition 放在第一個 entry、必要 section（含判別用的 section code）、計畫的 entry 所屬的 section（選填 section 會加入並標為選填），以及 `section.entry`、`identifier` / `timestamp`；transaction / batch 的 `entry.request`。
+
+**placeholder**：每個需要由病歷（或代碼查詢）提供的值，在骨架中是字串 token `<<P<n>:<value_source>>>`，對應 `placeholders[n]`：
+
+| 欄位 | 說明 |
+| :--- | :--- |
+| `pointer` | 該 token 在 `bundle` 中的 JSON Pointer（RFC 6901） |
+| `type` | FHIR 資料型別：把 token 換成該型別的 JSON 值（primitive → 字串 / 數字 / 布林；`Reference` → `{"reference": "<某個 entry 的 fullUrl>"}`） |
+| `what` | 要填什麼（一句話） |
+| `value_source` | `record` / `code-lookup` / `text-allowed` / `derivable`，與 `fhir_get_minimal_skeleton` 相同 |
+| `required` | `false` 表示選填（條件必填的元素、為計畫 entry 加入的選填 section）：`if_empty` 說明不填時刪除 |
+| `allowed` | 選填：小型綁定的代碼（`{system, code, display}`，選代碼時同時設定其 system）或 reference 的候選 fullUrl |
+| `target` | 選填：reference 的目標型別 |
+| `example` | 選填：IG 範例中的值或該綁定中的一個代碼（只示範格式，不可當成病歷事實） |
+| `format` | 選填：profile `matches('…')` invariant 要求的正規表示式 |
+| `rules` | 選填：條件會檢查這個值的 profile 規則；`allowed` 中帶 `triggers` 的代碼會讓該規則要求 Bundle 再包含其他內容（排在最後） |
+
+另有 `entries`（每個 entry 的 index、fullUrl、resourceType、profile、slice、加入原因）、`prefilled`（已填入的預設值，病歷另有記載時才改）、`references`（已接好的 reference）、`summary`、`notes`、`omitted`（回應 ≤ 30,000 字元；超過時依序縮短 `what`、省略 example / display / prefilled / references，placeholder 一律不省略）。填完後交給 `fhir_finalize_bundle` / `fhir_validate_bundle`（帶 `bundle_profile`）。
+
+驗收（ISSUES_v19 (b)，離線以本機套件快取執行 `node-server/scripts/ig-blueprint/form-eval.mts`）：TW Core `Bundle-twcore`（計畫 5 個 entry）、TWPAS `Bundle-twpas`、`Bundle-immunologic-agent-twpas`、IPS `Bundle-uv-ips`（計畫 6 個 entry）四個 profile 的骨架，依 placeholder 的 `type` 填入假值（有 `allowed` 取第一個、有 `example` 用 example）後，以內建 validator 驗證皆為 0 error。
+
 ## 從欄位值撰寫資源 {#authoring}
 
 模型不再自己寫 FHIR JSON：它只給**欄位值**，MCP 依剖面組出資源、驗證、存在每個任務專屬的 **context**，最後由 key 清單組裝 Bundle。所有規則都來自解析到的套件 StructureDefinition / ValueSet 與 FHIR R4 核心，**不針對任何 IG 寫特例**（TW Core、TWPAS 或其他已安裝 IG 都一樣）。
@@ -484,7 +516,8 @@ IG 本身規定的值不需要、也不會出現在病歷中。grounding（`G-UN
 | `fhir_author_resources` | 1.6.1（R6：無依據日期附修正建議）；1.6.0（驗證同 `fhir_validate_resource` 1.9.0：帶 `source_text` 時的 record checks v15.1）；1.5.2（同 `fhir_finalize_bundle` 1.3.2）；1.5.1（內容修正同 `fhir_finalize_bundle` 1.3.1；context 的 `site_config` 時區行可作為 site 時區）；1.5.0（[record checks](#record-checks) 的 issue 出現在 `results[].issues`、可選 `source_text`）；1.4.0（system 修正與 display 檢查改用共用修正層：display 只在同一概念時才替換，意思不同則保留並以 warning 附候選；UCUM / 民國年 / system 名稱 / 結構修正與 finalize 工具一致；修正不新增驗證錯誤）；1.3.0（含 filter 的 ValueSet 寫在 system 時也能修正並註明成員資格 confirmed / unverifiable；未修正的 ValueSet system 為 error，驗證同 1.7.0）；1.2.0（ValueSet URL / 解析不到的 URL 寫在 `Coding.system` 時，答案唯一才自動改成正確的 CodeSystem 並加 note）；1.1.0（display 由代碼決定、單一值包成陣列、預設值只補必填欄位與 `apply_defaults`、`site_config`、結果的 `notes` / `settings`；1.0.0：從欄位值撰寫資源，見「[從欄位值撰寫資源](#authoring)」） |
 | `fhir_assemble_bundle` | 1.6.0（R6，驗證同 `fhir_validate_bundle` 1.13.0）；1.5.0（資源同 `fhir_author_resources` 1.6.0、驗證同 `fhir_validate_bundle` 1.12.0）；1.4.2（同 `fhir_finalize_bundle` 1.3.2）；1.4.1（資源依 `fhir_author_resources` 1.5.1、定稿依 `fhir_finalize_bundle` 1.3.1）；1.4.0（驗證依 `fhir_validate_bundle` 1.11.0，含 [record checks](#record-checks)）；1.3.0（定稿一律 `repair="content"`、`repair_issues`，資源依 `fhir_author_resources` 1.4.0）；1.2.0（資源依 `fhir_author_resources` 1.3.0、驗證依 `fhir_validate_bundle` 1.9.0）；1.1.0（`site_config` 與 context 的合併後交給 grounding；1.0.0：由 key 清單組 Bundle） |
 | `fhir_get_authoring_fields` | 1.2.0（record link：連到同一 IG 其他紀錄資源的 backbone（`Encounter.diagnosis`）列為欄位並附子欄位與 `{condition: {ref}}` 範例，直接 reference 列在 `more` 並附 `targets`；長度上限改以整個回應計算，新增 `response_chars`）；1.1.0（預設值只在必填欄位上是 `auto`，選填欄位改為提示慣例值；1.0.0：剖面的填寫表） |
-| `fhir_get_minimal_skeleton` | 1.2.0（v16.2：簡短 profile id 也在 IG 的依賴套件中解析（有歧義時回 `AMBIGUOUS_ARTIFACT` 並列出候選）；小型值集的代碼一律附 display（`code=display`），精簡層級也不省略）；1.1.0（v16.1：`slices` 展開骨架中的 slicing、`literals`、值集受限代碼的查詢方式，見「[IG 結構](#ig-structure)」）|
+| `fhir_get_minimal_skeleton` | 1.5.0（v19：必填 slice 的判別元素（例如 section code）即使 profile 設為選填也放入骨架；未切片元素為必填時 slice 的子元素也必填；Narrative 為 `{status, div}`；choice 允許代碼型別時以該型別撰寫；必填 coding slice 自己的 required 綁定決定代碼 / system；slice 的 pinned 值補進原本的 coding，不另增一筆）；1.2.0（v16.2：簡短 profile id 也在 IG 的依賴套件中解析（有歧義時回 `AMBIGUOUS_ARTIFACT` 並列出候選）；小型值集的代碼一律附 display（`code=display`），精簡層級也不省略）；1.1.0（v16.1：`slices` 展開骨架中的 slicing、`literals`、值集受限代碼的查詢方式，見「[IG 結構](#ig-structure)」）|
+| `fhir_get_bundle_form` | 1.0.0（v19 R2：Bundle 剖面的預填表單，見「[預填表單](#bundle-form)」） |
 | `fhir_get_bundle_blueprint`、`fhir_get_minimal_skeleton` | 1.0.0（v16：Bundle 藍圖與最小骨架 + 值的來源，見「[IG 結構](#ig-structure)」） |
 | `fhir_context` | 1.0.1（`get` 的結果帶 `notes`） |
 | `query_fhir_condition`、`query_fhir_medication` | 1.2.0（不再以目前時間填 `recordedDate` / `note.time` / `meta.lastUpdated`——只在呼叫端提供時出現） |

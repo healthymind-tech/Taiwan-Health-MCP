@@ -393,7 +393,22 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   slicing inside a value (Condition.code → code.coding) templates that value with its first allowed slice (not the base
   //   binding's system, which may belong to a max-0 slice).
   // 1.4.0: warnings carry the IG known defects of the profile (v17.3).
-  fhir_get_minimal_skeleton: "1.4.0",
+  // 1.5.0 (ISSUES_v19 R2, shared with fhir_get_bundle_form): the value / pattern discriminator element of a required slice
+  //   is in the skeleton even when the profile makes it optional (Composition.section:x.code — without it the item
+  //   matches no slice); a slice's child is required when the unsliced element is (section:x.text when section.text is
+  //   1..1); a Narrative is {status, div}; a choice that allows a coded type is written as that type (the key matched
+  //   the first type, e.g. medicationReference holding {text}); a required coding slice with its own required binding
+  //   decides the codes / system; a slice's pinned parts complete the coded value's placeholder coding instead of a
+  //   second coding; a choice's type slices no longer replace the coded value by the first slice's "<record>".
+  fhir_get_minimal_skeleton: "1.5.0",
+  // 1.0.0 (ISSUES_v19 R2, igBlueprint/form.ts): a prefilled form of a Bundle profile — every required entry slice plus
+  //   the planned `entries`, each a complete resource skeleton (skeletonModel + closed-slice choice by the IG examples,
+  //   conditional rows placed as required=false), entries required references need, deterministic urn:uuid fullUrls,
+  //   references wired (one candidate; several = a placeholder with `allowed`), document Composition first with its
+  //   required sections + the sections planned entries belong to; `<<P<n>:<value_source>>>` tokens listed in
+  //   `placeholders` (RFC 6901 pointer, FHIR type, what, value_source, required, allowed / target / example / format /
+  //   rules); <= 30,000 characters (compaction levels; placeholders never dropped).
+  fhir_get_bundle_form: "1.0.0",
   // 1.1.0 (evaluation feedback): (1) a model display the validator's terminology rule rejects for a resolvable code is
   //   replaced by the code's display (provenance lookup; the model wording moves to CodeableConcept.text when empty;
   //   case-only differences are valid, whitespace-only ones take the valid spelling); (2) a single object / scalar where
