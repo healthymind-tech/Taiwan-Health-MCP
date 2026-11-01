@@ -10,7 +10,7 @@
  */
 
 import { evaluateConstraint, fhirPathBase, type FhirPathEnv } from "../fhirPath.js";
-import type { Suggestion, SuggestionDeps } from "./types.js";
+import type { Suggestion, SuggestionDeps, SuggestionPatch } from "./types.js";
 import { nodeAt } from "./util.js";
 
 const RE_CONSTRAINT = /^Constraint failed: ([^:]+): /;
@@ -242,24 +242,62 @@ export function literalsOf(expression: string): InvariantLiterals {
   return out;
 }
 
-/** Codings under `node` (instance path `path`) with their paths. */
-function codingsUnder(node: unknown, path: string, out: Array<{ path: string; coding: Record<string, any> }> = [], depth = 0): Array<{ path: string; coding: Record<string, any> }> {
+/** Codings under `node` (instance path `path`) with their paths (an element of a `coding` array is one even without a system). */
+function codingsUnder(node: unknown, path: string, out: Array<{ path: string; coding: Record<string, any> }> = [], depth = 0, inCoding = false): Array<{ path: string; coding: Record<string, any> }> {
   if (depth > 8 || out.length > 200) return out;
-  if (Array.isArray(node)) node.forEach((n, i) => codingsUnder(n, `${path}[${i}]`, out, depth + 1));
+  if (Array.isArray(node)) node.forEach((n, i) => codingsUnder(n, `${path}[${i}]`, out, depth + 1, inCoding));
   else if (isObj(node)) {
-    if (typeof node.code === "string" && (typeof node.system === "string" || "display" in node)) out.push({ path, coding: node });
-    for (const [k, v] of Object.entries(node)) if (k !== "extension" && typeof v === "object" && v !== null) codingsUnder(v, `${path}.${k}`, out, depth + 1);
+    if (typeof node.code === "string" && (inCoding || typeof node.system === "string" || "display" in node)) out.push({ path, coding: node });
+    for (const [k, v] of Object.entries(node)) if (k !== "extension" && typeof v === "object" && v !== null) codingsUnder(v, `${path}.${k}`, out, depth + 1, k === "coding");
+  }
+  return out;
+}
+
+/** Identifiers under `node` (Patient.identifier[i], qualification[j].identifier[k] …) with their paths. */
+function identifiersUnder(node: unknown, path: string, out: Array<{ path: string; identifier: Record<string, any> }> = [], depth = 0): Array<{ path: string; identifier: Record<string, any> }> {
+  if (depth > 6 || out.length > 100 || !isObj(node)) return out;
+  for (const [k, v] of Object.entries(node)) {
+    if (k === "extension" || typeof v !== "object" || v === null) continue;
+    const items = Array.isArray(v) ? v.map((x, i) => [x, `${path}.${k}[${i}]`] as const) : [[v, `${path}.${k}`] as const];
+    for (const [x, p] of items) {
+      if (k === "identifier" && isObj(x)) out.push({ path: p, identifier: x });
+      else if (isObj(x)) identifiersUnder(x, p, out, depth + 1);
+    }
   }
   return out;
 }
 
 /**
- * Patches from the invariant's literals: a coding of the system the rule tests whose code is not one the rule
- * accepts → replace its code by each accepted code (several: one suggestion each, the code's display saying when it
- * applies); an accepted code under another system → replace the system. Never invents a coding the instance lacks.
+ * The `system = 'S'` literals of an invariant that test an Identifier's own system (`identifier.where(system = 'S'…)`,
+ * not a `type.coding.where(system = …)` inside it).
  */
-const STOP = new Set(["the", "and", "for", "with", "where", "number", "identifier", "code", "type", "card", "table"]);
-const words = (t: string | null | undefined): Set<string> => new Set(String(t ?? "").toLowerCase().split(/[^a-z0-9\u4e00-\u9fff]+/u).filter((w) => w.length > 2 && !STOP.has(w)));
+export function identifierSystemsOf(expression: string): string[] {
+  const out: string[] = [];
+  for (const m of expression.matchAll(/\bsystem\s*=\s*'([^']+)'/gu)) {
+    // the innermost open `(` before the literal: its call must be `identifier.where(`
+    let depth = 0;
+    let open = -1;
+    for (let i = (m.index ?? 0) - 1; i >= 0; i--) {
+      const ch = expression[i];
+      if (ch === ")") depth++;
+      else if (ch === "(") {
+        if (depth === 0) {
+          open = i;
+          break;
+        }
+        depth--;
+      }
+    }
+    if (open >= 0 && /\bidentifier\.where$/u.test(expression.slice(0, open)) && !out.includes(m[1])) out.push(m[1]);
+  }
+  return out;
+}
+
+/** The display edit that goes with a replaced code: the new code's display, or no display when it is unknown. */
+function displayEdit(codingPath: string, coding: Record<string, any>, display: string | undefined): SuggestionPatch[] {
+  if (display) return coding.display === display ? [] : [{ op: "replace", path: `${codingPath}.display`, value: display }];
+  return typeof coding.display === "string" ? [{ op: "remove", path: `${codingPath}.display` }] : [];
+}
 
 /**
  * Patches from the invariant's literals: a coding of the system the rule tests whose code is not one the rule
@@ -267,18 +305,43 @@ const words = (t: string | null | undefined): Set<string> => new Set(String(t ??
  * invents a coding the instance lacks. When several codings could be changed, only those whose current code means
  * something like an accepted code (shared words of the displays — e.g. NI "National unique individual identifier" vs
  * NNxxx "National Person Identifier …") are proposed; each of their candidates says which situation it is for.
+ * v20.1: a replaced code also gets the new code's display (`patch.also`: replace / add `display`, or remove the old
+ * display when the new one is unknown); an Identifier.system literal the rule tests (`identifier.where(system = 'S')`)
+ * → the identifier whose type code the rule accepts gets its system replaced, when the rule accepts exactly one system.
  */
+const STOP = new Set(["the", "and", "for", "with", "where", "number", "identifier", "code", "type", "card", "table"]);
+const words = (t: string | null | undefined): Set<string> => new Set(String(t ?? "").toLowerCase().split(/[^a-z0-9一-鿿]+/u).filter((w) => w.length > 2 && !STOP.has(w)));
+
 export async function literalSuggestions(
   key: string,
   lits: InvariantLiterals,
   node: unknown,
   path: string,
   displayOf?: (system: string, code: string) => Promise<string | null>,
+  expression?: string,
 ): Promise<Suggestion[]> {
   const codes = lits.codes ?? [];
-  if (!codes.length) return [];
-  const targets: Array<{ p: string; sys: string | undefined; cands: Array<{ c: (typeof codes)[number]; score: number }> }> = [];
   const out: Suggestion[] = [];
+  // v20.1: the identifier's own system (only when the rule accepts exactly one, and the identifier's type is accepted)
+  const idSystems = expression ? identifierSystemsOf(expression) : [];
+  if (idSystems.length === 1) {
+    const want = idSystems[0];
+    for (const { path: p, identifier } of identifiersUnder(node, path)) {
+      if (identifier.system === want) continue;
+      const typeCodings: Array<Record<string, any>> = Array.isArray(identifier.type?.coding) ? identifier.type.coding.filter(isObj) : [];
+      const accepted = codes.length > 0 && typeCodings.some((c) => codes.some((x) => x.code === c.code && (!x.system || !c.system || x.system === c.system)));
+      if (!accepted) continue;
+      out.push({
+        value: want,
+        kind: "replace_system",
+        confidence: 0.6,
+        reason: `invariant ${key} tests identifier.system = '${want}' for this identifier type${typeof identifier.system === "string" ? ` (it has '${identifier.system}')` : ""}`,
+        patch: { op: "replace", path: `${p}.system`, value: want },
+      });
+    }
+  }
+  if (!codes.length) return out.slice(0, 8);
+  const targets: Array<{ p: string; sys: string | undefined; coding: Record<string, any>; cands: Array<{ c: (typeof codes)[number]; score: number }> }> = [];
   for (const { path: p, coding } of codingsUnder(node, path)) {
     const sys = typeof coding.system === "string" ? coding.system : undefined;
     if (codes.some((c) => c.code === coding.code && (!c.system || c.system === sys))) continue;
@@ -286,18 +349,31 @@ export async function literalSuggestions(
     if (forSystem.length) {
       const mine = words(typeof coding.display === "string" ? coding.display : sys && displayOf ? await displayOf(sys, String(coding.code)).catch(() => null) : null);
       const cands = forSystem.map((c) => ({ c, score: [...words(c.display)].filter((w) => mine.has(w)).length }));
-      targets.push({ p, sys, cands });
+      targets.push({ p, sys, coding, cands });
       continue;
     }
     const sameCode = codes.filter((c) => c.code === coding.code && c.system);
-    if (sameCode.length === 1)
-      out.push({ value: sameCode[0].system!, kind: "replace_system", confidence: 0.6, reason: `invariant ${key} tests code ${coding.code} with system ${sameCode[0].system}`, patch: { op: "replace", path: `${p}.system`, value: sameCode[0].system } });
+    if (sameCode.length === 1) {
+      const c = sameCode[0];
+      // the code is one the rule accepts, under another (or no) system: replace (or add) the system; a missing display is added
+      const also: SuggestionPatch[] = c.display && typeof coding.display !== "string" ? [{ op: "replace", path: `${p}.display`, value: c.display }] : [];
+      out.push({
+        value: c.system!,
+        kind: "replace_system",
+        confidence: 0.6,
+        reason: `invariant ${key} tests code ${coding.code} with system ${c.system}`,
+        system: c.system,
+        ...(c.display ? { display: c.display } : {}),
+        patch: { op: "replace", path: `${p}.system`, value: c.system, ...(also.length ? { also } : {}) },
+      });
+    }
   }
   const best = Math.max(0, ...targets.map((t) => Math.max(...t.cands.map((x) => x.score))));
   for (const t of targets) {
     if (best > 0 && Math.max(...t.cands.map((x) => x.score)) < best) continue; // another coding is the one the rule is about
     const ranked = [...t.cands].sort((a, b) => b.score - a.score);
-    ranked.forEach(({ c }, i) =>
+    ranked.forEach(({ c }, i) => {
+      const also = displayEdit(t.p, t.coding, c.display);
       out.push({
         value: c.code,
         kind: "replace_code",
@@ -305,9 +381,9 @@ export async function literalSuggestions(
         reason: `invariant ${key} accepts ${t.sys}#${c.code}${c.display ? ` (${c.display})` : ""}${ranked.length > 1 ? `; alternatives: ${ranked.filter((x) => x.c !== c).map((x) => `${x.c.code}${x.c.display ? ` = ${x.c.display}` : ""}`).join("; ")} — use the one that matches the record's value` : ""}`,
         ...(t.sys ? { system: t.sys } : {}),
         ...(c.display ? { display: c.display } : {}),
-        patch: { op: "replace", path: `${t.p}.code`, value: c.code },
-      }),
-    );
+        patch: { op: "replace", path: `${t.p}.code`, value: c.code, ...(also.length ? { also } : {}) },
+      });
+    });
   }
   return out.slice(0, 8);
 }
@@ -364,7 +440,7 @@ async function explainItem(
     : "";
   const fmt = lits.formats?.length ? `format: ${lits.formats.join(" | ")}` : "";
   info.hint = clip([info.hint, accepted, fmt, `rule: ${clip(expression, 300)}`].filter(Boolean).join("; "), 900);
-  const sugg = await literalSuggestions(m[1], lits, node, path, lookupDisplay);
+  const sugg = await literalSuggestions(m[1], lits, node, path, lookupDisplay, expression);
   if (sugg.length) (info as InvariantInfo & { _suggestions?: Suggestion[] })._suggestions = sugg;
   return info;
 }

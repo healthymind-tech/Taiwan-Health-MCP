@@ -398,6 +398,10 @@ export function decorateIssue(issue: Json, ctx: PointerContext): void {
       if (!isObj(s) || !isObj(s.patch)) continue;
       const ops = suggestionPatchOps(ctx.validated, s.patch as PatchSource);
       if (!ops) continue;
+      // v20.1: the fix's further edits (a replaced code's display) — all or nothing
+      const also = Array.isArray(s.patch.also) ? (s.patch.also as PatchSource[]).map((a) => (isObj(a) ? suggestionPatchOps(ctx.validated, a) : null)) : [];
+      if (also.some((a) => !a)) continue;
+      for (const a of also) ops.push(...a!);
       const extra = s.kind === "replace_fullurl" && ctx.refOps ? ctx.refOps.get(String(s.value)) ?? [] : [];
       cands.push({
         ops,

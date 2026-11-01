@@ -49,6 +49,11 @@ export interface SuggestionPatch {
   /** move: the current location of the value. */
   from?: string;
   value?: unknown;
+  /**
+   * v20.1: further edits that belong to the same fix (applied after this one, all or nothing) — e.g. a replaced code's
+   * display (`replace` / `add` / `remove` of `….display`).
+   */
+  also?: SuggestionPatch[];
 }
 
 export interface Suggestion {

@@ -6,8 +6,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { literalsOf, literalSuggestions } from "./invariants.js";
+import { identifierSystemsOf, literalsOf, literalSuggestions } from "./invariants.js";
 import { attachRootCauses } from "./chains.js";
+import { decorateIssue, type PointerContext } from "./pointers.js";
 
 const V2 = "http://terminology.hl7.org/CodeSystem/v2-0203";
 const EXPR = `identifier.where(type.coding.where(system = '${V2}' and (code = 'NNxxx' or code = 'PPN' or code = 'PRC')).exists()).exists()`;
@@ -62,4 +63,85 @@ test("attachRootCauses: entry-slice and profile-match cascades point back to the
   assert.deepEqual(slice.caused_by && (slice as any).caused_by.map((c: any) => c.message), [inv.message]);
   assert.deepEqual((compEnc as any).root_causes.map((c: any) => c.message), [inv.message], "Composition → Encounter → Patient → pat-id-1");
   assert.equal((inv as any).root_causes, undefined);
+});
+
+// ------------------------------------------------------------------------------------------------ v20.1 pat-id-1 patches
+
+const withDisplays = (expr: string): ReturnType<typeof literalsOf> => {
+  const l = literalsOf(expr);
+  for (const c of l.codes ?? []) c.display = DISPLAY[c.code];
+  return l;
+};
+/** The JSON Patch candidates the validation envelope would carry for one failed-invariant issue (pointers.ts). */
+const patchesOf = (sent: Record<string, any>, path: string, suggestions: unknown[]): Array<{ ops: unknown[] }> => {
+  const issue: Record<string, any> = { severity: "error", path, message: "Constraint failed: pat-id-1: 'x'", suggestions };
+  const ctx: PointerContext = { sent, validated: sent, entryMap: null, normalized: false };
+  decorateIssue(issue, ctx);
+  return issue.patches ?? [];
+};
+
+test("v20.1 literalSuggestions: a replaced code also gets the new code's display (replace / add), or loses a stale one", async () => {
+  const lits = withDisplays(EXPR);
+  // the coding has the old code's display → replace both
+  const patient = { resourceType: "Patient", identifier: [{ type: { coding: [{ system: V2, code: "NI", display: DISPLAY.NI }] }, value: "A123" }] };
+  const s = await literalSuggestions("pat-id-1", lits, patient, "Patient", async (_s, c) => DISPLAY[c] ?? null);
+  assert.deepEqual(s[0].patch, {
+    op: "replace",
+    path: "Patient.identifier[0].type.coding[0].code",
+    value: "NNxxx",
+    also: [{ op: "replace", path: "Patient.identifier[0].type.coding[0].display", value: DISPLAY.NNxxx }],
+  });
+  assert.deepEqual(patchesOf(patient, "Patient", s.slice(0, 1))[0].ops, [
+    { op: "replace", path: "/identifier/0/type/coding/0/code", value: "NNxxx" },
+    { op: "replace", path: "/identifier/0/type/coding/0/display", value: DISPLAY.NNxxx },
+  ]);
+  // no display yet → the display is added
+  const bare = { resourceType: "Patient", identifier: [{ type: { coding: [{ system: V2, code: "NI" }] }, value: "A123" }] };
+  const s2 = await literalSuggestions("pat-id-1", lits, bare, "Patient", async (_s, c) => DISPLAY[c] ?? null);
+  assert.deepEqual(patchesOf(bare, "Patient", s2.slice(0, 1))[0].ops, [
+    { op: "replace", path: "/identifier/0/type/coding/0/code", value: "NNxxx" },
+    { op: "add", path: "/identifier/0/type/coding/0/display", value: DISPLAY.NNxxx },
+  ]);
+  // the new code's display is unknown → the old (now wrong) display is removed
+  const noDisp = literalsOf(EXPR);
+  const s3 = await literalSuggestions("pat-id-1", noDisp, patient, "Patient");
+  assert.deepEqual(s3[0].patch?.also, [{ op: "remove", path: "Patient.identifier[0].type.coding[0].display" }]);
+});
+
+test("v20.1 literalSuggestions: an accepted code under another (or no) system gets the rule's system", async () => {
+  const lits = withDisplays(EXPR);
+  const wrongSys = { resourceType: "Patient", identifier: [{ type: { coding: [{ system: "http://terminology.hl7.org/CodeSystem/v2-0203x", code: "PPN" }] }, value: "P1" }] };
+  const s = await literalSuggestions("pat-id-1", lits, wrongSys, "Patient");
+  assert.deepEqual(s.map((x) => [x.kind, x.value, x.patch?.path]), [["replace_system", V2, "Patient.identifier[0].type.coding[0].system"]]);
+  assert.deepEqual(patchesOf(wrongSys, "Patient", s)[0].ops, [
+    { op: "replace", path: "/identifier/0/type/coding/0/system", value: V2 },
+    { op: "add", path: "/identifier/0/type/coding/0/display", value: DISPLAY.PPN },
+  ]);
+  // a coding without a system (and without a display) is still a coding of type.coding
+  const noSys = { resourceType: "Patient", identifier: [{ type: { coding: [{ code: "PPN" }] }, value: "P1" }] };
+  const s2 = await literalSuggestions("pat-id-1", lits, noSys, "Patient");
+  assert.deepEqual(patchesOf(noSys, "Patient", s2)[0].ops[0], { op: "add", path: "/identifier/0/type/coding/0/system", value: V2 });
+});
+
+test("v20.1 literalSuggestions: Identifier.system literals — replaced when one system is accepted and the type code is", async () => {
+  const MOI = "http://www.moi.gov.tw";
+  const expr = `identifier.where(system = '${MOI}' and type.coding.where(system = '${V2}' and code = 'NNxxx').exists()).exists()`;
+  assert.deepEqual(identifierSystemsOf(expr), [MOI], "the type.coding system is not an identifier system");
+  assert.deepEqual(identifierSystemsOf(EXPR), []);
+  const lits = withDisplays(expr);
+  const patient = {
+    resourceType: "Patient",
+    identifier: [
+      { system: "http://www.moi.gov.tw/", type: { coding: [{ system: V2, code: "NNxxx" }] }, value: "A123456789" },
+      { system: "https://example.org/mrn", type: { coding: [{ system: V2, code: "MR" }] }, value: "9" },
+    ],
+  };
+  const s = await literalSuggestions("pat-id-x", lits, patient, "Patient", undefined, expr);
+  const sys = s.filter((x) => x.kind === "replace_system");
+  assert.deepEqual(sys.map((x) => [x.value, x.patch?.path]), [[MOI, "Patient.identifier[0].system"]], "only the identifier whose type the rule accepts");
+  assert.deepEqual(patchesOf(patient, "Patient", sys)[0].ops, [{ op: "replace", path: "/identifier/0/system", value: MOI }]);
+  // two accepted systems: which one is not known → no identifier-system patch
+  const two = `identifier.where(system = '${MOI}' or system = 'https://example.org/b').exists() and identifier.type.coding.where(code = 'NNxxx').exists()`;
+  const s2 = await literalSuggestions("x", withDisplays(two), patient, "Patient", undefined, two);
+  assert.deepEqual(s2.filter((x) => x.kind === "replace_system" && x.patch?.path.endsWith("identifier[0].system")), []);
 });
