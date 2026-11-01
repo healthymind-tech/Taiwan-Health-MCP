@@ -92,7 +92,7 @@ test("checkPrimitive: id / code / string whitespace rules", async () => {
   await only({ codeX: "asd  asd" }, ["The code 'asd  asd' is not valid (whitespace rules)"]);
   // "" without children: hasValue() is false, so ele-1 fails as well — fhir-test-cases validator/outcomes/java/
   // R5.primitive-bad-empty-base.json (Parameters.parameter[10]: ele-1 + "value cannot be empty")
-  await only({ stringX: "" }, ["value cannot be empty", "Constraint failed: ele-1: 'All FHIR elements must have a @value or children'"]);
+  await only({ stringX: "" }, ["value cannot be empty", "Constraint failed: ele-1: 'All FHIR elements must have a @value or children' (defined in http://hl7.org/fhir/StructureDefinition/Element)"]);
   await only({ stringX: " \t " }, ["Primitive types should not only be whitespace"], "warning");
   await only({ stringX: " a" }, ["value should not start or finish with whitespace ' a'"], "warning");
   await only({ stringX: "a\u0001" }, ["This content includes the character [1] (hex value). This character is illegal in the XML version of FHIR, and there is generally no valid use for such characters"], "warning");

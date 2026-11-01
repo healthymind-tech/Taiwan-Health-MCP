@@ -289,7 +289,8 @@ export interface ValidateOptions {
   allowJsonComments?: boolean;
 }
 
-const ELE1_MESSAGE = "Constraint failed: ele-1: 'All FHIR elements must have a @value or children'";
+// validator_cli 7.0.1 wording: the invariant's source is appended (checkInvariant, "(defined in <source>)")
+const ELE1_MESSAGE = "Constraint failed: ele-1: 'All FHIR elements must have a @value or children' (defined in http://hl7.org/fhir/StructureDefinition/Element)";
 const PRIMITIVE_VALUEEXT_MESSAGE = "Primitive types must have a value or must have child extensions";
 
 // --------------------------------------------------------------------------- //
@@ -2438,6 +2439,14 @@ export class InstanceValidator {
         }
       }
       if (v === null || v === undefined) {
+        // (parity v3 round 5) no value and a shadow holding no extension (`[…, null]` + `_x: [null, {"id": …}]`):
+        // ele-1 `hasValue() or (children().count() > id.count())` fails — the id is the only child (evaluator corpus:
+        // Practitioner.name.prefix[1], Patient.name.given[1] …; for meta.profile validator_cli 7.0.1 throws instead
+        // (InstanceValidator.validateResource reads the null url), where an error is required all the same)
+        const ext = item.ext;
+        if (isObject(ext) && Object.keys(ext).length > 0 && !(Array.isArray(ext.extension) && ext.extension.length > 0) && !this.xmlSource) {
+          issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
+        }
         await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
         return;
       }
@@ -5471,7 +5480,7 @@ export class InstanceValidator {
       }
     }
     if (!isRoot && kept === 0 && Object.keys(node).length > 0) {
-      issues.push({ severity: "error", path, code: "invariant", message: "Constraint failed: ele-1: 'All FHIR elements must have a @value or children'" });
+      issues.push({ severity: "error", path, code: "invariant", message: ELE1_MESSAGE });
     }
   }
 

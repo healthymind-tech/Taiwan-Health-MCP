@@ -55,4 +55,17 @@ test("meta.profile with an unresolved example URL: TYPE_SPECIFIC_CHECKS_DT_URL_E
   // a non-example unknown profile stays a warning only
   const f = await errsMeta(obs({ meta: { profile: ["http://other.org/fhir/StructureDefinition/unknown"] } }));
   assert.ok(!f.some(([p]) => p === "Observation.meta.profile[0]"), JSON.stringify(f));
+
+  // A repeating primitive item without a value whose shadow holds only an id: ele-1 (hasValue() false, the id is the
+  // only child). Evaluator corpus, validator_cli 7.0.1: name.prefix [x, null] + _prefix [null, {id}] → ele-1 at
+  // prefix[1]; on meta.profile validator_cli throws (official-crash) — an error is required all the same.
+  const g = await errsMeta(obs({ meta: { profile: ["http://other.org/p", null], _profile: [null, { id: "x1" }] } }));
+  assert.deepEqual(
+    g.filter(([p]) => p === "Observation.meta.profile[1]").map(([, m]) => m),
+    ["Constraint failed: ele-1: 'All FHIR elements must have a @value or children' (defined in http://hl7.org/fhir/StructureDefinition/Element)"],
+    JSON.stringify(g),
+  );
+  // a shadow with an extension is a legal value-less primitive
+  const h = await errsMeta(obs({ meta: { profile: ["http://other.org/p", null], _profile: [null, { extension: [{ url: "http://hl7.org/fhir/StructureDefinition/data-absent-reason", valueCode: "unknown" }] }] } }));
+  assert.ok(!h.some(([p, m]) => p === "Observation.meta.profile[1]" && /ele-1/u.test(m)), JSON.stringify(h));
 });
