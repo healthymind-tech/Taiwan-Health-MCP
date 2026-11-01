@@ -251,7 +251,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.45.0 (parity v3 tx-validator-wiring; REVIEW_port_1 F1/F5/F6/F20, REVIEW_port_2 G1/G2/G4/G5/G7/G10/G11/G22): required binding without a value, BCP-47 / BCP-13 / RFC-3986 codes checked locally, undecidable codes / slices → checked_fully false (codes_unchecked / slices_unchecked), binding to a CodeSystem URL, display language = Resource.language, caseSensitive default false, v2-0203 NN<country>, held urn:oid CodeSystems, DICOM unknown code error, supplement as Coding.system, concept without display.
   // 1.46.0 (parity v3 loader-snapshot-ucum, REVIEW_port_2 G6/G8/G9/G12/G31/G33): PackageHackerRN load fixes, ucum-java grammar + UCUM display, profile without snapshot = Validation_VAL_Profile_NoSnapshot error (unchecked), illegal constrained type fails generation, slices without slicer evaluated
   // 1.47.0 (parity v3 json-xhtml): Narrative.div read with the XhtmlParser port (Error parsing XHTML, entities) and checked with the XhtmlValidator port (namespace, root, names, paragraph / table structure, URLs, href schemes) and narrative controls; txt-1 / txt-2 on the parsed tree; number spellings (1.0 as integer) and repeated JSON names from the request text; DUPLICATE_ID / contained ids; meta.security duplicates; example URLs only when unresolved; fhir_comments unrecognised.
-  fhir_validate_bundle: "1.47.0",
+  // 1.48.0 (parity v3 round 5 corpus): ele-1 on JSON "" and non-choice {} and on a value-less primitive whose shadow holds only an id (message with its "(defined in …)" source); meta.profile example URLs reported; a 'Type/' reference under a urn fullUrl is an error.
+  fhir_validate_bundle: "1.48.0",
   // 1.40.0 (parity v3 snapshot): a differential-only StructureDefinition gets its snapshot generated (fhirSnapshotGenerator.ts, ProfileUtilities port) instead of being ignored.
   // 1.37.0 (parity v3 fhirpath-2): an invariant whose evaluation raises an exception the Java engine raises too fails (message + log); unknown functions → Problem processing expression; dom-3 enforced in code (CONTAINED_ORPHAN_DOM3); Java boolean / comparison / date-arithmetic semantics.
   // 1.36.1 (parity v3 xml): base64Binary checked linearly — a multi-MB attachment no longer overflows the regex stack (was a validator crash / fatal exception issue).
@@ -297,7 +298,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.42.0: terminology as fhir_validate_bundle 1.45.0 (parity v3 tx-validator-wiring).
   // 1.43.0: validation as fhir_validate_bundle 1.46.0 (parity v3 loader-snapshot-ucum).
   // 1.44.0: validation as fhir_validate_bundle 1.47.0 (parity v3 json-xhtml).
-  fhir_validate_resource: "1.44.0",
+  // 1.45.0: validation as fhir_validate_bundle 1.48.0 (parity v3 round 5 corpus).
+  fhir_validate_resource: "1.45.0",
   // 1.37.0 (parity v3 snapshot): differential-only profiles validated through a generated snapshot, as fhir_validate_bundle 1.40.0.
   // 1.34.0 (parity v3 fhirpath-2): invariant evaluation as fhir_validate_bundle 1.37.0.
   // 1.33.1 (parity v3 xml): base64Binary as fhir_validate_bundle 1.36.1.
