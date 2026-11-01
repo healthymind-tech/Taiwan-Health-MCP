@@ -1394,8 +1394,9 @@ export class InstanceValidator {
       return;
     }
     if (Object.keys(v).length === 0 && !isResourceRoot) {
-      issues.push({ severity: "error", path: item.path, code: "invariant", message: "Constraint failed: ele-1: 'All FHIR elements must have a @value or children'" });
-      return;
+      // (parity v2) JsonParser.checkObject (7.0.1): OBJECT_MUST_HAVE_SOME_CONTENT, and the (empty) element is kept —
+      // validation goes on, so its required children are reported as missing; no ele-1 on top
+      issues.push({ severity: "error", path: item.path, code: "invalid", message: "Object must have some content" });
     }
 
     // Which definition supplies the children?
