@@ -991,6 +991,31 @@ export class InstanceValidator {
     return this.resolveInBundle(ref, b, rctx.entry ?? null)?.resource ?? null;
   }
 
+  /**
+   * FHIRPath resolve() (InstanceValidator's host resolveReference, 7.0.1): the reference rules of validation first,
+   * then BaseValidator.resolveInBundle(url, bundle) over the enclosing Bundle and — for an invariant on the Bundle
+   * itself — the resource being validated: an entry matches when the url equals its fullUrl or `Type/id`.
+   */
+  private resolveRefForFhirPath(ref: string, rctx: ResourceCtx): Record<string, any> | null {
+    const hit = this.resolveRef(ref, rctx);
+    if (hit || ref.startsWith("#")) return hit;
+    const scan = (bundle: any): Record<string, any> | null => {
+      if (!isObject(bundle) || bundle.resourceType !== "Bundle" || !Array.isArray(bundle.entry)) return null;
+      for (const be of bundle.entry) {
+        const res = isObject(be) && isObject(be.resource) ? be.resource : null;
+        if (!res) continue;
+        if (ref === be.fullUrl || ref === `${res.resourceType}/${res.id}`) return res;
+      }
+      return null;
+    };
+    return scan(rctx.resource) ?? (rctx.bundle ? this.resolveInBundleByTypeId(ref, rctx.bundle) : null);
+  }
+
+  private resolveInBundleByTypeId(ref: string, b: BundleCtx): Record<string, any> | null {
+    for (const e of b.entries) if (ref === e.fullUrl || ref === `${e.resource.resourceType}/${e.resource.id}`) return e.resource;
+    return null;
+  }
+
   /** Entry whose fullUrl/type/id match a relative reference by type and id only (near-miss hint). */
   private typeIdNearMiss(ref: string, b: BundleCtx): BundleEntryCtx | null {
     const m = RESTFUL_REF.exec(ref);
@@ -1104,8 +1129,8 @@ export class InstanceValidator {
       }
     }
     const what = type === "document" ? "Composition" : "MessageHeader";
-    // (v17.5, BundleValidator.checkAllInterlinked) every relative reference of the other entries must resolve inside a
-    // document / message Bundle: an unresolved one is an error, reported on the Bundle
+    // (v17.5, BundleValidator.checkAllInterlinked) relative references of the other entries resolved inside a
+    // document / message Bundle: a near miss is an error, reported on the Bundle
     // with its source (choice elements named as the validator names them: medication[x]); a resource of the
     // same type and id whose fullUrl does not match the relative-reference rule is named in a note.
     for (const e of b.entries) {
@@ -1117,6 +1142,11 @@ export class InstanceValidator {
         if (r.ref.startsWith("#") || ABSOLUTE_URL.test(r.ref)) continue;
         if (this.resolveInBundle(r.ref, b, e)) continue;
         const near = this.typeIdNearMiss(r.ref, b);
+        // (parity v2) checkAllInterlinked passes isWarning=true: a reference that matches no entry at all is only a
+        // hint there (BaseValidator.resolveInBundle → hintOrError(!isWarning, BUNDLE_BUNDLE_ENTRY_NOTFOUND)); the
+        // error is the near miss — an entry of the same type and id whose fullUrl breaks the relative-reference rule
+        // (rulePlural BUNDLE_BUNDLE_ENTRY_NOTFOUND_APPARENT / _CANNOT)
+        if (!near) continue;
         const source = r.path.replace(/\.([a-z][A-Za-z]*?)Reference(?=$|[.[])/gu, ".$1[x]");
         issues.push({
           severity: "error",
@@ -3015,7 +3045,7 @@ export class InstanceValidator {
     const env: FhirPathEnv = {
       resource: rctx.resource,
       rootResource: rctx.container || rctx.resource,
-      resolveReference: (ref: string) => this.resolveRef(ref, rctx),
+      resolveReference: (ref: string) => this.resolveRefForFhirPath(ref, rctx),
     };
     const base = fhirPathBase(host.defPath || host.typeCode, host.typeCode || null);
     for (const inv of invariants) {
@@ -3199,7 +3229,7 @@ export class InstanceValidator {
     const env: FhirPathEnv = {
       resource: rctx.resource,
       rootResource: rctx.container || rctx.resource,
-      resolveReference: (ref: string) => this.resolveRef(ref, rctx),
+      resolveReference: (ref: string) => this.resolveRefForFhirPath(ref, rctx),
     };
     const base = fhirPathBase(String(el.path || sdx.type), typeCode);
     for (const c of constraints) {

@@ -36,10 +36,10 @@ async function main(): Promise<void> {
     const bundle = JSON.parse(readFileSync(join(dir, `${n}.bundle.json`), "utf8"));
     const cmp = JSON.parse(readFileSync(join(dir, `${n}.compare.json`), "utf8"));
     const official = new Set<string>((cmp.official_errors as Json[]).filter((i) => i.severity === "error" || i.severity === "fatal").map((i) => errorClass(i.message)));
-    const [pid, ver] = pkgFor(n, bundle);
+    const [pid, ver] = cmp.package ? (String(cmp.package).split("#") as [string, string]) : pkgFor(n, bundle);
     // the evaluator runs validator_cli with -profile <the conversion target's Bundle profile>: the one its errors name
     const named = (cmp.official_errors as Json[]).map((i) => /(https?:\/\/\S+\/StructureDefinition\/Bundle-[A-Za-z0-9-]+)/u.exec(i.message)?.[1]).find(Boolean);
-    const bundleProfile = named ?? (pid === "hl7.fhir.uv.ips" ? "http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips" : pid === "tw.gov.mohw.nhi.pas" ? "https://nhicore.nhi.gov.tw/pas/StructureDefinition/Bundle-twpas" : null);
+    const bundleProfile = cmp.bundle_profile ?? named ?? (pid === "hl7.fhir.uv.ips" ? "http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips" : pid === "tw.gov.mohw.nhi.pas" ? "https://nhicore.nhi.gov.tw/pas/StructureDefinition/Bundle-twpas" : null);
     const env = JSON.parse(await svc.validateBundle(bundle, pid, ver, false, undefined, "ids", null, bundleProfile));
     const issues: Json[] = [...(env.data?.issues ?? []), ...((env.data?.entries ?? []) as Json[]).flatMap((e) => e.issues ?? [])];
     const ours = new Set<string>(issues.filter((i) => (i.severity === "error" || i.severity === "fatal") && !isContentCheck(i)).map((i) => errorClass(i.message)));
