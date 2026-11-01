@@ -276,8 +276,9 @@ function allRefs(node: unknown, at = ""): Array<{ path: string; ref: string }> {
 }
 
 /**
- * validator_cli 7.0.1 names the wrong entry in two Bundle messages (the index is one too high): `Entry 'u' isn't
- * reachable …` (issue path `Bundle.entry[k]`) and `Can't find 'r' in the bundle (Bundle.entry[k].resource.x)`. The
+ * validator_cli 7.0.1 names the wrong entry in some Bundle messages (BundleValidator): `Entry 'u' isn't reachable …`
+ * (issue path `Bundle.entry[k]`, one too high, or the entry count for "traversing forwards"), `Can't find 'r' in the
+ * bundle (Bundle.entry[k].resource.x)`, and every fullUrl rule at `Bundle.entry[0]`. The
  * official path / message are kept; `location_path` names the element the message is about, found by the fullUrl /
  * reference the message quotes (the pointer layer and the per-entry split use it).
  */
@@ -287,7 +288,15 @@ export function relocateBundleIssues(bundle: unknown, issues: Array<JsonObj>): v
   const entries: JsonObj[] = b.entry;
   for (const i of issues) {
     const msg = String(i.message ?? "");
-    const reach = /^Entry '([^']+)' isn't reachable by traversing links/u.exec(msg);
+    // BundleValidator's fullUrl rules are all reported at `Bundle.entry[0]` (stack.addToLiteralPath(ENTRY, PATH_ARG))
+    const fu = /^The (?:fullUrl '([^']+)' looks like a RESTful server URL|fullUrl must be an absolute URL \(not '([^']*)'\))|^The canonical URL \([^)]*\) cannot match the fullUrl \(([^)]*)\)/u.exec(msg);
+    if (fu && /^Bundle\.entry\[0\]$/u.test(String(i.path ?? ""))) {
+      const u = fu[1] ?? fu[2] ?? fu[3];
+      const j = entries.findIndex((e) => e && e.fullUrl === u);
+      if (j >= 0) i.location_path = `Bundle.entry[${j}]`;
+      continue;
+    }
+    const reach = /^Entry '([^']+)' isn't reachable by traversing (?:links|forwards)/u.exec(msg);
     if (reach) {
       const j = entries.findIndex((e) => e && e.fullUrl === reach[1]);
       if (j >= 0) i.location_path = `Bundle.entry[${j}]`;

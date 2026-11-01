@@ -2083,6 +2083,8 @@ export class FHIRIGService {
     }
     if (!judged) {
       const tracked = await trackQueryFailures(() => engine.validate(resource, { profiles }));
+      // parity v3: the built-in validator reports BundleValidator's official paths (quirks included) — same relocation
+      relocateBundleIssues(resource, tracked.result as Record<string, any>[]);
       pushAll(issues, tracked.result as Record<string, any>[]);
       if (tracked.total > 0) {
         logError("fhir validation: definition / terminology lookups failed", { failed: tracked.total, first: tracked.failures[0]?.message });

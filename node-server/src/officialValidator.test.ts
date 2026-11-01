@@ -153,3 +153,23 @@ test("validator_cli's off-by-one entry index in reachable / Can't find messages 
   );
   assert.equal(issues[0].path, "Bundle.entry[2]", "the official path is kept");
 });
+
+test("BundleValidator's fullUrl rules (all reported at Bundle.entry[0]) are located through the quoted fullUrl", async () => {
+  const { relocateBundleIssues } = await import("./officialValidator.js");
+  const b = {
+    resourceType: "Bundle",
+    type: "collection",
+    entry: [
+      { fullUrl: "http://x.org/fhir/Patient/p1", resource: { resourceType: "Patient", id: "p1" } },
+      { fullUrl: "Patient/2", resource: { resourceType: "Patient", id: "2" } },
+      { fullUrl: "http://x.org/fhir/Patient/p9", resource: { resourceType: "Patient", id: "p3" } },
+    ],
+  };
+  const issues: Array<Record<string, any>> = [
+    { severity: "error", path: "Bundle.entry[0]", message: "The fullUrl must be an absolute URL (not 'Patient/2')" },
+    { severity: "error", path: "Bundle.entry[0]", message: "The fullUrl 'http://x.org/fhir/Patient/p9' looks like a RESTful server URL, so it must end with the correct type and id (/Patient/p3)" },
+    { severity: "warning", path: "Bundle.entry[4]", message: "Entry 'http://x.org/fhir/Patient/p1' isn't reachable by traversing forwards from the Composition. Only Provenance is approved to be used this way (R4 section 3.3.1)" },
+  ];
+  relocateBundleIssues(b, issues);
+  assert.deepEqual(issues.map((i) => i.location_path ?? null), ["Bundle.entry[1]", "Bundle.entry[2]", "Bundle.entry[0]"]);
+});
