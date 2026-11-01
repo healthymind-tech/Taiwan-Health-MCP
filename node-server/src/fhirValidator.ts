@@ -1687,10 +1687,22 @@ export class InstanceValidator {
       if (ref.includes("/_history/")) {
         version = ref.slice(ref.indexOf("/_history/") + 10);
         const rb = javaSplit(ref.slice(0, ref.indexOf("/_history/")), "/");
+        if (rb.length < 2) {
+          // refBaseParts[1] (l. 1519-1521) throws in Java (validation fails): reported, never passed
+          push("error", "invalid", `Relative URLs must be of the format [ResourceName]/[id]. Encountered ${ref}`);
+          return null;
+        }
         resourceType = rb[0];
         targetUrl = base + rb[0] + "/" + rb[1];
       } else if (base.startsWith("urn")) {
         const rp = javaSplit(ref, "/");
+        if (rp.length < 2) {
+          // `Type/` (no id) under a urn fullUrl: refParts[1] (l. 1526-1528) throws ArrayIndexOutOfBoundsException and
+          // validator_cli fails the whole validation (evaluator corpus: official-crash). The resource must not pass:
+          // the reference is reported with the relative-URL format message (Reference_REF_Format2).
+          push("error", "invalid", `Relative URLs must be of the format [ResourceName]/[id]. Encountered ${ref}`);
+          return null;
+        }
         resourceType = rp[0];
         targetUrl = base + rp[1];
       } else {

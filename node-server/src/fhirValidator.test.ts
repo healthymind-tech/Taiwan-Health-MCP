@@ -293,6 +293,17 @@ test("collection/transaction: a dangling urn:uuid reference is a warning, not an
   }
 });
 
+test("a 'Type/' reference (no id) under a urn:uuid fullUrl is an error (validator_cli throws in getFromBundle l. 1526-1528)", async () => {
+  const issues = await run(B("collection", [{ fullUrl: U(1), resource: P() }, { fullUrl: U(2), resource: P("p2", { managingOrganization: { reference: "Organization/" } }) }]));
+  assert.ok(
+    errors(issues).some((i) => i.path === "Bundle.entry[1].resource.managingOrganization" && i.message === "Relative URLs must be of the format [ResourceName]/[id]. Encountered Organization/"),
+    JSON.stringify(errors(issues)),
+  );
+  // under a RESTful fullUrl the same reference resolves to nothing without an error (evaluator corpus, validator_cli 7.0.1)
+  const rest = await run(B("collection", [{ fullUrl: "http://ex.org/fhir/Patient/p1", resource: P("p1", { managingOrganization: { reference: "Organization/" } }) }]));
+  assert.ok(!errors(rest).some((i) => /Relative URLs must be/u.test(i.message)), JSON.stringify(errors(rest)));
+});
+
 test("collection: dangling relative and absolute references are not errors", async () => {
   const rel = await run(B("collection", [{ fullUrl: "http://ex.org/fhir/Patient/p1", resource: P("p1", { managingOrganization: { reference: "Organization/zz" } }) }]));
   assert.deepEqual(errors(rel), []);
