@@ -2273,7 +2273,23 @@ export class InstanceValidator {
     }
     if (typeof v !== spec.json) {
       issues.push({ severity: "error", path, code: "structure", message: `Error parsing JSON: the primitive value must be a ${spec.json}` });
-      return;
+      // (parity v2) JsonParser.parseChildPrimitiveInstance keeps the value (as its string) and the InstanceValidator then
+      // checks it as the element's type — those value errors take part in slice / profile matching like any other
+      const sv = String(v);
+      if (spec.json === "boolean") {
+        if (sv !== "true" && sv !== "false") issues.push({ severity: "error", path, code: "invalid", message: "Boolean values must be 'true' or 'false'" });
+        return;
+      }
+      if (spec.json === "number") {
+        if (typeCode === "decimal") {
+          if (!/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/u.test(sv)) issues.push({ severity: "error", path, code: "invalid", message: `The value '${sv}' is not a valid decimal` });
+        } else if (!/^[+-]?[0-9]+$/u.test(sv)) {
+          issues.push({ severity: "error", path, code: "invalid", message: `The value '${sv}' is not a valid integer` });
+        }
+        return;
+      }
+      // a number / boolean where a string-like type is expected: its text is checked as that type below
+      v = sv;
     }
     if (spec.json === "number") {
       if (!Number.isFinite(v)) {
