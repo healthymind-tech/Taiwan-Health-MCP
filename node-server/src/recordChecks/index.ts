@@ -236,20 +236,22 @@ function r2(s: Slot, registry: ReturnType<typeof identifierRegistry>, recordText
         `${basis}; the value occurs verbatim in source_text, so the severity is warning`,
       );
     }
+    // parity v2: without source_text this is a pure validation — a content check must not add an error the official
+    // validator does not report; the finding stays, as a warning
     return makeIssue(
       "R2",
-      "error",
+      recordText === null ? "warning" : "error",
       "identifier-format",
       s.path,
       `識別碼格式不符：system ${system} 是${fmt.label_zh}，值「${v}」${verdict.reason_zh}`,
       `Identifier format: system ${system} is the ${fmt.label}; the value "${v}" — ${verdict.reason}`,
-      basis,
+      recordText === null ? `${basis}; no source_text (pure validation), so the severity is warning` : basis,
     );
   }
   if (sentenceLike(s.value)) {
     return makeIssue(
       "R2",
-      "error",
+      recordText === null ? "warning" : "error",
       "identifier-format",
       s.path,
       `識別碼格式不符：值「${v}」是一段敘述，不是識別碼${system ? `（system ${system}）` : ""}。病歷若沒有提供識別碼，請回報 insufficient_information`,

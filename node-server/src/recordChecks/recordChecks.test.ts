@@ -180,3 +180,15 @@ test("finalize envelopes: clean without source_text → unchanged; fhir_finalize
   assert.deepEqual(out.data.resource, bad);
   assert.equal(out.warnings.length, 1);
 });
+
+test("parity v2: an identifier format finding without source_text (pure validation) is a warning, with source_text an error", () => {
+  const b = BASE_BUNDLE();
+  const nid = (b.entry[0].resource.identifier as Array<Record<string, any>>).find((x) => x.system === "http://www.moi.gov.tw");
+  assert.ok(nid, "BASE_BUNDLE has a national-ID identifier");
+  nid!.value = "A01";
+  const bare = runRecordChecks(b, {}).issues.filter((i) => i.code === "identifier-format");
+  assert.deepEqual(bare.map((i) => i.severity), ["warning"]);
+  assert.match(bare[0].evidence, /no source_text/u);
+  const withSrc = runRecordChecks(b, { sourceText: BASE_RECORD }).issues.filter((i) => i.code === "identifier-format");
+  assert.deepEqual(withSrc.map((i) => i.severity), ["error"]);
+});
