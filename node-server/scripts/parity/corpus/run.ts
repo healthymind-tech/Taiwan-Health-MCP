@@ -23,7 +23,7 @@
  *   systemd-run --user --scope -q -p MemoryMax=3G -p CPUQuota=150% nice -n 10 \
  *     node --max-old-space-size=2500 --import tsx scripts/parity/corpus/run.ts [<corpus dir> (default ~/ref/parity_corpus)] \
  *       [--format evaluator|repro|dirs|jsonl] [--engine db|file] [--only id[,id]] [--json out.json] [--start n] [--count n] [--shard k/n]
- *       [--repro <dir>] [--repro-plan plan.json] [--limit n] [-v] [--package id#ver[,id#ver]] [--profile url]
+ *       [--repro <dir>] [--repro-plan plan.json] [--max-steps n (minimizer budget, default 250)] [--limit n] [-v] [--package id#ver[,id#ver]] [--profile url]
  *       [--raw-text]   (file engine: raw items validated from their text with InstanceValidator.validateText)
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -41,7 +41,7 @@ import { pickLoader, type CorpusItem } from "./loaders.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const opt = (k: string): string | null => (args.includes(k) ? args[args.indexOf(k) + 1] ?? null : null);
-const valued = new Set(["--format", "--only", "--json", "--repro", "--repro-plan", "--limit", "--package", "--profile", "--engine", "--start", "--count", "--shard"]);
+const valued = new Set(["--format", "--only", "--json", "--repro", "--repro-plan", "--limit", "--package", "--profile", "--engine", "--start", "--count", "--shard", "--max-steps"]);
 const positional = args.filter((a, i) => !a.startsWith("-") && !valued.has(args[i - 1] ?? ""));
 const dir = positional[0] ?? join(homedir(), "ref", "parity_corpus");
 const outFile = opt("--json") ?? join(HERE, "results.json");
@@ -211,7 +211,7 @@ async function main(): Promise<void> {
           }
         }
         for (const target of targets) {
-          const mm = await minimize(item.instance, target, (x) => ours(item, x), { maxSteps: 250 });
+          const mm = await minimize(item.instance, target, (x) => ours(item, x), { maxSteps: Number(opt("--max-steps") ?? 250) });
           if (!mm.reproduced) {
             r.flags.push(`repro-not-reproduced:${target.kind}`);
             continue;

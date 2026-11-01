@@ -51,12 +51,18 @@ function multisetDiff(a: ErrKey[], b: ErrKey[]): ErrKey[] {
 /** The TS area a bucket most likely belongs to (for dispatch; a heuristic over the class / Java id). */
 export function area(cls: string, msgid: string | null | undefined, msg: string): string {
   const id = String(msgid ?? "");
-  if (/^slice-|SLICE|Slice|_NotSlice|Profile_Minimum_SLICE/u.test(cls + " " + id) || /does not match any known slice|matching slice/u.test(msg)) return "slicing";
+  if (/^tool error /u.test(msg)) return "harness/tool-boundary";
+  if (/^slice-/u.test(cls) || /SLICE|_NotSlice/u.test(id) || /does not match any known slice|matching slice/u.test(msg)) return "slicing";
   if (/^constraint:/u.test(cls) || /^Constraint failed/u.test(msg)) return "fhirpath";
-  if (/^Bundle_|BUNDLE|^reachable$|^first-composition$/u.test(id + " " + cls) || /in the bundle|fullUrl|Bundle\.entry/u.test(msg) && /Can't find|fullUrl|entry/u.test(msg)) return "bundle";
-  if (/^Terminology_|TX_|^valueset$|^display$|^unknown-code$|^system-uri$|CodeSystem|ValueSet|UCUM|_DISPLAY_|DISPLAY/u.test(cls + " " + id) || /value set|code system|CodeSystem|Wrong Display/u.test(msg)) return "terminology";
-  if (/^Reference_REF_|target-type|^profile-match$/u.test(id + " " + cls) || /Unable to find a profile match|conform to|Profile reference/u.test(msg)) return "snapshot";
-  if (/^type$|^array$|^unrecognized$|^min-card$|^max-card$|^fixed$|^not-allowed$|XHTML|Xhtml|JSON|Error parsing|primitive|Primitive/u.test(cls + " " + id + " " + msg)) return "structure";
+  if (/^Bundle_|BUNDLE/u.test(id) || /^(?:reachable|first-composition|cant-find)$/u.test(cls)) return "bundle";
+  if (/^Terminology_|TX_|_DISPLAY_|UCUM/u.test(id) || /^(?:valueset|display|unknown-code|system-uri)$/u.test(cls) || /value set|code system|CodeSystem|Wrong Display/u.test(msg)) return "terminology";
+  if (/^Reference_REF_/u.test(id) || /^(?:target-type|profile-match)$/u.test(cls) || /Unable to find a profile match|Profile reference/u.test(msg)) return "snapshot";
+  if (
+    /^(?:type|array|unrecognized|min-card|max-card|fixed|not-allowed)$/u.test(cls) ||
+    /CONTAINED|RES_ID|DUPLICATE|Validation_VAL_Profile_M|TYPE_SPECIFIC|_DT_|XHTML|JSON/u.test(id) ||
+    /JSON|Array entries|Object must have some content|resource ?type|resourceType|cannot be parsed|does not appear to be a FHIR resource|contained resource|Duplicate ID|requires an id|XHTML|primitive|Extension\.url|must be an absolute URL/iu.test(msg)
+  )
+    return "structure";
   return "other";
 }
 
@@ -181,6 +187,34 @@ lines.push(
   "Keys are (normalised path, classify.errorClass) multisets of error/fatal issues; MCP content checks dropped. Acceptance: verdict differences 0, missing 0, extra rate < 0.1%.",
   "",
 );
+
+// verdict differences: which official classes the "official invalid, ours valid" items carry (and the reverse)
+const vd = new Map<string, { n: number; ex: string; trueMiss: number }>();
+const vr = new Map<string, { n: number; ex: string }>();
+for (const it of items) {
+  if (it.skip || !it.comparison) continue;
+  const off: ErrKey[] = it.officialErrors ?? [];
+  const ours: ErrKey[] = it.ourErrors ?? [];
+  const cf = !(it.flags ?? []).includes("not-checked-fully");
+  if (off.length && !ours.length)
+    for (const c of new Set(off.map((e) => `${it.ig} | ${e.cls.slice(0, 70)} | ${e.msgid ?? "(none)"} | ${it.family}`))) {
+      const v = vd.get(c) ?? { n: 0, ex: it.id, trueMiss: 0 };
+      v.n++;
+      if (cf) v.trueMiss++;
+      vd.set(c, v);
+    }
+  if (!off.length && ours.length)
+    for (const c of new Set(ours.map((e) => `${it.ig} | ${e.cls.slice(0, 70)} | ${it.family}`))) {
+      const v = vr.get(c) ?? { n: 0, ex: it.id };
+      v.n++;
+      vr.set(c, v);
+    }
+}
+lines.push("## Verdict differences: official invalid, ours valid — official classes carried (an item counts once per class)", "", "| IG | class | Java message_id | family | items | of which checked_fully | example |", "|---|---|---|---|---|---|---|");
+for (const [k2, v] of [...vd].sort((a, b) => b[1].n - a[1].n).slice(0, 40)) lines.push(`| ${k2} | ${v.n} | ${v.trueMiss} | \`${v.ex}\` |`);
+lines.push("", "## Verdict differences: official valid, ours invalid — our classes", "", "| IG | class | family | items | example |", "|---|---|---|---|---|");
+for (const [k2, v] of [...vr].sort((a, b) => b[1].n - a[1].n).slice(0, 30)) lines.push(`| ${k2} | ${v.n} | \`${v.ex}\` |`);
+lines.push("");
 
 const sorted = [...buckets.values()].sort((a, b) => b.count - a.count);
 const tableOf = (bs: Bucket[], title: string): void => {
