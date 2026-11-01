@@ -1399,6 +1399,16 @@ export class InstanceValidator {
         }
         return;
       }
+      if (profiles.length === 1 && !(await this.sdx(profiles[0]))) {
+        // Port of InstanceValidator.checkChildByDefinition (Validation_VAL_Unknown_Profile) + validateContains
+        // (Bundle_BUNDLE_Entry_NoProfile_EXPL, 7.0.1): the one type profile cannot be resolved — both errors, and the
+        // resource is not validated further
+        const ep = String(el.path || "");
+        const special = isContained ? "contained" : /\.entry\.resource$/.test(ep) ? "entry" : /\.response\.outcome$/.test(ep) ? "outcome" : /\.parameter\.resource$/.test(ep) ? "parameter" : "??";
+        issues.push({ severity: "error", path: item.path, code: "structure", message: `Unknown profile ${profiles[0]}`, unchecked: { kind: "profile", canonical: profiles[0] } });
+        issues.push({ severity: "error", path: item.path, code: "invalid", message: `Specified profile ${profiles[0]} not found for ${special} resource of type '${special}'` });
+        return;
+      }
       await this.validateResource(child, item.path, profiles, issues, depth);
       return;
     }
@@ -3291,7 +3301,7 @@ export class InstanceValidator {
       });
       return;
     }
-    if (candidates.some((c) => c.url === CORE + rt) || anyType) return;
+    if (anyType) return;
     if (target === rctx.resource || target === rctx.root) return;
     const tctx: ResourceCtx = {
       resource: target,
@@ -3300,10 +3310,24 @@ export class InstanceValidator {
       bundle: rctx.bundle,
       entry: this.entryFor(target, rctx, ref.startsWith("#")),
     };
+    // Port of InstanceValidator.checkReference (7.0.1): every target profile of the target's type is tried; none
+    // valid → Reference_REF_CantMatchChoice unless all are base (core) profiles; more than one valid →
+    // Reference_REF_MultipleMatches (warning, versioned urls sorted)
+    const good: SdIndex[] = [];
     for (const c of candidates) {
       const res = await this.conformance(tctx, c.url, `${item.path}.resolve()`, depth + 1);
-      if (isValid(res.filter((i) => !isParseIssue(i)))) return;
+      if (isValid(res.filter((i) => !isParseIssue(i)))) good.push(c);
     }
+    if (good.length > 1) {
+      issues.push({
+        severity: "warning",
+        path: item.path,
+        code: "structure",
+        message: `Found multiple matching profiles for ${ref} among choices: ${good.map((g) => this.versionedUrl(g)).sort().join(", ")}`,
+      });
+      return;
+    }
+    if (good.length === 1 || candidates.every((c) => c.url.startsWith(CORE))) return;
     issues.push({
       severity: "error",
       path: item.path,
