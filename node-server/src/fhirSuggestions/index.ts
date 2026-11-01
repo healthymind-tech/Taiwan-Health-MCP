@@ -10,6 +10,7 @@
  */
 
 import { attachInvariantExplanations } from "./invariants.js";
+import { attachRootCauses } from "./chains.js";
 import { suggestCanonical, type CanonicalContext } from "./canonicals.js";
 import { suggestAlternativeCoding, suggestBoundCoding, suggestCrossSystem, suggestMoveValue, type WalkOptions } from "./bindings.js";
 import { codingContext, LIST_ALL_VS, parseBindingValueSet, suggestBinding, suggestDisplay, suggestUnknownCode, type Budget } from "./codes.js";
@@ -213,4 +214,6 @@ export async function attachSuggestions(
   if (isObject(root) && root.resourceType === "Bundle") await attachBundleTypeSuggestions(issues, root, deps); // document / message without its head resource (bundleType.ts)
   // ISSUES_v16.2 R3: which part of a failed profile invariant is missing (invariants.ts).
   if (isObject(root)) await attachInvariantExplanations(issues, root, deps);
+  // release v1: entry-slice cascades get caused_by, every chain its root_causes (chains.ts).
+  if (isObject(root)) attachRootCauses(issues, root);
 }

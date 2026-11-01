@@ -7,6 +7,7 @@
 import { query } from "../db.js";
 import type { PackageRow } from "../fhirIg.js";
 import * as terminology from "../fhirTerminology.js";
+import { findConcept } from "../fhirCodeSystem.js";
 import { InstanceValidator, type ValidatorResolver } from "../fhirValidator.js";
 import type { NormalizeCandidate, SuggestionDeps } from "./types.js";
 
@@ -107,6 +108,7 @@ export function dedupedDeps(deps: SuggestionDeps): SuggestionDeps {
     expandValueSet: once("expand", deps.expandValueSet?.bind(deps)),
     normalize: once("normalize", deps.normalize?.bind(deps)),
     nearCodes: once("near", deps.nearCodes?.bind(deps)),
+    displayOf: once("display", deps.displayOf?.bind(deps)),
     canonicalsUnder: once("canonicals", deps.canonicalsUnder?.bind(deps)),
     validateAgainst: once("validate", deps.validateAgainst?.bind(deps)),
     resourceElementPaths: once("paths", deps.resourceElementPaths?.bind(deps)),
@@ -151,6 +153,10 @@ export function dbSuggestionDeps(pkg: PackageRow, resolver: ValidatorResolver, h
         }
       : undefined,
     nearCodes: hooks.nearCodes,
+    displayOf: async (system: string, code: string) => {
+      const idx = await terminology.loadCodeSystemIndex(system, pkg);
+      return (idx && findConcept(idx, code)?.display) ?? null;
+    },
     relatedCodes: hooks.relatedCodes,
     codeAlternatives: hooks.codeAlternatives,
     implicitProfiles: hooks.implicitProfiles,

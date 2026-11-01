@@ -10,11 +10,11 @@
  */
 
 import { evaluateConstraint, fhirPathBase, type FhirPathEnv } from "../fhirPath.js";
-import type { SuggestionDeps } from "./types.js";
+import type { Suggestion, SuggestionDeps } from "./types.js";
 import { nodeAt } from "./util.js";
 
 const RE_CONSTRAINT = /^Constraint failed: ([^:]+): /;
-const MAX_ISSUES = 20;
+const MAX_ISSUES = 50;
 const TERM_LEN = 160;
 
 export interface InvariantPart {
@@ -33,6 +33,11 @@ export interface InvariantPart {
 
 export interface InvariantInfo {
   key: string;
+  /** The invariant's FHIRPath expression and human text, as the profile defines them (release v1). */
+  expression?: string;
+  human?: string;
+  /** Literal values the expression requires (systems / codes / other `= 'x'` values / `matches()` formats). */
+  literals?: InvariantLiterals;
   /** `all` = every listed part must hold; `one_of` = at least one of them. */
   need: "all" | "one_of";
   /** The guard that made the rule apply (`guard implies …`), when there is one. */
@@ -196,6 +201,117 @@ export function explainInvariant(key: string, expression: string, node: unknown,
   return { key, need, ...(because ? { applies_because: because } : {}), failed, hint: clip(hint, 600) };
 }
 
+export interface InvariantLiterals {
+  systems?: string[];
+  codes?: Array<{ code: string; system?: string; display?: string }>;
+  values?: Array<{ path: string; value: string }>;
+  formats?: string[];
+}
+
+const uniq = <T,>(xs: T[]): T[] => [...new Set(xs)];
+
+/**
+ * The literal values an invariant names (`system = 'S'`, `code = 'C'`, `x = 'v'`, `matches('re')`): what an instance
+ * must contain to satisfy it. A code is paired with the system tested in the same where(...) group when there is one.
+ */
+export function literalsOf(expression: string): InvariantLiterals {
+  const out: InvariantLiterals = {};
+  const systems = uniq([...expression.matchAll(/\bsystem\s*=\s*'([^']+)'/gu)].map((m) => m[1]));
+  if (systems.length) out.systems = systems;
+  const codes: Array<{ code: string; system?: string }> = [];
+  for (const m of expression.matchAll(/\bcode\s*=\s*'([^']+)'/gu)) {
+    // the nearest preceding system literal in the same group (no closing `)` that leaves the group in between)
+    const before = expression.slice(0, m.index);
+    const sm = [...before.matchAll(/\bsystem\s*=\s*'([^']+)'/gu)].pop();
+    let system: string | undefined;
+    if (sm && sm.index !== undefined) {
+      const between = before.slice(sm.index);
+      let depth = 0;
+      for (const ch of between) depth += ch === "(" ? 1 : ch === ")" ? -1 : 0;
+      if (depth >= 0) system = sm[1];
+    }
+    if (!codes.some((c) => c.code === m[1] && c.system === system)) codes.push({ code: m[1], ...(system ? { system } : {}) });
+  }
+  if (codes.length) out.codes = codes;
+  const values = [...expression.matchAll(/([A-Za-z][\w.]*)\s*=\s*'([^']*)'/gu)]
+    .filter((m) => !/(?:^|\.)(?:system|code)$/u.test(m[1]))
+    .map((m) => ({ path: m[1], value: m[2] }));
+  if (values.length) out.values = values.filter((v, i) => values.findIndex((w) => w.path === v.path && w.value === v.value) === i);
+  const formats = uniq([...expression.matchAll(/matches\('((?:[^'\\]|\\.)*)'\)/gu)].map((m) => m[1]));
+  if (formats.length) out.formats = formats;
+  return out;
+}
+
+/** Codings under `node` (instance path `path`) with their paths. */
+function codingsUnder(node: unknown, path: string, out: Array<{ path: string; coding: Record<string, any> }> = [], depth = 0): Array<{ path: string; coding: Record<string, any> }> {
+  if (depth > 8 || out.length > 200) return out;
+  if (Array.isArray(node)) node.forEach((n, i) => codingsUnder(n, `${path}[${i}]`, out, depth + 1));
+  else if (isObj(node)) {
+    if (typeof node.code === "string" && (typeof node.system === "string" || "display" in node)) out.push({ path, coding: node });
+    for (const [k, v] of Object.entries(node)) if (k !== "extension" && typeof v === "object" && v !== null) codingsUnder(v, `${path}.${k}`, out, depth + 1);
+  }
+  return out;
+}
+
+/**
+ * Patches from the invariant's literals: a coding of the system the rule tests whose code is not one the rule
+ * accepts → replace its code by each accepted code (several: one suggestion each, the code's display saying when it
+ * applies); an accepted code under another system → replace the system. Never invents a coding the instance lacks.
+ */
+const STOP = new Set(["the", "and", "for", "with", "where", "number", "identifier", "code", "type", "card", "table"]);
+const words = (t: string | null | undefined): Set<string> => new Set(String(t ?? "").toLowerCase().split(/[^a-z0-9\u4e00-\u9fff]+/u).filter((w) => w.length > 2 && !STOP.has(w)));
+
+/**
+ * Patches from the invariant's literals: a coding of the system the rule tests whose code is not one the rule
+ * accepts → replace its code by an accepted code; an accepted code under another system → replace the system. Never
+ * invents a coding the instance lacks. When several codings could be changed, only those whose current code means
+ * something like an accepted code (shared words of the displays — e.g. NI "National unique individual identifier" vs
+ * NNxxx "National Person Identifier …") are proposed; each of their candidates says which situation it is for.
+ */
+export async function literalSuggestions(
+  key: string,
+  lits: InvariantLiterals,
+  node: unknown,
+  path: string,
+  displayOf?: (system: string, code: string) => Promise<string | null>,
+): Promise<Suggestion[]> {
+  const codes = lits.codes ?? [];
+  if (!codes.length) return [];
+  const targets: Array<{ p: string; sys: string | undefined; cands: Array<{ c: (typeof codes)[number]; score: number }> }> = [];
+  const out: Suggestion[] = [];
+  for (const { path: p, coding } of codingsUnder(node, path)) {
+    const sys = typeof coding.system === "string" ? coding.system : undefined;
+    if (codes.some((c) => c.code === coding.code && (!c.system || c.system === sys))) continue;
+    const forSystem = codes.filter((c) => c.system && c.system === sys);
+    if (forSystem.length) {
+      const mine = words(typeof coding.display === "string" ? coding.display : sys && displayOf ? await displayOf(sys, String(coding.code)).catch(() => null) : null);
+      const cands = forSystem.map((c) => ({ c, score: [...words(c.display)].filter((w) => mine.has(w)).length }));
+      targets.push({ p, sys, cands });
+      continue;
+    }
+    const sameCode = codes.filter((c) => c.code === coding.code && c.system);
+    if (sameCode.length === 1)
+      out.push({ value: sameCode[0].system!, kind: "replace_system", confidence: 0.6, reason: `invariant ${key} tests code ${coding.code} with system ${sameCode[0].system}`, patch: { op: "replace", path: `${p}.system`, value: sameCode[0].system } });
+  }
+  const best = Math.max(0, ...targets.map((t) => Math.max(...t.cands.map((x) => x.score))));
+  for (const t of targets) {
+    if (best > 0 && Math.max(...t.cands.map((x) => x.score)) < best) continue; // another coding is the one the rule is about
+    const ranked = [...t.cands].sort((a, b) => b.score - a.score);
+    ranked.forEach(({ c }, i) =>
+      out.push({
+        value: c.code,
+        kind: "replace_code",
+        confidence: Math.round(Math.max(0.3, (best > 0 ? 0.75 : 0.55) - i * 0.1) * 100) / 100,
+        reason: `invariant ${key} accepts ${t.sys}#${c.code}${c.display ? ` (${c.display})` : ""}${ranked.length > 1 ? `; alternatives: ${ranked.filter((x) => x.c !== c).map((x) => `${x.c.code}${x.c.display ? ` = ${x.c.display}` : ""}`).join("; ")} — use the one that matches the record's value` : ""}`,
+        ...(t.sys ? { system: t.sys } : {}),
+        ...(c.display ? { display: c.display } : {}),
+        patch: { op: "replace", path: `${t.p}.code`, value: c.code },
+      }),
+    );
+  }
+  return out.slice(0, 8);
+}
+
 /** Instance path → element path of the resource (`Bundle.entry[0].resource.diagnosis[1]` → `Claim.diagnosis`). */
 function elementPathOf(root: Record<string, any>, path: string): string {
   const m = /^Bundle\.entry\[(\d+)\]\.resource(.*)$/.exec(path);
@@ -210,6 +326,7 @@ async function explainItem(
   profile: string,
   root: Record<string, any>,
   sdOf: (url: string) => Promise<Record<string, any> | null>,
+  lookupDisplay?: (system: string, code: string) => Promise<string | null>,
 ): Promise<InvariantInfo | null> {
   const m = RE_CONSTRAINT.exec(String(item.message || ""));
   if (!m || m[1] === "ele-1") return null;
@@ -227,7 +344,29 @@ async function explainItem(
   if (node === undefined) return null;
   const types = (el.type || []).map((t: any) => String(t.code));
   const base = fhirPathBase(String(el.path || sd?.type || ""), types.length === 1 ? types[0] : null);
-  return explainInvariant(m[1], String(c.expression), node, base, { resource: containingResource(root, path), rootResource: root });
+  const expression = String(c.expression);
+  const info: InvariantInfo = explainInvariant(m[1], expression, node, base, { resource: containingResource(root, path), rootResource: root }) ?? { key: m[1], need: "all", failed: [], hint: "" };
+  // release v1: the expression itself and the literal values it requires — the official message only restates the
+  // (often non-English) human text, so the caller can see which system / code / format the rule wants
+  info.expression = clip(expression, 1200);
+  if (typeof c.human === "string") info.human = clip(c.human, 400);
+  const lits = literalsOf(expression);
+  if (lits.codes?.length && lookupDisplay) {
+    for (const code of lits.codes) {
+      if (!code.system) continue;
+      const d = await lookupDisplay(code.system, code.code).catch(() => null);
+      if (d) code.display = d;
+    }
+  }
+  if (Object.keys(lits).length) info.literals = lits;
+  const accepted = lits.codes?.length
+    ? `accepted: ${lits.codes.map((x) => `${x.system ? `${x.system}#` : ""}${x.code}${x.display ? ` (${x.display})` : ""}`).join(" | ")}`
+    : "";
+  const fmt = lits.formats?.length ? `format: ${lits.formats.join(" | ")}` : "";
+  info.hint = clip([info.hint, accepted, fmt, `rule: ${clip(expression, 300)}`].filter(Boolean).join("; "), 900);
+  const sugg = await literalSuggestions(m[1], lits, node, path, lookupDisplay);
+  if (sugg.length) (info as InvariantInfo & { _suggestions?: Suggestion[] })._suggestions = sugg;
+  return info;
 }
 
 /**
@@ -242,24 +381,37 @@ export async function attachInvariantExplanations(issues: Array<Record<string, a
     if (!sds.has(url)) sds.set(url, await deps.fetchStructureDefinition(url).catch(() => null));
     return sds.get(url) ?? null;
   };
-  const explain = async (item: Record<string, any>, profile: unknown): Promise<void> => {
+  // a code's display (when the system is held locally), naming the situation each accepted code is for
+  const lookupDisplay = async (system: string, code: string): Promise<string | null> =>
+    (deps.displayOf ? await deps.displayOf(system, code).catch(() => null) : null) ??
+    (deps.nearCodes ? ((await deps.nearCodes(system, code, 5).catch(() => [])).find((x) => x.code === code)?.display ?? null) : null);
+  const explain = async (item: Record<string, any>, profile: unknown, top: boolean): Promise<void> => {
     if (n >= MAX_ISSUES || item.invariant || typeof profile !== "string" || !RE_CONSTRAINT.test(String(item.message || ""))) return;
     n++;
     try {
-      const info = await explainItem(item, profile, root, sdOf);
-      if (info) item.invariant = info;
+      const info = await explainItem(item, profile, root, sdOf, lookupDisplay);
+      if (!info) return;
+      const sugg = (info as InvariantInfo & { _suggestions?: Suggestion[] })._suggestions;
+      delete (info as InvariantInfo & { _suggestions?: Suggestion[] })._suggestions;
+      item.invariant = info;
+      if (top && sugg?.length) item.suggestions = [...(Array.isArray(item.suggestions) ? item.suggestions : []), ...sugg];
     } catch {
       // fail-open
     }
   };
   for (const issue of issues) {
     if (!isObj(issue)) continue;
-    if (issue.code === "invariant" && typeof issue.element === "string") await explain(issue, issue.profile);
+    if (issue.code === "invariant" && typeof issue.element === "string") await explain(issue, issue.profile, true);
+    else if (RE_CONSTRAINT.test(String(issue.message || ""))) {
+      // the official validator's form: no element id, the profile named in the message (`(defined in <url>)`)
+      const defined = /\(defined in (\S+?)\)\s*$/u.exec(String(issue.message))?.[1] ?? (typeof issue.profile === "string" ? issue.profile : undefined);
+      await explain(issue, defined, true);
+    }
     for (const f of ["slice_match", "profile_match"] as const) {
       const info = issue[f];
       if (!isObj(info) || !Array.isArray(info.blocking)) continue;
       const profile = info.closest?.profile;
-      for (const b of info.blocking) if (isObj(b)) await explain(b, profile);
+      for (const b of info.blocking) if (isObj(b)) await explain(b, profile, false);
     }
   }
 }

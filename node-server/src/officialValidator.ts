@@ -30,6 +30,8 @@ export type OfficialMode = "off" | "prefer" | "require";
 export interface OfficialIssue {
   severity: string;
   path: string;
+  /** the path exactly as validator_cli wrote it, when it carried a Type/id comment */
+  official_path?: string;
   code: string;
   message: string;
   message_id?: string;
@@ -64,9 +66,13 @@ export function issuesFromOutcome(oo: unknown): OfficialIssue[] {
     const ext: any[] = Array.isArray(i.extension) ? i.extension : [];
     const id = ext.find((x) => typeof x?.url === "string" && x.url.endsWith("operationoutcome-message-id"))?.valueCode;
     const path = (Array.isArray(i.expression) && i.expression[0]) || (Array.isArray(i.location) && i.location[0]) || "";
+    // validator_cli writes the resource's type / id into the path as a FHIRPath comment (`entry[1].resource/*Patient/x*/`);
+    // MCP paths carry none, so prefix matching (per-entry split, caused_by, invariants, slices) works on the plain path
+    const plain = String(path).replace(/\/\*[^*]*\*\//gu, "");
     out.push({
       severity: String(i.severity ?? "error"),
-      path: String(path),
+      path: plain,
+      ...(plain !== String(path) ? { official_path: String(path) } : {}),
       code: String(i.code ?? "invalid"),
       message: String(i.details?.text ?? i.diagnostics ?? ""),
       ...(typeof id === "string" ? { message_id: id } : {}),

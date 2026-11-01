@@ -141,6 +141,8 @@ export interface SuggestionDeps {
   expandValueSet?(url: string, limit: number): Promise<{ codings: ExpandedCoding[]; total: number; truncated: boolean } | null>;
   /** Free text → codes of a system or ValueSet (fhir_normalize_code). */
   normalize?(text: string, target: { system?: string; valueSet?: string }, limit: number): Promise<NormalizeCandidate[]>;
+  /** The display of a code in a CodeSystem held in the package closure (null = unknown). */
+  displayOf?(system: string, code: string): Promise<string | null>;
   /** Existing codes that look like `code` in an IG CodeSystem. */
   nearCodes?(system: string, code: string, limit: number): Promise<Array<{ code: string; display: string | null }>>;
   /** Canonical URLs of the given resource types that start with `prefix` (package closure). */
