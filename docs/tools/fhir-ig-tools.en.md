@@ -193,8 +193,13 @@ Production runs one resident official validator_cli 7.0.1 per main IG (TW Core 1
 | `data.source` | `hl7-validator_cli-7.0.1` (official) or `builtin` |
 | `data.engine` | `hl7-official`; `mcp-fallback` while the official service is unavailable, with a warning that the result comes from the built-in validator and may differ from validator_cli |
 | issue `message_id` | the official message id (e.g. `Unrecognized_property`) |
+| `data.official_verdict` | `true`: the complete official verdict; `false`: a fallback, or codes that could not be verified |
+| `data.checked_fully` | always `false` for a fallback (`mcp-fallback`) or with `unverified` items |
+| `data.fallback_reason` | why it fell back (e.g. the official service did not answer within 120 s) |
+| `data.unverified` | items the terminology server could not check this time (timeout, unreachable) — **not verified**; not errors and not part of `valid`, but the result is incomplete: validate again later |
+| issue `location_path` | validator_cli names the wrong entry (index one too high) in `isn't reachable` / `Can't find … in the bundle`; MCP finds the element through the quoted fullUrl / reference, and `pointer` and the entry the issue belongs to follow it (the official `path` is kept) |
 
-`OFFICIAL_VALIDATOR_MODE`: `prefer` (default; falls back to the built-in validator when the official one is unavailable), `require` (no fallback: an error "could not be validated"), `off`. IGs without a resident validator are still judged by the built-in validator, with unchanged output (no `engine` field). Terminology is judged by tx.fhir.org by default (codes and displays only, no patient data).
+The official HTTP service handles one request at a time: MCP sends one at a time per validator (queueing on its side) and falls back, saying why, when no answer comes within 120 s of sending. validator_cli keeps terminology-server failures in its in-memory cache; MCP restarts that validator when it sees one (at most every 10 minutes) to clear it. `OFFICIAL_VALIDATOR_MODE`: `prefer` (default; falls back to the built-in validator when the official one is unavailable), `require` (no fallback: an error "could not be validated"), `off`. IGs without a resident validator are still judged by the built-in validator, with unchanged output (no `engine` field). Terminology is judged by tx.fhir.org by default (codes and displays only, no patient data).
 
 ### Auto-fix, ambiguous and "no new errors" (v19 R1) {#auto-fix}
 

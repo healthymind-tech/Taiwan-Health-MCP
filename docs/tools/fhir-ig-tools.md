@@ -193,8 +193,13 @@
 | `data.source` | `hl7-validator_cli-7.0.1`（官方）或 `builtin`（內建） |
 | `data.engine` | `hl7-official`；官方服務暫時不可用時為 `mcp-fallback`，並附一筆 warning 說明結果來自內建驗證器、可能與 validator_cli 不同 |
 | issue `message_id` | 官方的訊息 id（例如 `Unrecognized_property`） |
+| `data.official_verdict` | `true`：結果是官方的完整判定；`false`：降級或有無法驗證的代碼 |
+| `data.checked_fully` | 降級（`mcp-fallback`）或有 `unverified` 時一律 `false` |
+| `data.fallback_reason` | 降級原因（例如官方服務在 120 秒內沒有回應） |
+| `data.unverified` | 術語伺服器暫時失敗（逾時、無法連線）而**無法驗證**的項目；不算 error，也不影響 `valid`，但結果不完整，請稍後重驗 |
+| issue `location_path` | validator_cli 的 `isn't reachable` / `Can't find … in the bundle` 訊息路徑的 entry 索引有誤（多 1）；MCP 依訊息中的 fullUrl / reference 反查實際元素，`pointer` 與 entry 歸屬依此（官方 `path` 保留原樣） |
 
-`OFFICIAL_VALIDATOR_MODE`：`prefer`（預設，官方不可用時降級為內建）、`require`（不降級：官方不可用時回 error「無法驗證」）、`off`。沒有常駐服務的 IG 仍由內建驗證器判定，輸出不變（沒有 `engine` 欄位）。術語預設由 tx.fhir.org 判定（只送代碼與 display，不含病人資料）。
+官方 HTTP 服務一次處理一個請求，MCP 對每個 validator 一次只送一個（排隊在 MCP 端），送出後 120 秒內沒有回應就降級並說明。術語伺服器的暫時失敗會被 validator_cli 留在記憶體快取中，MCP 偵測到時會重啟該 validator（最多每 10 分鐘一次）以清除。`OFFICIAL_VALIDATOR_MODE`：`prefer`（預設，官方不可用時降級為內建）、`require`（不降級：官方不可用時回 error「無法驗證」）、`off`。沒有常駐服務的 IG 仍由內建驗證器判定，輸出不變（沒有 `engine` 欄位）。術語預設由 tx.fhir.org 判定（只送代碼與 display，不含病人資料）。
 
 ### 自動修正、ambiguous 與「不新增錯誤」（v19 R1）{#auto-fix}
 
