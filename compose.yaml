@@ -195,6 +195,20 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      # v18 R1: take traffic only after the official validators are warm (required: false — app still starts when a
+      # validator is absent; it then falls back and says so)
+      hl7-validator-twcore:
+        condition: service_healthy
+        required: false
+      hl7-validator-pas:
+        condition: service_healthy
+        required: false
+      hl7-validator-ips:
+        condition: service_healthy
+        required: false
+      hl7-validator-empd:
+        condition: service_healthy
+        required: false
     restart: unless-stopped
 
   minio-init:
@@ -332,11 +346,11 @@ services:
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      # any HTTP answer means up (bash: the image's sh has no /dev/tcp)
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      # ready = warm-up done (entrypoint.sh) and the port answers (bash: the image's sh has no /dev/tcp)
+      test: ["CMD", "bash", "-c", "test -f /tmp/validator-ready && exec 3<>/dev/tcp/127.0.0.1/8080"]
       interval: 30s
       timeout: 5s
-      start_period: 240s
+      start_period: 900s
       retries: 3
 
   hl7-validator-pas:

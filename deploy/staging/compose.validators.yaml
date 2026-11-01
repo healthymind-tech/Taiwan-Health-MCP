@@ -18,11 +18,11 @@ x-validator: &validator
   security_opt:
     - no-new-privileges:true
   healthcheck:
-    # any HTTP answer means up (bash: the image's sh has no /dev/tcp)
-    test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+    # ready = warm-up done (entrypoint.sh) and the port answers (bash: the image's sh has no /dev/tcp)
+    test: ["CMD", "bash", "-c", "test -f /tmp/validator-ready && exec 3<>/dev/tcp/127.0.0.1/8080"]
     interval: 30s
     timeout: 5s
-    start_period: 240s
+    start_period: 900s
     retries: 3
 
 services:
@@ -39,6 +39,11 @@ services:
     <<: *validator
     environment: { VALIDATOR_IG: "tw.gov.mohw.nhi.empd#0.2.1", JAVA_XMX: 2400m }
   app:
+    depends_on:
+      hl7-validator-twcore: { condition: service_healthy, required: false }
+      hl7-validator-pas: { condition: service_healthy, required: false }
+      hl7-validator-ips: { condition: service_healthy, required: false }
+      hl7-validator-empd: { condition: service_healthy, required: false }
     environment:
       OFFICIAL_VALIDATOR_URLS: "tw.gov.mohw.twcore#1.0.0=http://hl7-validator-twcore:8080,tw.gov.mohw.nhi.pas#1.2.7=http://hl7-validator-pas:8080,hl7.fhir.uv.ips#1.1.0=http://hl7-validator-ips:8080,tw.gov.mohw.nhi.empd#0.2.1=http://hl7-validator-empd:8080"
       OFFICIAL_VALIDATOR_MODE: prefer
