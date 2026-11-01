@@ -2057,6 +2057,11 @@ export class SnapshotGenerator {
     const tps: string[] = (td.targetProfile || []).map(String);
     if (tps.includes(url)) return true;
     if (url.includes("|") && tps.includes(url.slice(0, url.indexOf("|")))) return true;
+    // CoreVersionPinner.pinCoreVersions (services/utilities/CoreVersionPinner.java:17-101, run by finishLoading) pins the
+    // core baseDefinition / targetProfile canonicals of loaded packages to |version, so a published
+    // `Encounter|4.0.1` target and an unversioned `Encounter` baseDefinition compare equal in the HL7 context
+    const bare = url.split("|")[0];
+    if (tps.some((t) => t.split("|")[0] === bare)) return true;
     if (seen.has(url)) return false;
     seen.add(url);
     const sd = this.opts.fetch(url);
