@@ -23,7 +23,8 @@
  *   systemd-run --user --scope -q -p MemoryMax=3G -p CPUQuota=150% nice -n 10 \
  *     node --max-old-space-size=2500 --import tsx scripts/parity/corpus/run.ts [<corpus dir> (default ~/ref/parity_corpus)] \
  *       [--format evaluator|repro|dirs|jsonl] [--engine db|file] [--only id[,id]] [--json out.json] [--start n] [--count n] [--shard k/n]
- *       [--repro <dir>] [--repro-plan plan.json] [--max-steps n (minimizer budget, default 250)] [--limit n] [-v] [--package id#ver[,id#ver]] [--profile url]
+ *       [--repro <dir>] [--repro-plan plan.json] [--max-steps n (minimizer budget, default 250)]
+ *       [--timeout-ms n (per item, default 180000)] [--exclude-from done.json[,…]] [--crash-only] [--limit n] [-v] [--package id#ver[,id#ver]] [--profile url]
  *       [--raw-text]   (file engine: raw items validated from their text with InstanceValidator.validateText)
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -41,7 +42,7 @@ import { pickLoader, type CorpusItem } from "./loaders.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const opt = (k: string): string | null => (args.includes(k) ? args[args.indexOf(k) + 1] ?? null : null);
-const valued = new Set(["--format", "--only", "--json", "--repro", "--repro-plan", "--limit", "--package", "--profile", "--engine", "--start", "--count", "--shard", "--max-steps"]);
+const valued = new Set(["--format", "--only", "--json", "--repro", "--repro-plan", "--limit", "--package", "--profile", "--engine", "--start", "--count", "--shard", "--max-steps", "--timeout-ms", "--exclude-from"]);
 const positional = args.filter((a, i) => !a.startsWith("-") && !valued.has(args[i - 1] ?? ""));
 const dir = positional[0] ?? join(homedir(), "ref", "parity_corpus");
 const outFile = opt("--json") ?? join(HERE, "results.json");
@@ -146,6 +147,8 @@ interface ItemResult {
   raw?: string;
   status: "pass" | "fail" | "crash" | "skipped";
   skip?: "official-crash" | "raw-unparseable";
+  /** validator_cli crashed on this item (manifest status official_crash); our result is still recorded. */
+  officialCrash?: boolean;
   comparison?: Comparison;
   /** Official / our error-level issues (content checks dropped), as (normalised path, class, message[, Java id]). */
   officialErrors?: ErrKey[];
@@ -154,6 +157,18 @@ interface ItemResult {
   error?: string;
   repro?: string[];
 }
+
+/** per-item validation timeout (an item that times out is a harness "crash" — a FAIL for official-crash items). */
+const timeoutMs = Number(opt("--timeout-ms") ?? 180_000);
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let t: NodeJS.Timeout | undefined;
+  return Promise.race([p, new Promise<T>((_, rej) => (t = setTimeout(() => rej(new Error(`timeout after ${ms} ms`)), ms)))]).finally(() => clearTimeout(t));
+}
+/** --exclude-from a.json[,b.json]: skip ids already compared there (resume / add new corpus items only). */
+const excluded = new Set<string>(
+  (opt("--exclude-from")?.split(",").filter(Boolean) ?? []).flatMap((f) => ((JSON.parse(readFileSync(f, "utf8")) as Res).results as Res[]).filter((x) => x.comparison || x.skip === "raw-unparseable").map((x) => String(x.id))),
+);
+const crashOnly = args.includes("--crash-only");
 
 const keyOf = (i: SimpleIssue): ErrKey => ({ path: normPath(i.path), cls: errorClass(normMessage(i.message)), msg: normMessage(i.message), ...(i.messageId !== undefined ? { msgid: i.messageId } : {}) });
 
@@ -175,6 +190,7 @@ async function main(): Promise<void> {
     idx++;
     if (idx < start || idx >= start + count || idx % shardN !== shardK) continue;
     if (only && !only.includes(item.id)) continue;
+    if (excluded.has(item.id) || (crashOnly && !item.officialCrash)) continue;
     if (n++ >= limit) break;
     if (!item.packages.length) item.packages = defaultPackages;
     if (!item.profile && defaultProfile) item.profile = defaultProfile;
@@ -182,16 +198,16 @@ async function main(): Promise<void> {
     const r: ItemResult = { id: item.id, source: item.source, status: "fail", flags: [], ...(m.ig ? { ig: m.ig, kind: m.kind, family: m.family, mutation: m.mutation } : {}), ...(item.raw ? { raw: item.raw.parse } : {}) };
     const official = item.official.filter((i) => !isContentCheck(i));
     r.officialErrors = official.filter(isError).map(keyOf);
-    if (item.officialCrash) {
-      r.status = "skipped";
-      r.skip = "official-crash";
-    } else if (!item.instance && !(rawText && item.raw?.text !== undefined)) {
+    // evaluator rule: validator_cli threw on these — TS must answer with >= 1 error (no throw / timeout); validated,
+    // marked officialCrash, scored apart by report.ts
+    if (item.officialCrash) r.officialCrash = true;
+    if (!item.instance && !(rawText && item.raw?.text !== undefined)) {
       r.status = "skipped";
       r.skip = "raw-unparseable";
       if (item.raw?.error) r.error = item.raw.error;
     } else {
       try {
-        const v = await validate(item, item.instance);
+        const v = await withTimeout(validate(item, item.instance), timeoutMs);
         r.flags.push(...v.flags);
         const issues = v.issues.filter((i) => !isContentCheck(i));
         r.ourErrors = issues.filter(isError).map(keyOf);
@@ -246,7 +262,7 @@ async function main(): Promise<void> {
   const tot = done.length;
   const cnt = (f: (r: ItemResult) => boolean): string => `${done.filter(f).length}/${tot}`;
   console.log(
-    `items ${results.length} (compared ${tot}, skipped official-crash ${results.filter((r) => r.skip === "official-crash").length}, raw-unparseable ${results.filter((r) => r.skip === "raw-unparseable").length}): ` +
+    `items ${results.length} (compared ${tot}, official-crash ${results.filter((r) => r.officialCrash).length}, raw-unparseable ${results.filter((r) => r.skip === "raw-unparseable").length}): ` +
       `strict ${cnt((r) => !!r.comparison?.strict)}, lenient ${cnt((r) => !!r.comparison?.lenient)}, class ${cnt((r) => !!r.comparison?.class)}, count ${cnt((r) => !!r.comparison?.count)}, crash ${results.filter((r) => r.status === "crash").length}`,
   );
   const cls = (k: string): string => errorClass(k.split(" | ").slice(1).join(" | "));
