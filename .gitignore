@@ -55,3 +55,7 @@ next-env.d.ts
 # generated from its reference implementation) stay local. Tests that need them skip when absent.
 /mcp_proposal/
 node-server/src/grounding/__fixtures__/private/
+
+# parity harness per-run output (scripts/parity/testcases/run.ts, corpus runner)
+node-server/scripts/parity/testcases/results.json
+node-server/scripts/parity/corpus/results.json
