@@ -34,7 +34,7 @@
  * through the injected `ValidatorResolver`.
  */
 
-import { evaluateConstraint, fhirPathBase, primitiveValueAlias, type FhirPathEnv } from "./fhirPath.js";
+import { evaluateConstraint, fhirPathBase, invariantExpression, primitiveValueAlias, type FhirPathEnv } from "./fhirPath.js";
 import { fixedPattern } from "./fhirSnapshot.js";
 import { pushAll } from "./arrayUtils.js";
 import { UCUM_SYSTEM, checkUcumCode, ucumUnknownCodeMessage } from "./fhirUcum.js";
@@ -3251,7 +3251,9 @@ export class InstanceValidator {
     const base = fhirPathBase(String(el.path || sdx.type), typeCode);
     for (const c of constraints) {
       if (!c.expression || c.key === "ele-1") continue;
-      const expr = isPrimitive(typeCode) ? primitiveValueAlias(String(c.expression)) : String(c.expression);
+      // InstanceValidator.checkInvariant evaluates FHIRPathExpressionFixer.fixExpr(expression, key)
+      const fixed = invariantExpression(String(c.expression), c.key);
+      const expr = isPrimitive(typeCode) ? primitiveValueAlias(fixed) : fixed;
       const outcome = evaluateConstraint(item.value, base, expr, env);
       if (outcome.status === "pass") continue;
       const bestPractice = (c.extension || []).some((e: any) => e.url === BEST_PRACTICE_EXT && e.valueBoolean === true);

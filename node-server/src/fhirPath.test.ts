@@ -1,6 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateConstraint, fhirPathBase, narrativeHtmlOk, primitiveValueAlias, type FhirPathEnv } from "./fhirPath.js";
+import {
+  evaluateConstraint,
+  evaluateExpression,
+  fhirPathBase,
+  fixInvariantExpression,
+  invariantExpression,
+  narrativeHasContent,
+  narrativeHtmlOk,
+  primitiveValueAlias,
+  type FhirPathEnv,
+} from "./fhirPath.js";
 
 const env = (resource: Record<string, any>, extra: Partial<FhirPathEnv> = {}): FhirPathEnv => ({ resource, rootResource: resource, ...extra });
 
@@ -49,20 +59,82 @@ test("resolve() uses the supplied resolver; is() works on the result", () => {
   assert.deepEqual(evaluateConstraint(prov.agent[0], "Provenance.agent", "who.resolve().name.text = 'Dr'", e), { status: "pass" });
 });
 
-test("%resource / %rootResource and lenient as() (dom-3)", () => {
+// dom-3 goes through invariantExpression(): Java's checkInvariant never evaluates it (InstanceValidator.java 7.0.1
+// l. 8868-8872, enforced in code by checkContainedReferences) and Java's as() rejects a collection
+// (FHIRPathEngine.funcAs l. 5597, FHIRPATH_AS_COLLECTION), so the published expression is evaluated with ofType().
+test("%resource / %rootResource and dom-3 (as() read as ofType())", () => {
   const dom3 =
     "contained.where((('#'+id in (%resource.descendants().reference | %resource.descendants().as(canonical) | %resource.descendants().as(uri) | %resource.descendants().as(url))) or descendants().where(reference = '#').exists() or descendants().where(as(canonical) = '#').exists() or descendants().where(as(canonical) = '#').exists()).not()).trace('unmatched', id).empty()";
   const ok = { resourceType: "Patient", contained: [{ resourceType: "Organization", id: "o1" }], managingOrganization: { reference: "#o1" } };
-  assert.deepEqual(evaluateConstraint(ok, "Patient", dom3, env(ok)), { status: "pass" });
+  const expr = invariantExpression(dom3, "dom-3");
+  assert.deepEqual(evaluateConstraint(ok, "Patient", expr, env(ok)), { status: "pass" });
   const orphan = { resourceType: "Patient", contained: [{ resourceType: "Organization", id: "o1" }] };
-  assert.deepEqual(evaluateConstraint(orphan, "Patient", dom3, env(orphan)), { status: "fail" });
+  assert.deepEqual(evaluateConstraint(orphan, "Patient", expr, env(orphan)), { status: "fail" });
+  // the raw expression hits the Java singleton rule of as()
+  assert.equal(evaluateConstraint(ok, "Patient", dom3, env(ok)).status, "unevaluable");
 });
 
-test("string functions on empty input are false (HL7 Java engine), e.g. ref-1", () => {
+// Java 7.0.1 string functions return EMPTY on an empty focus (FHIRPathEngine.funcStartsWith l. 6216-6236);
+// ref-1 passes for a Reference without .reference because the validator evaluates the FHIRPathExpressionFixer
+// rewrite `reference.exists() implies (…)` (FHIRPathExpressionFixer.java l. 48-50, InstanceValidator l. 8877).
+test("ref-1: fixed expression (FHIRPathExpressionFixer) with Java string-function semantics", () => {
   const ref1 = "reference.startsWith('#').not() or (reference.substring(1).trace('url') in %rootResource.contained.id.trace('ids'))";
-  const r = { resourceType: "Condition" };
-  assert.deepEqual(evaluateConstraint({ display: "x" }, "Reference", ref1, env(r)), { status: "pass" });
-  assert.deepEqual(evaluateConstraint({ reference: "#missing" }, "Reference", ref1, env(r)), { status: "fail" });
+  const fixed = invariantExpression(ref1, "ref-1");
+  assert.notEqual(fixed, ref1);
+  const r = { resourceType: "Condition", contained: [{ resourceType: "Patient", id: "p" }] };
+  assert.deepEqual(evaluateConstraint({ display: "x" }, "Reference", fixed, env(r)), { status: "pass" });
+  assert.deepEqual(evaluateConstraint({ reference: "#missing" }, "Reference", fixed, env(r)), { status: "fail" });
+  assert.deepEqual(evaluateConstraint({ reference: "#p" }, "Reference", fixed, env(r)), { status: "pass" });
+  assert.deepEqual(evaluateConstraint({ reference: "#" }, "Reference", fixed, env(r)), { status: "pass" });
+  assert.deepEqual(evaluateConstraint({ reference: "Patient/1" }, "Reference", fixed, env(r)), { status: "pass" });
+  // unfixed: empty focus gives an empty (false) result, like Java
+  assert.deepEqual(evaluateConstraint({ display: "x" }, "Reference", ref1, env(r)), { status: "fail" });
+});
+
+test("Java string functions: empty focus → empty, non-string types → empty, '' prefix → true", () => {
+  const r = { resourceType: "Patient", birthDate: "1974-12-25", name: [{ family: "Chalmers" }] };
+  const ev = (e: string): any[] => evaluateExpression(r, "Patient", e, env(r));
+  assert.deepEqual(ev("{}.startsWith('a')"), []);
+  assert.deepEqual(ev("{}.contains('a')"), []);
+  assert.deepEqual(ev("{}.matches('a')"), []);
+  assert.deepEqual(ev("name.family.startsWith('')"), [true]);
+  assert.deepEqual(ev("name.family.startsWith('Chal')"), [true]);
+  assert.deepEqual(ev("name.family.endsWith('ers')"), [true]);
+  assert.deepEqual(ev("name.family.contains('alm')"), [true]);
+  assert.deepEqual(ev("name.family.matches('^C.*s$')"), [true]);
+  assert.deepEqual(ev("birthDate.startsWith('19')"), []); // date is not one of FHIR_TYPES_STRING
+  assert.deepEqual(ev("name.family.length()"), [8]);
+});
+
+test("fixInvariantExpression ports FHIRPathExpressionFixer", () => {
+  assert.equal(fixInvariantExpression("htmlChecks()", "txt-2"), "htmlChecks2()");
+  assert.equal(fixInvariantExpression("fullUrl.contains('/_history/').not()", "bld-8"), "fullUrl.exists() implies fullUrl.contains('/_history/').not()");
+  assert.equal(
+    fixInvariantExpression("offset.empty() or (when.exists() and ((when in ('C' | 'CM' | 'CD' | 'CV')).not()))", "tim-9"),
+    "offset.empty() or (when.exists() and when.select($this in ('C' | 'CM' | 'CD' | 'CV')).allFalse())",
+  );
+  assert.equal(fixInvariantExpression("a.exists()", "x-1"), "a.exists()");
+  assert.ok(fixInvariantExpression("x", "eld-19").startsWith("path.matches('^[^\\\\s\\\\.,:;"));
+});
+
+test("Java constants: %sct %loinc %ucum %`vs-…` %`ext-…`", () => {
+  const r = { resourceType: "Patient" };
+  const ev = (e: string): any[] => evaluateExpression(r, "Patient", e, env(r));
+  assert.deepEqual(ev("%sct"), ["http://snomed.info/sct"]);
+  assert.deepEqual(ev("%loinc"), ["http://loinc.org"]);
+  assert.deepEqual(ev("%ucum"), ["http://unitsofmeasure.org"]);
+  assert.deepEqual(ev("%`vs-administrative-gender`"), ["http://hl7.org/fhir/ValueSet/administrative-gender"]);
+  assert.deepEqual(ev("%`ext-patient-birthTime`"), ["http://hl7.org/fhir/StructureDefinition/patient-birthTime"]);
+});
+
+test("Java ofType()/as(): primitives have no supertype, as() is singleton", () => {
+  const r = { resourceType: "Patient", gender: "male", name: [{ family: "a" }, { family: "b" }] };
+  const ev = (e: string): any[] => evaluateExpression(r, "Patient", e, env(r));
+  assert.deepEqual(ev("gender.ofType(string)"), []);
+  assert.deepEqual(ev("gender.ofType(code)"), ["male"]);
+  assert.deepEqual(ev("gender.as(code)"), ["male"]);
+  assert.equal(ev("$this.ofType(DomainResource)").length, 1);
+  assert.throws(() => ev("name.as(HumanName)"));
 });
 
 test("unsupported functions are unevaluable, not failures", () => {
@@ -75,10 +147,19 @@ test("unsupported functions are unevaluable, not failures", () => {
   );
 });
 
+// htmlChecks() = FHIRPathEngine.funcHtmlChecks1 → checkHtmlNames (l. 5032-5079): element / attribute names only;
+// the xhtml namespace is the XHTML parser's concern, not this function's.
 test("htmlChecks: xhtml div ok, script rejected", () => {
   assert.equal(narrativeHtmlOk('<div xmlns="http://www.w3.org/1999/xhtml"><p>x</p></div>'), true);
   assert.equal(narrativeHtmlOk('<div xmlns="http://www.w3.org/1999/xhtml"><script>x</script></div>'), false);
-  assert.equal(narrativeHtmlOk("<div>no namespace</div>"), false);
+  assert.equal(narrativeHtmlOk('<div xmlns="http://www.w3.org/1999/xhtml"><p onclick="x()">x</p></div>'), false);
+  assert.equal(narrativeHtmlOk('<div xmlns="http://www.w3.org/1999/xhtml"><a href="#x" title="t">x</a><img src="a.png" alt=""/></div>'), true);
+  assert.equal(narrativeHtmlOk("<div>no namespace</div>"), true);
+  // htmlChecks2() (txt-2 after the fixer) = checkForContent: non-blank text or an img
+  assert.equal(narrativeHasContent('<div xmlns="http://www.w3.org/1999/xhtml"><p> </p></div>'), false);
+  assert.equal(narrativeHasContent('<div xmlns="http://www.w3.org/1999/xhtml"><!-- c --></div>'), false);
+  assert.equal(narrativeHasContent('<div xmlns="http://www.w3.org/1999/xhtml"><p>x</p></div>'), true);
+  assert.equal(narrativeHasContent('<div xmlns="http://www.w3.org/1999/xhtml"><img src="a.png"/></div>'), true);
   const r = { resourceType: "Patient" };
   assert.deepEqual(
     evaluateConstraint('<div xmlns="http://www.w3.org/1999/xhtml">x</div>', "Narrative.div", "htmlChecks()", env(r)),
