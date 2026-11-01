@@ -39,8 +39,11 @@ import { findTarget, parseProfileMatch } from "./references.js";
 import type { Suggestion, SuggestionDeps } from "./types.js";
 import { nodeAt } from "./util.js";
 
-export const RE_CLOSED_SLICE = /^This element does not match any known slice defined in the profile (\S+) and slicing is CLOSED$/;
-export const RE_MISSING_SLICE = /^Slice '([^']+)': a matching slice is required, but not found \(from (\S+)\)$/;
+// HL7 wording (Validation_VAL_Profile_NotSlice / _Minimum_SLICE[_EXT]): the profile is the versioned url
+// (`|version` not captured), a closed-slice issue ends with the per-slice reasons
+export const RE_CLOSED_SLICE = /^This element does not match any known slice defined in the profile ([^\s|]+)(?:\|\S+)? and slicing is CLOSED(?::[\s\S]*)?$/;
+export const RE_MISSING_SLICE =
+  /^Slice '([^']+)'(?: for extension '[^']*')?: (?:a matching slice is required, but not found|minimum required = \d+, but only found \d+) \(from ([^\s|)]+)(?:\|[^\s)]*)?\)/;
 const RE_PROFILE_MATCH = /^Unable to find a profile match for /;
 
 const MAX_BLOCKING = 5;

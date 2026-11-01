@@ -218,7 +218,9 @@ test("F1: an Observation with an alternative body-weight code must carry the mag
   ]);
   try {
     const bad = await run(obs({ code: { coding: [{ system: "http://loinc.org", code: "3141-9" }] } }));
-    assert.match(errText(bad), /BodyWeightCode': a matching slice is required/);
+    // InstanceValidator.checkCardinalities (7.0.1, isObservationMagicValue): a core profile's Observation.code.coding
+    // slice is reported as VALIDATION_VAL_PROFILE_MINIMUM_MAGIC
+    assert.match(errText(bad), /BodyWeightCode: magic LOINC code 29463-7 required, but not found/);
     const ok = await run(obs({ code: { coding: [{ system: "http://loinc.org", code: "29463-7" }, { system: "http://loinc.org", code: "3141-9" }] } }));
     assert.equal(errors(ok).length, 0, errText(ok));
   } finally {

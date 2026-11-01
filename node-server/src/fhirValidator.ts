@@ -1362,20 +1362,41 @@ export class InstanceValidator {
         entry: this.entryFor(v, rctx, true),
       };
       if (profiles.length > 1) {
-        // Several type profiles on one element (Bundle.entry:organization.resource → hospid | sendhospid): the resource
-        // must conform to ONE of them. Each is tried alone; the first without errors wins, else the closest one's issues.
-        let best: Issue[] | null = null;
+        // Port of InstanceValidator.validateContains (7.0.1), several type profiles: the resource has to conform to
+        // one of them. Each is validated alone; the per-profile issues are not reported — none matching is
+        // BUNDLE_BUNDLE_ENTRY_MULTIPLE_PROFILES_NO_MATCH (+ one _NO_MATCH_REASON hint per profile), more than one
+        // matching is the _MULTIPLE_MATCHES hint.
+        const ep = String(el.path || "");
+        const special = isContained ? "contained" : /\.entry\.resource$/.test(ep) ? "entry" : /\.response\.outcome$/.test(ep) ? "outcome" : /\.parameter\.resource$/.test(ep) ? "parameter" : "??";
+        const typeRef = (el.type || []).find((t: any) => typeCodeOf(t) === "Resource" || typeCodeOf(t) === v.resourceType) ?? (el.type || [])[0];
+        const trials: Issue[][] = [];
+        const matchedUrls: string[] = [];
         for (const p of profiles) {
+          if (!(await this.sdx(p))) {
+            issues.push({ severity: "error", path: item.path, code: "invalid", message: `No profile found for ${special} resource of type '${p}'` });
+            trials.push([]);
+            continue;
+          }
           const trial: Issue[] = [];
           await this.validateResource({ ...child }, item.path, [p], trial, depth);
-          const errs = trial.filter((i) => i.severity === "error" || i.severity === "fatal").length;
-          if (errs === 0) {
-            best = trial;
-            break;
-          }
-          if (best === null || errs < best.filter((i) => i.severity === "error" || i.severity === "fatal").length) best = trial;
+          trials.push(trial);
+          if (!trial.some((i) => i.severity === "error" || i.severity === "fatal")) matchedUrls.push(p);
         }
-        issues.push(...(best ?? []));
+        if (matchedUrls.length === 0) {
+          issues.push({
+            severity: "error",
+            path: item.path,
+            code: "invalid",
+            message: `The ${special} resource did not match any of the allowed profiles (Type ${typeRef ? typeCodeOf(typeRef) : "Resource"}: ${profiles.join(", ")})`,
+          });
+          profiles.forEach((p, i) => {
+            const errs = trials[i].filter((x) => x.severity === "error" || x.severity === "fatal").map((x) => x.message);
+            const reason = errs.length > 1 ? `${errs.slice(0, -1).join(", ")} and ${errs[errs.length - 1]}` : errs.join("");
+            issues.push({ severity: "information", path: item.path, code: "invalid", message: `The ${special} resource did not match the profile ${p} because: ${reason}` });
+          });
+        } else if (matchedUrls.length > 1) {
+          issues.push({ severity: "information", path: item.path, code: "invalid", message: `The ${special} resource matched more than one of the allowed profiles (${matchedUrls.join(", ")})` });
+        }
         return;
       }
       await this.validateResource(child, item.path, profiles, issues, depth);
@@ -1397,6 +1418,48 @@ export class InstanceValidator {
       // (parity v2) JsonParser.checkObject (7.0.1): OBJECT_MUST_HAVE_SOME_CONTENT, and the (empty) element is kept —
       // validation goes on, so its required children are reported as missing; no ele-1 on top
       issues.push({ severity: "error", path: item.path, code: "invalid", message: "Object must have some content" });
+    }
+
+    // Port of InstanceValidator.checkChildByDefinition (7.0.1), several profiles on the element's one type: the
+    // value is validated against each; one without errors → its issues; none → Validation_VAL_Profile_NoMatch and
+    // every profile's issues; several → Validation_VAL_Profile_MultipleMatches (warning) and the matching ones'.
+    // Issues on the element itself that do not depend on the profile (its binding, fixed value …) are not profile
+    // errors, so they are taken from a run against the bare type.
+    const typeProfiles: string[] =
+      (el.type || []).length === 1 && !isResourceRoot && !sdx.hasChildren(el) && typeCode !== "Extension" ? ((el.type[0].profile || []) as unknown[]).map(String) : [];
+    if (typeProfiles.length > 1) {
+      const key = (i: Issue): string => `${i.severity}|${i.path}|${i.message}`;
+      const bare: Issue[] = [];
+      await this.validateItemAgainst(sdx, { ...el, type: [{ ...el.type[0], profile: undefined }] }, item, typeCode, rctx, bare, depth);
+      const own = new Set(bare.filter((i) => i.path === item.path).map(key));
+      const good: Array<[string, Issue[]]> = [];
+      const bad: Array<[string, Issue[]]> = [];
+      for (const p of typeProfiles) {
+        if (!(await this.sdx(p))) {
+          issues.push({ severity: "error", path: item.path, code: "structure", message: `Unknown profile ${p}`, unchecked: { kind: "profile", canonical: p } });
+          continue;
+        }
+        const trial: Issue[] = [];
+        await this.validateItemAgainst(sdx, { ...el, type: [{ ...el.type[0], profile: [p] }] }, item, typeCode, rctx, trial, depth);
+        const errs = trial.filter((i) => (i.severity === "error" || i.severity === "fatal") && !own.has(key(i)));
+        (errs.length ? bad : good).push([p, trial]);
+      }
+      const tagged = async (p: string, list: Issue[]): Promise<Issue[]> => {
+        const psdx = await this.sdx(p);
+        const tag = ` (validating against ${psdx?.url ?? p}${psdx?.sd?.version ? `|${psdx.sd.version}` : ""} [${psdx?.sd?.name ?? ""}])`;
+        return list.map((i) => (own.has(key(i)) ? i : { ...i, message: i.message + tag }));
+      };
+      if (good.length === 1) {
+        issues.push(...good[0][1]);
+      } else if (good.length === 0) {
+        issues.push({ severity: "error", path: item.path, code: "structure", message: `Unable to find a match for the specified profile among choices: ${[...typeProfiles].sort().join(", ")}` });
+        for (const [p, list] of bad) issues.push(...(await tagged(p, list)));
+      } else {
+        const n = good.length;
+        issues.push({ severity: "warning", path: item.path, code: "structure", message: `Found multiple matching profiles among ${n} choice${n === 1 ? "" : "s"}: ${good.map(([p]) => p).sort().join(", ")}` });
+        for (const [p, list] of good) issues.push(...(await tagged(p, list)));
+      }
+      return;
     }
 
     // Which definition supplies the children?
@@ -1832,6 +1895,22 @@ export class InstanceValidator {
 
   // ------------------------------------------------------------------ slicing
 
+  /** HL7 StructureDefinition.getVersionedUrl(): the canonical with `|version` when the definition has one. */
+  private versionedUrl(sdx: SdIndex): string {
+    return sdx.sd?.version ? `${sdx.url}|${sdx.sd.version}` : sdx.url;
+  }
+
+  /**
+   * Port of InstanceValidator.assignChildren / matchSlice / checkCardinalities (7.0.1) for one sliced element
+   * group: every item is tested against every slice in definition order (sliceMatches); the first match is kept,
+   * a later match is Validation_VAL_Profile_MatchMultiple unless one is a re-slice of the other; an item no slice
+   * takes is an additional slice — a hint (THIS_ELEMENT_DOES_NOT_MATCH_ANY_KNOWN_SLICE_) for open / openAtEnd
+   * slicing, Validation_VAL_Profile_NotSlice (with the per-slice reasons) for closed; slicing that cannot be
+   * evaluated is SLICING_CANNOT_BE_EVALUATED and turns the slice cardinalities into NoCheckMin / NoCheckMax hints;
+   * ordered slicing checks Validation_VAL_Profile_SliceOrder; then the slice cardinalities
+   * (Validation_VAL_Profile_Minimum_SLICE[_EXT], VALIDATION_VAL_PROFILE_MINIMUM_MAGIC, Validation_VAL_Profile_Maximum).
+   * Locally undecidable membership (terminology the host cannot answer) keeps the slice out of the counts.
+   */
   private async validateSliced(
     sdx: SdIndex,
     grp: ChildGroup,
@@ -1845,49 +1924,74 @@ export class InstanceValidator {
     const slicing = base.slicing || {};
     const discs: Array<Record<string, any>> = slicing.discriminator || [];
     const rules = slicing.rules || "open";
+    const vurl = this.versionedUrl(sdx);
     const counts = new Map<Record<string, any>, number>();
     const indeterminate = new Set<Record<string, any>>();
+    let unsupported = false;
     for (const s of grp.slices) counts.set(s, 0);
+    let lastSlice = -1;
 
-    for (const { item: it, type } of typedItems) {
+    for (let idx = 0; idx < typedItems.length; idx++) {
+      const { item: it, type } = typedItems[idx];
       let matched: Record<string, any> | null = null;
       let undecided = false;
-      // Port of InstanceValidator.matchSlice (7.0.1): every slice is tested; an
-      // element that definitely matches more than one slice is an error
-      // (Validation_VAL_Profile_MatchMultiple).
-      const hits: Array<Record<string, any>> = [];
+      let failedHere = false;
+      const sliceInfo: string[] = [];
       for (const s of grp.slices) {
-        const r = await this.sliceMatches(sdx, s, discs, it, type, rctx, depth);
-        if (r === undefined) {
+        let r: SliceMatch;
+        try {
+          r = await this.sliceMatches(sdx, base, grp.slices, s, discs, it, type, idx, rctx, depth);
+        } catch (e) {
+          if (!(e instanceof SlicingDefinitionError)) throw e;
+          // matchSlice: FHIRException → SLICING_CANNOT_BE_EVALUATED, unsupportedSlicing
+          issues.push({ severity: "error", path: it.path, code: "processing", message: `Slicing cannot be evaluated: ${e.message}`, element: s.id, profile: sdx.url });
+          unsupported = true;
+          failedHere = true;
+          continue;
+        }
+        if (r.match === undefined) {
           indeterminate.add(s);
           undecided = true;
           continue;
         }
-        if (r) hits.push(s);
-      }
-      if (hits.length) matched = hits[0];
-      // HL7 keeps the first matching slice and reports every later match against it
-      // (one Validation_VAL_Profile_MatchMultiple per extra slice); a re-slice of the
-      // kept slice (`name/sub`) replaces it instead of being an error.
-      for (const other of hits.slice(1)) {
-        const first = sliceNameOf(matched!);
-        const name = sliceNameOf(other);
+        if (!r.match) {
+          sliceInfo.push(`${it.path}: Does not match slice '${sliceNameOf(s)}' (discriminator: ${r.expression})`);
+          continue;
+        }
+        if (!matched) {
+          matched = s;
+          continue;
+        }
+        const first = sliceNameOf(matched);
+        const name = sliceNameOf(s);
         if (first && name.startsWith(`${first}/`)) {
-          matched = other;
+          matched = s;
           continue;
         }
         if (first && first.startsWith(`${name}/`)) continue;
         issues.push({
           severity: "error",
           path: it.path,
-          code: "structure",
-          message: `Profile ${sdx.url}, Element matches more than one slice - ${first}, ${name}`,
+          code: "invalid",
+          message: `Profile ${vurl}, Element matches more than one slice - ${first}, ${name}`,
           element: base.id,
           profile: sdx.url,
         });
       }
       if (matched) {
         counts.set(matched, (counts.get(matched) || 0) + 1);
+        const si = grp.slices.indexOf(matched);
+        if (slicing.ordered === true && si < lastSlice) {
+          issues.push({
+            severity: "error",
+            path: it.path,
+            code: "invalid",
+            message: `As specified by profile ${vurl}, Element '${it.key}' is out of order in ordered slice`,
+            element: matched.id,
+            profile: sdx.url,
+          });
+        }
+        lastSlice = si;
         const t = this.sliceType(matched, type);
         await this.validateItemAgainst(sdx, matched, it, t, rctx, issues, depth + 1);
         // Port of InstanceValidator.checkChild (7.0.1): a slice member is checked
@@ -1900,22 +2004,35 @@ export class InstanceValidator {
         if (isObject(it.value)) this.sliceMatched.add(it.value);
         await this.validateItemAgainst(sdx, base, it, type, rctx, issues, depth + 1);
       } else {
-        if (rules === "closed" && undecided) {
-          issues.push({
-            severity: "information",
-            path: it.path,
-            code: "informational",
-            message: `Slice membership could not be decided with local terminology (slicing is CLOSED in ${sdx.url})`,
-          });
-        } else if (rules === "closed") {
-          issues.push({
-            severity: "error",
-            path: it.path,
-            code: "structure",
-            message: `This element does not match any known slice defined in the profile ${sdx.url} and slicing is CLOSED`,
-            element: base.id,
-            profile: sdx.url,
-          });
+        lastSlice = -1;
+        if (!unsupported && !failedHere) {
+          if (rules === "closed" && undecided) {
+            issues.push({
+              severity: "information",
+              path: it.path,
+              code: "informational",
+              message: `Slice membership could not be decided with local terminology (slicing is CLOSED in ${sdx.url})`,
+            });
+          } else if (rules === "closed") {
+            issues.push({
+              severity: "error",
+              path: it.path,
+              code: "invalid",
+              message: `This element does not match any known slice defined in the profile ${vurl} and slicing is CLOSED: ${sliceInfo.join(", ")}`,
+              element: base.id,
+              profile: sdx.url,
+            });
+          } else if (!undecided && !(sdx.url.startsWith(CORE) && base.path === "Observation.code.coding")) {
+            // ignoreSlicingHint: core profiles' Observation.code.coding
+            issues.push({
+              severity: "information",
+              path: it.path,
+              code: "informational",
+              message: `This element does not match any known slice defined in the profile ${vurl} (this may not be a problem, but you should check that it's not intended to match a slice)`,
+              element: base.id,
+              profile: sdx.url,
+            });
+          }
         }
         await this.validateItemAgainst(sdx, base, it, type, rctx, issues, depth + 1);
       }
@@ -1925,27 +2042,62 @@ export class InstanceValidator {
       const n = counts.get(s) || 0;
       const min = typeof s.min === "number" ? s.min : 0;
       const max = s.max === undefined ? "*" : String(s.max);
+      const id = String(s.id ?? s.path);
+      if (unsupported) {
+        // problematicPaths: VALIDATION_VAL_PROFILE_NOCHECKMIN / NOCHECKMAX hints
+        if (min > 0 && n < min) {
+          issues.push({ severity: "information", path: parent.path, code: "not-supported", message: `${id}: Found ${n} match${n === 1 ? "" : "es"}, but unable to check minimum required (${s.path}) due to lack of slicing validation (from ${vurl})`, element: s.id, profile: sdx.url });
+        }
+        if (max !== "*" && /^\d+$/.test(max) && n > Number(max)) {
+          issues.push({ severity: "information", path: parent.path, code: "not-supported", message: `${id}: Found ${n} match${n === 1 ? "" : "es"}, but unable to check max allowed (${s.path}) due to lack of slicing validation (from ${vurl})`, element: s.id, profile: sdx.url });
+        }
+        continue;
+      }
       if (n < min) {
-        issues.push({
-          severity: "error",
-          path: parent.path,
-          code: "required",
-          message: `Slice '${s.id}': a matching slice is required, but not found (from ${sdx.url})`,
-          element: s.id,
-          profile: sdx.url,
-        });
+        let message: string;
+        if (sdx.url.startsWith(CORE) && s.path === "Observation.code.coding") {
+          message = `${sliceNameOf(s)}: magic LOINC code ${this.fixedLoincCode(sdx, s)} required, but not found (from ${vurl}). Note that other Observation codes are allowed in addition to this required magic code`;
+        } else {
+          const extProfile = (s.type || []).length && typeCodeOf(s.type[0]) === "Extension" ? (s.type[0].profile || [])[0] : undefined;
+          let extUrl: string | null = null;
+          if (typeof extProfile === "string") {
+            extUrl = extProfile;
+            const esdx = await this.sdx(extProfile);
+            const fixedUrl = esdx ? [...esdx.byId.values()].find((e) => e.path === "Extension.url")?.fixedUri : undefined;
+            if (typeof fixedUrl === "string") extUrl = fixedUrl;
+          }
+          const forExt = extUrl !== null ? ` for extension '${extUrl}'` : "";
+          message =
+            min === 1
+              ? `Slice '${id}'${forExt}: a matching slice is required, but not found (from ${vurl}). Note that other slices are allowed in addition to this required slice`
+              : `Slice '${id}'${forExt}: minimum required = ${min}, but only found ${n} (from ${vurl})`;
+        }
+        issues.push({ severity: "error", path: parent.path, code: "structure", message, element: s.id, profile: sdx.url });
       }
       if (max !== "*" && /^\d+$/.test(max) && n > Number(max)) {
         issues.push({
           severity: "error",
           path: parent.path,
-          code: "cardinality",
-          message: `Slice '${s.id}': max allowed = ${max}, but found ${n} (from ${sdx.url})`,
+          code: "structure",
+          message: `${id}: max allowed = ${max}, but found ${n} (from ${vurl})`,
           element: s.id,
           profile: sdx.url,
         });
       }
     }
+  }
+
+  /** InstanceValidator.getFixedLOINCCode: the fixed LOINC code of a core vital-signs code.coding slice. */
+  private fixedLoincCode(sdx: SdIndex, slice: Record<string, any>): string {
+    if (isObject(slice.fixedCoding) && slice.fixedCoding.system === "http://loinc.org") return String(slice.fixedCoding.code);
+    for (const g of sdx.children(slice)?.values() || []) {
+      const e = g.base;
+      if (e && String(e.path).endsWith(".code")) {
+        const [f] = fixedPattern(e);
+        if (f && (typeof f.value === "string" || typeof f.value === "number")) return String(f.value);
+      }
+    }
+    return "??";
   }
 
   private sliceType(slice: Record<string, any>, itemType: string): string {
@@ -1954,124 +2106,292 @@ export class InstanceValidator {
     return itemType;
   }
 
-  /** true / false, or undefined when the slice cannot be discriminated with local knowledge. */
+  /**
+   * Port of InstanceValidator.getCriteriaForDiscriminator (7.0.1): the element definitions that carry a
+   * discriminator's criteria for one slice — the element the path names inside the slice, then the same path in
+   * each profile of the slice's type (an extension slice's url lives in the extension definition). `removeResolve`
+   * (profile discriminators): a trailing resolve() is not followed — the profile is on the reference.
+   */
+  private async sliceCriteria(sdx: SdIndex, slice: Record<string, any>, path: string, removeResolve: boolean): Promise<Array<Record<string, any>>> {
+    const out: Array<Record<string, any>> = [];
+    if (path === "value" && fixedPattern(slice)[0]) return [slice];
+    let p = path;
+    if (removeResolve) {
+      if (p === "resolve()") return [slice];
+      if (p.endsWith(".resolve()")) p = p.slice(0, -".resolve()".length);
+    }
+    const own = this.elementAt(sdx, slice, p);
+    if (own) out.push(own);
+    for (const t of slice.type || []) {
+      for (const prof of t.profile || []) {
+        const psdx = await this.sdx(String(prof));
+        if (!psdx) continue;
+        const el = this.elementAt(psdx, psdx.root, p);
+        if (el && !out.includes(el)) out.push(el);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Port of InstanceValidator.sliceMatches (7.0.1). Java builds one FHIRPath expression per slice from the
+   * discriminators and evaluates it; here each clause is evaluated directly on the instance: max = 0 →
+   * `.empty()`; type → `is T` (FHIRPath type hierarchy); profile → `conformsTo()` (a profile-less criteria
+   * element adds no clause); exists → `.exists()` / `.exists().not()`; position; fixed / pattern (CodeableConcept,
+   * Coding, Identifier, HumanName, Address, primitives — the Java `.where(…).exists()` forms over all values at the
+   * path); required binding → `memberOf`. Definition problems Java throws as FHIRException
+   * (DISCRIMINATOR__IS_BASED_ON_ELEMENT_EXISTENCE…, Could_not_match_discriminator_for_slice_in_profile, Unsupported
+   * … pattern) are thrown as SlicingDefinitionError (→ SLICING_CANNOT_BE_EVALUATED). `match` undefined: membership
+   * the local terminology cannot decide, or a path our definitions cannot follow.
+   */
   private async sliceMatches(
     sdx: SdIndex,
+    slicer: Record<string, any>,
+    slices: Array<Record<string, any>>,
     slice: Record<string, any>,
     discs: Array<Record<string, any>>,
     it: Item,
     itemType: string,
+    position: number,
     rctx: ResourceCtx,
     depth: number,
-  ): Promise<boolean | undefined> {
-    if (!discs.length) return undefined;
+  ): Promise<SliceMatch> {
+    if (!discs.length) return { match: false, expression: "" };
+    const vurl = this.versionedUrl(sdx);
+    const clauses: string[] = [];
+    let result: boolean | undefined = true;
+    let anyFound = false;
+    let anyUnlocated = false;
+    const discNames = discs.map((d) => String(d.path || "$this"));
+    const and = (r: boolean | undefined): void => {
+      if (r === false) result = false;
+      else if (r === undefined && result !== false) result = undefined;
+    };
     for (const d of discs) {
-      const dtype = d.type || "value";
-      const dpath = String(d.path || "$this");
-      if (dtype === "type") {
-        // the types of the element the discriminator path names (Bundle.entry:x + "resource" → entry:x.resource), not of the
-        // sliced element itself; through resolve(): the resource types of the reference's target profiles
-        let sliceTypes: string[] = (slice.type || []).map(typeCodeOf);
-        if (dpath !== "$this") {
-          const viaResolve = /\.?resolve\(\)$/.test(dpath);
-          const el = this.elementAt(sdx, slice, dpath.replace(/\.?resolve\(\)$/, ""));
-          if (el) {
-            if (viaResolve) {
-              const targets: string[] = [];
-              for (const t of el.type || []) {
-                for (const p of t.targetProfile || []) {
-                  const psdx = await this.sdx(String(p));
-                  if (psdx?.type) targets.push(String(psdx.type));
-                }
-              }
-              if (targets.length) sliceTypes = targets;
-            } else {
-              const ts = (el.type || []).map(typeCodeOf);
-              if (ts.length) sliceTypes = ts;
-            }
+      const dtype: string = d.type || "value";
+      const rawPath = String(d.path || "$this");
+      const dpath = rawPath.startsWith("$this.") ? rawPath.slice(6) : rawPath;
+      if (dtype === "position") {
+        // position: only as the sole discriminator; every earlier slice must have a fixed count (min = max)
+        if (discs.length !== 1) throw new SlicingDefinitionError(couldNotMatch(discs.length, discNames, slice.id, vurl));
+        let offset = 0;
+        for (const ts of slices) {
+          if (ts === slice) break;
+          if (String(ts.max) !== String(ts.min ?? 0)) throw new SlicingDefinitionError(couldNotMatch(discs.length, discNames, slice.id, vurl));
+          offset += typeof ts.min === "number" ? ts.min : 0;
+        }
+        const maxPos = String(slice.max) === "*" ? Number.MAX_SAFE_INTEGER : offset + Number(slice.max);
+        const pos = /\[(\d+)\]$/.exec(it.path) ? Number(/\[(\d+)\]$/.exec(it.path)![1]) : position;
+        return { match: pos >= offset && pos < maxPos, expression: `position ${offset}..${maxPos}` };
+      }
+      const criteria = await this.sliceCriteria(sdx, slice, dpath, dtype === "profile");
+      if (!criteria.length) anyUnlocated = true;
+      let found = false;
+      for (const c of criteria) {
+        found = true;
+        if (String(c.max) === "0") {
+          clauses.push(`${rawPath}.empty()`);
+          and(this.discriminatorValues(it.value, dpath, rctx).length === 0);
+        } else if (dtype === "type") {
+          const r = await this.typeClause(sdx, slice, c, rawPath, dpath, it, itemType, rctx);
+          clauses.push(r.expression);
+          and(r.match);
+        } else if (dtype === "profile") {
+          if (!(c.type || []).length) throw new SlicingDefinitionError(`Profile based discriminators must have a type (${c.id} in profile ${vurl})`);
+          const ref = rawPath.endsWith(".resolve()") || rawPath === "resolve()";
+          const profs: string[] = [];
+          for (const t of c.type || []) for (const p of (ref ? t.targetProfile : t.profile) || []) profs.push(String(p));
+          if (!profs.length) {
+            // "we don't have to find something": no clause
+          } else {
+            clauses.push(profs.length > 1 ? `(${profs.map((p) => `${rawPath}.conformsTo('${p}')`).join(" or ")})` : `${rawPath}.conformsTo('${profs[0]}')`);
+            and(await this.conformsToAny(it, dpath, profs, rctx, depth));
+          }
+        } else if (dtype === "exists") {
+          if (typeof c.min === "number" && c.min >= 1) {
+            clauses.push(`(${rawPath}.exists())`);
+            and(this.discriminatorValues(it.value, dpath, rctx).length > 0);
+          } else if (String(c.max) === "0") {
+            clauses.push(`(${rawPath}.exists().not())`);
+            and(this.discriminatorValues(it.value, dpath, rctx).length === 0);
+          } else {
+            throw new SlicingDefinitionError(`Discriminator (${rawPath}) is based on element existence, but slice ${slice.id} neither sets min>=1 or max=0`);
+          }
+        } else {
+          const [fixed, pattern] = fixedPattern(c);
+          const values = this.discriminatorValues(it.value, dpath, rctx);
+          if (fixed) {
+            const r = fixedClause(rawPath, fixed.value, valueTypeOf(fixed.field.slice(5)), String(slice.id), values);
+            clauses.push(r.expression);
+            and(r.match);
+          } else if (pattern) {
+            const r = patternClause(rawPath, pattern.value, valueTypeOf(pattern.field.slice(7)), String(slice.id), values);
+            clauses.push(r.expression);
+            and(r.match);
+          } else if (c.binding && c.binding.strength === "required" && c.binding.valueSet) {
+            clauses.push(`(${rawPath} memberOf '${c.binding.valueSet}')`);
+            and(await this.bindingClause(String(c.binding.valueSet), values));
+          } else {
+            found = false;
           }
         }
-        let actual: string[];
-        if (dpath === "$this") actual = [itemType === "Resource" && isObject(it.value) ? it.value.resourceType : itemType];
-        else {
-          const vals = this.discriminatorValues(it.value, dpath, rctx);
-          actual = vals.map((x) => (isObject(x) && x.resourceType ? x.resourceType : typeof x));
-        }
-        if (!actual.some((a) => sliceTypes.includes(a))) return false;
-        continue;
+        if (found) break;
       }
-      if (dtype === "profile") {
-        const target = dpath === "$this" ? [it.value] : this.discriminatorValues(it.value, dpath, rctx);
-        const el = dpath === "$this" ? slice : this.elementAt(sdx, slice, dpath.replace(/\.?resolve\(\)$/, ""));
-        const profs: string[] = [];
-        for (const t of (el || slice).type || []) {
-          for (const p of t.profile || []) profs.push(String(p));
-          for (const p of t.targetProfile || []) profs.push(String(p));
-        }
-        if (!profs.length) return undefined;
-        let ok = false;
-        for (const r of target) {
-          if (!isObject(r) || !r.resourceType) continue;
-          for (const p of profs) {
-            const psdx = await this.sdx(p);
-            if (!psdx) continue;
-            if (psdx.type !== r.resourceType) continue;
-            const ctx: ResourceCtx = { resource: r, container: null, root: rctx.root, bundle: rctx.bundle, entry: this.entryFor(r, rctx, false) };
-            const res = await this.conformance(ctx, p, this.pathOf(it, dpath), depth + 1);
-            if (isValid(res.filter((i) => !isParseIssue(i)))) {
-              ok = true;
-              break;
-            }
-          }
-          if (ok) break;
-        }
-        if (!ok) return false;
-        continue;
-      }
-      if (dtype === "exists") {
-        const el = this.elementAt(sdx, slice, dpath);
-        if (!el) return undefined;
-        const has = this.discriminatorValues(it.value, dpath, rctx).length > 0;
-        const want = (el.min ?? 0) >= 1 ? true : String(el.max) === "0" ? false : undefined;
-        if (want === undefined) return undefined;
-        if (has !== want) return false;
-        continue;
-      }
-      // value / pattern
-      const exp = await this.discriminatorExpectation(sdx, slice, dpath);
-      if (!exp) return undefined;
-      const actual = this.discriminatorValues(it.value, dpath, rctx);
-      if (exp.kind === "binding") {
-        let hit = false;
-        let unknown = false;
-        for (const a of actual) {
-          if (await this.codelessCodingMember(exp.valueSet, a)) {
-            hit = true;
-            continue;
-          }
-          for (const [system, code] of codingsOf(a)) {
-            if (!code) continue;
-            const m = await this.member(exp.valueSet, system, code);
-            if (m === true) hit = true;
-            // Port of InstanceValidator.sliceMatches → evaluateSlicingExpression
-            // (7.0.1): a required-binding discriminator becomes
-            // `memberOf('<vs>')`, answered by the terminology layer; a code system
-            // neither the package closure nor tx.fhir.org can resolve is "not a
-            // member" (PAS Condition coding with TW Core 0.3.2's
-            // …/CodeSystem/icd-10-cm-2023-tw, published under its ValueSet URL →
-            // no slice matches).
-            if (m === undefined && (system === null || (await this.systemResolvable(system)))) unknown = true;
+      if (!found && (dtype === "value" || dtype === "pattern")) {
+        // required sub-slices on the path carry the criteria (bp component:SystolicBP code.coding.code: the fixed
+        // 8480-6 sits on code.coding:SBPCode.code) — FHIRPathEngine.evaluateDefinition follows them
+        const exp = await this.discriminatorExpectation(sdx, slice, dpath);
+        if (exp) {
+          found = true;
+          const values = this.discriminatorValues(it.value, dpath, rctx);
+          if (exp.kind === "binding") {
+            clauses.push(`(${rawPath} memberOf '${exp.valueSet}')`);
+            and(await this.bindingClause(exp.valueSet, values));
+          } else {
+            clauses.push(`${rawPath} = ${JSON.stringify(exp.values[0])}`);
+            and(exp.kind === "fixed" ? values.some((a) => exp.values.some((e) => deepEqual(a, e))) : values.some((a) => exp.values.some((e) => patternMatches(a, e))));
           }
         }
-        if (!hit) return unknown ? undefined : false;
+      }
+      if (found) anyFound = true;
+    }
+    if (!anyFound) {
+      // Java: Could_not_match_discriminator_for_slice_in_profile — only when every criteria element was located
+      // (a path our snapshot walk cannot follow stays undecided instead of an error)
+      if (anyUnlocated) return { match: undefined, expression: clauses.join(" and ") };
+      throw new SlicingDefinitionError(couldNotMatch(discs.length, discNames, slice.id, vurl));
+    }
+    return { match: result, expression: clauses.join(" and ") };
+  }
+
+  /** The type clause of InstanceValidator.sliceMatches (`<path> is <type>`, or any of several types). */
+  private async typeClause(
+    sdx: SdIndex,
+    slice: Record<string, any>,
+    c: Record<string, any>,
+    rawPath: string,
+    dpath: string,
+    it: Item,
+    itemType: string,
+    rctx: ResourceCtx,
+  ): Promise<{ match: boolean; expression: string }> {
+    let want: string[];
+    let disc = rawPath.includes("[") ? rawPath.slice(0, rawPath.indexOf("[")) : rawPath;
+    const viaResolve = /(^|\.)resolve\(\)$/.test(dpath);
+    if (viaResolve) {
+      // evaluateDefinition follows the reference into its target profile: the criteria element is that
+      // profile's root, typed by the resource type it constrains
+      want = [];
+      for (const t of c.type || []) {
+        for (const p of t.targetProfile || []) {
+          const psdx = await this.sdx(String(p));
+          if (psdx?.type) want.push(String(psdx.type));
+        }
+      }
+      if (!want.length) want = (c.type || []).map(typeCodeOf);
+    } else if (!(c.type || []).length) {
+      if (String(c.path).includes(".")) throw new SlicingDefinitionError(`Discriminator (${disc}) is based on type, but slice ${slice.id} in ${this.versionedUrl(sdx)} has no types`);
+      want = [String(c.path)];
+    } else {
+      want = (c.type || []).map(typeCodeOf);
+    }
+    want = want.map(fhirPathTypeName);
+    void disc;
+    const actual = this.discriminatorTypes(it, itemType, dpath, rctx);
+    const match = actual.length > 0 && actual.some((a) => want.some((w) => typeIs(a, w)));
+    disc = rawPath.includes("[") ? rawPath.slice(0, rawPath.indexOf("[")) : rawPath;
+    const expression = want.length > 1 ? `(${want.map((w) => `${disc} is ${w}`).join(" or ")})` : `${disc} is ${want[0]}`;
+    // FHIRPath `is` on a collection of more than one item is an error in Java; treat as no match
+    return { match: actual.length === 1 ? match : actual.length > 1 ? false : false, expression };
+  }
+
+  /** Types of the values a type discriminator path reaches (resource types, choice suffixes, the item type for $this). */
+  private discriminatorTypes(it: Item, itemType: string, dpath: string, rctx: ResourceCtx): string[] {
+    if (dpath === "$this") {
+      if (isObject(it.value) && typeof it.value.resourceType === "string" && (itemType === "Resource" || itemType === "DomainResource" || !itemType)) return [it.value.resourceType];
+      return [itemType];
+    }
+    const segs = dpath.split(".");
+    const last = segs[segs.length - 1];
+    const holderPath = segs.slice(0, -1).join(".") || "$this";
+    const out: string[] = [];
+    if (last === "resolve()" || segs.some((s) => s === "resolve()")) {
+      for (const v of this.discriminatorValues(it.value, dpath, rctx)) if (isObject(v) && typeof v.resourceType === "string") out.push(v.resourceType);
+      return out;
+    }
+    const holders = holderPath === "$this" ? [it.value] : this.discriminatorValues(it.value, holderPath, rctx);
+    for (const h of holders) {
+      if (!isObject(h)) continue;
+      if (last in h) {
+        const vals = Array.isArray(h[last]) ? h[last] : [h[last]];
+        for (const v of vals) out.push(isObject(v) && typeof v.resourceType === "string" ? v.resourceType : jsonTypeName(v));
         continue;
       }
-      if (exp.kind === "fixed") {
-        if (!actual.some((a) => exp.values.some((e) => deepEqual(a, e)))) return false;
-      } else if (!actual.some((a) => exp.values.some((e) => patternMatches(a, e)))) {
-        return false;
+      for (const k of Object.keys(h)) {
+        if (k.startsWith(last) && k.length > last.length && /[A-Z]/.test(k[last.length])) {
+          const suffix = k.slice(last.length);
+          const t = KNOWN_TYPE_SUFFIX.get(suffix) ?? suffix;
+          const vals = Array.isArray(h[k]) ? h[k] : [h[k]];
+          for (let i = 0; i < vals.length; i++) out.push(t);
+        }
       }
     }
+    return out;
+  }
+
+  /** `<path>.conformsTo(p1) or …`: the value at the path validates against one of the profiles without errors. */
+  private async conformsToAny(it: Item, dpath: string, profs: string[], rctx: ResourceCtx, depth: number): Promise<boolean> {
+    const target = dpath === "$this" ? [it.value] : this.discriminatorValues(it.value, dpath, rctx);
+    if (target.length !== 1) return false;
+    const r = target[0];
+    if (!isObject(r)) return false;
+    if (!r.resourceType) {
+      // a datatype value (Coding, Identifier …) against a datatype profile
+      for (const p of profs) {
+        const psdx = await this.sdx(p);
+        if (!psdx) continue;
+        const trial: Issue[] = [];
+        const sub: Item = { value: r, ext: undefined, key: dpath.split(".").pop() || it.key, path: this.pathOf(it, dpath) };
+        await this.validateItemAgainst(psdx, psdx.root, sub, psdx.type, rctx, trial, depth + 1);
+        if (isValid(trial.filter((i) => !isParseIssue(i)))) return true;
+      }
+      return false;
+    }
+    for (const p of profs) {
+      const psdx = await this.sdx(p);
+      if (!psdx) continue;
+      if (psdx.type !== r.resourceType && !["Resource", "DomainResource"].includes(psdx.type)) continue;
+      const ctx: ResourceCtx = { resource: r, container: null, root: rctx.root, bundle: rctx.bundle, entry: this.entryFor(r, rctx, false) };
+      const res = await this.conformance(ctx, p, this.pathOf(it, dpath), depth + 1);
+      if (isValid(res.filter((i) => !isParseIssue(i)))) return true;
+    }
+    return false;
+  }
+
+  /** `(<path> memberOf '<vs>')` answered with the local terminology (undefined when it cannot decide). */
+  private async bindingClause(valueSet: string, actual: any[]): Promise<boolean | undefined> {
+    let hit = false;
+    let unknown = false;
+    for (const a of actual) {
+      if (await this.codelessCodingMember(valueSet, a)) {
+        hit = true;
+        continue;
+      }
+      for (const [system, code] of codingsOf(a)) {
+        if (!code) continue;
+        const m = await this.member(valueSet, system, code);
+        if (m === true) hit = true;
+        // Port of InstanceValidator.sliceMatches → evaluateSlicingExpression
+        // (7.0.1): a required-binding discriminator becomes
+        // `memberOf('<vs>')`, answered by the terminology layer; a code system
+        // neither the package closure nor tx.fhir.org can resolve is "not a
+        // member" (PAS Condition coding with TW Core 0.3.2's
+        // …/CodeSystem/icd-10-cm-2023-tw, published under its ValueSet URL →
+        // no slice matches).
+        if (m === undefined && (system === null || (await this.systemResolvable(system)))) unknown = true;
+      }
+    }
+    if (!hit) return unknown ? undefined : false;
     return true;
   }
 
@@ -2202,7 +2522,11 @@ export class InstanceValidator {
   private discriminatorValues(value: any, path: string, rctx: ResourceCtx): any[] {
     let cur: any[] = [value];
     if (path === "$this") return cur;
-    for (const raw of path.split(".")) {
+    const segs = (path.startsWith("$this.") ? path.slice(6) : path).split(".");
+    for (let si = 0; si < segs.length; si++) {
+      const raw = segs[si];
+      // `value.ofType(Quantity)`: only the choice property of that type
+      const ofType = /^ofType\(([^)]+)\)$/.exec(segs[si + 1] ?? "")?.[1];
       const next: any[] = [];
       if (raw === "resolve()") {
         for (const c of cur) {
@@ -2229,7 +2553,7 @@ export class InstanceValidator {
           } else {
             // choice element addressed by its stem (e.g. `value` → valueCodeableConcept)
             for (const k of Object.keys(c)) {
-              if (k.startsWith(raw) && k.length > raw.length && /[A-Z]/.test(k[raw.length])) {
+              if (k.startsWith(raw) && k.length > raw.length && /[A-Z]/.test(k[raw.length]) && (!ofType || k === raw + ofType[0].toUpperCase() + ofType.slice(1))) {
                 const x = c[k];
                 if (Array.isArray(x)) pushAll(next, x);
                 else if (x !== undefined && x !== null) next.push(x);
@@ -3285,6 +3609,153 @@ function sliceNameOf(el: Record<string, any>): string {
   if (typeof el.sliceName === "string") return el.sliceName;
   const id = String(el.id || "");
   return id.includes(":") ? id.slice(id.lastIndexOf(":") + 1) : "";
+}
+
+// ------------------------------------------------------------------ slicing helpers (InstanceValidator 7.0.1)
+
+/** A slicing definition problem InstanceValidator throws while building a slice expression (→ SLICING_CANNOT_BE_EVALUATED). */
+class SlicingDefinitionError extends Error {}
+
+interface SliceMatch {
+  /** undefined: cannot be decided locally */
+  match: boolean | undefined;
+  /** the discriminator expression (Does_not_match_slice_ detail) */
+  expression: string;
+}
+
+/** Could_not_match_discriminator_for_slice_in_profile (one / other). */
+function couldNotMatch(n: number, discs: string[], sliceId: string, vurl: string): string {
+  return n === 1
+    ? `Could not match discriminator (${discs.join("|")}) for slice ${sliceId} in profile ${vurl} - the discriminator [${discs.join(", ")}] does not have fixed value, binding or existence assertions`
+    : `Could not match any of the ${n} discriminators for slice ${sliceId} in profile ${vurl} - None of the ${n} discriminators [${discs.join(", ")}] have fixed value, binding or existence assertions`;
+}
+
+/** InstanceValidator.makeTypeForFHIRPath: canonical type URLs → their tail. */
+function fhirPathTypeName(t: string): string {
+  return t.includes("/") ? t.slice(t.lastIndexOf("/") + 1) : t;
+}
+
+const NON_DOMAIN_RESOURCES = new Set(["Bundle", "Binary", "Parameters"]);
+
+/** FHIRPath `is`: exact type, or Resource / DomainResource for resource types (upper-case names). */
+function typeIs(actual: string, want: string): boolean {
+  if (actual === want) return true;
+  const isRes = /^[A-Z]/.test(actual) && !KNOWN_TYPE_SUFFIX.has(actual);
+  if (want === "Resource") return isRes;
+  if (want === "DomainResource") return isRes && !NON_DOMAIN_RESOURCES.has(actual);
+  return false;
+}
+
+function jsonTypeName(v: unknown): string {
+  if (typeof v === "string") return "string";
+  if (typeof v === "boolean") return "boolean";
+  if (typeof v === "number") return Number.isInteger(v) ? "integer" : "decimal";
+  return "Element";
+}
+
+const PRIMITIVE_TYPE_NAMES = new Set(Object.keys(PRIMITIVES));
+/** Type of a fixed[x] / pattern[x] property suffix (`Code` → code, `CodeableConcept`). */
+function valueTypeOf(suffix: string): string {
+  const l = suffix[0].toLowerCase() + suffix.slice(1);
+  return PRIMITIVE_TYPE_NAMES.has(l) ? l : suffix;
+}
+const STRING_TYPES = new Set(["string", "code", "id", "markdown"]);
+const URI_TYPES = new Set(["uri", "url", "canonical", "oid", "uuid"]);
+const INTEGER_TYPES = new Set(["integer", "unsignedInt", "positiveInt"]);
+const R5_MODEL = "org.hl7.fhir.r5.model.";
+
+const q = (v: unknown): string => `'${String(v)}'`;
+const prim = (v: unknown): string | null => (typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? String(v) : null);
+
+function hasExt(v: any): boolean {
+  return isObject(v) && Array.isArray(v.extension) && v.extension.length > 0;
+}
+
+/** `.coding.where(system = … and version = … and code = … and display = …).exists()` for each pattern Coding (AND). */
+function codeableConceptClause(disc: string, cc: any, sliceId: string, values: any[]): { match: boolean; expression: string } {
+  if (typeof cc.text === "string") throw new SlicingDefinitionError(`Unsupported CodeableConcept pattern - using text - for discriminator (${disc}) for slice ${sliceId}`);
+  if (!Array.isArray(cc.coding) || !cc.coding.length) throw new SlicingDefinitionError(`Unsupported CodeableConcept pattern - must have at least one coding - for discriminator (${disc}) for slice ${sliceId}`);
+  if (hasExt(cc)) throw new SlicingDefinitionError(`Unsupported CodeableConcept pattern - extensions are not allowed - for discriminator (${disc}) for slice ${sliceId}`);
+  const parts: string[] = [];
+  let match = true;
+  const codings: any[] = [];
+  for (const v of values) if (isObject(v) && Array.isArray(v.coding)) pushAll(codings, v.coding);
+  for (const c of cc.coding) {
+    if (hasExt(c)) throw new SlicingDefinitionError(`Unsupported CodeableConcept pattern - extensions are not allowed - for discriminator (${disc}) for slice ${sliceId}`);
+    const r = codingWhere(`${disc}.coding`, c, sliceId, codings, "CodeableConcept");
+    parts.push(r.expression);
+    if (!r.match) match = false;
+  }
+  return { match, expression: parts.join(" and ") };
+}
+
+function codingWhere(disc: string, c: any, sliceId: string, values: any[], fhirType: string): { match: boolean; expression: string } {
+  const keys = ["system", "version", "code", "display"].filter((k) => c[k] !== undefined && c[k] !== null);
+  if (!keys.length) throw new SlicingDefinitionError(`Unsupported: no properties with values found on type ${fhirType} for pattern for discriminator (${disc}) for slice ${sliceId}`);
+  const expression = `${disc}.where(${keys.map((k) => `${k} = ${q(c[k])}`).join(" and ")}).exists()`;
+  const match = values.some((v) => isObject(v) && keys.every((k) => prim(v[k]) !== null && prim(v[k]) === prim(c[k])));
+  return { match, expression };
+}
+
+function identifierClause(disc: string, ii: any, sliceId: string, values: any[]): { match: boolean; expression: string } {
+  if (hasExt(ii)) throw new SlicingDefinitionError(`Unsupported Identifier pattern - extensions are not allowed - for discriminator (${disc}) for slice ${sliceId}`);
+  const keys = ["system", "value", "use"].filter((k) => ii[k] !== undefined && ii[k] !== null);
+  const parts = keys.map((k) => `${k} = ${q(ii[k])}`);
+  const hasType = isObject(ii.type);
+  if (!keys.length && !hasType) throw new SlicingDefinitionError(`Unsupported: no properties with values found on type Identifier for pattern for discriminator (${disc}) for slice ${sliceId}`);
+  let typeExpr = "";
+  if (hasType) typeExpr = codeableConceptClause("type", ii.type, sliceId, []).expression;
+  if (typeExpr) parts.push(typeExpr);
+  const match = values.some((v) => {
+    if (!isObject(v)) return false;
+    if (!keys.every((k) => prim(v[k]) !== null && prim(v[k]) === prim(ii[k]))) return false;
+    return hasType ? codeableConceptClause("type", ii.type, sliceId, [v.type]).match : true;
+  });
+  return { match, expression: `${disc}.where(${parts.join(" and ")}).exists()` };
+}
+
+function namedPartsClause(disc: string, v0: any, sliceId: string, values: any[], fhirType: string, allowed: string[], unsupported: string[]): { match: boolean; expression: string } {
+  if (hasExt(v0)) throw new SlicingDefinitionError(`Unsupported Identifier pattern - extensions are not allowed - for discriminator (${disc}) for slice ${sliceId}`);
+  const keys = allowed.filter((k) => v0[k] !== undefined && v0[k] !== null);
+  for (const u of unsupported) {
+    if (v0[u] !== undefined && v0[u] !== null) throw new SlicingDefinitionError(`Unsupported property ${u} on type ${fhirType} for pattern for discriminator (${disc}) for slice ${sliceId}`);
+  }
+  if (!keys.length) throw new SlicingDefinitionError(`Unsupported: no properties with values found on type ${fhirType} for pattern for discriminator (${disc}) for slice ${sliceId}`);
+  const match = values.some((v) => isObject(v) && keys.every((k) => prim(v[k]) !== null && prim(v[k]) === prim(v0[k])));
+  return { match, expression: `${disc}.where(${keys.map((k) => `${k} = ${q(v0[k])}`).join(" and ")}).exists()` };
+}
+
+/** InstanceValidator.buildPattternExpression. */
+function patternClause(disc: string, pattern: any, type: string, sliceId: string, values: any[]): { match: boolean; expression: string } {
+  if (type === "CodeableConcept") return codeableConceptClause(disc, pattern, sliceId, values);
+  if (type === "Coding") {
+    if (hasExt(pattern)) throw new SlicingDefinitionError(`Unsupported CodeableConcept pattern - extensions are not allowed - for discriminator (${disc}) for slice ${sliceId}`);
+    return codingWhere(disc, pattern, sliceId, values, "Coding");
+  }
+  if (PRIMITIVE_TYPE_NAMES.has(type)) {
+    const quoted = !(type === "boolean" || INTEGER_TYPES.has(type) || type === "decimal");
+    const p = prim(pattern);
+    return { match: values.some((v) => prim(v) !== null && prim(v) === p), expression: `${disc}.where(value = ${quoted ? q(p) : p}).exists()` };
+  }
+  if (type === "Identifier") return identifierClause(disc, pattern, sliceId, values);
+  if (type === "HumanName") return namedPartsClause(disc, pattern, sliceId, values, "HumanName", ["use", "text", "family"], ["given", "prefix", "suffix", "period"]);
+  if (type === "Address") return namedPartsClause(disc, pattern, sliceId, values, "Address", ["use", "type", "text", "city", "district", "state", "postalCode", "country"], ["line", "period"]);
+  throw new SlicingDefinitionError(`Unsupported fixed pattern type for discriminator (${disc}) for slice ${sliceId}: ${type}`);
+}
+
+/** InstanceValidator.buildFixedExpression. */
+function fixedClause(disc: string, fixed: any, type: string, sliceId: string, values: any[]): { match: boolean; expression: string } {
+  if (type === "CodeableConcept") return codeableConceptClause(disc, fixed, sliceId, values);
+  if (type === "Identifier") return identifierClause(disc, fixed, sliceId, values);
+  if (type === "Coding") {
+    if (hasExt(fixed)) throw new SlicingDefinitionError(`Unsupported CodeableConcept pattern - extensions are not allowed - for discriminator (${disc}) for slice ${sliceId}`);
+    return codingWhere(disc, fixed, sliceId, values, "Coding");
+  }
+  const p = prim(fixed);
+  if (STRING_TYPES.has(type) || URI_TYPES.has(type)) return { match: values.some((v) => prim(v) === p), expression: `(${q(p)} in ${disc})` };
+  if (INTEGER_TYPES.has(type) || type === "decimal" || type === "boolean") return { match: values.some((v) => prim(v) === p), expression: `(${p} in ${disc})` };
+  const cls = type[0].toUpperCase() + type.slice(1) + "Type";
+  throw new SlicingDefinitionError(`Unsupported fixed value type for discriminator (${disc}) for slice ${sliceId}: ${R5_MODEL}${/^[a-z]/.test(type) ? cls : type}`);
 }
 
 /** Extract `(system, code)` pairs from a code / Coding / CodeableConcept value. */
