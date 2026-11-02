@@ -38,6 +38,7 @@ import { FileValidatorResolver, ResourceStore } from "../lib/fileResolver.js";
 import { minimize, type Target } from "../lib/minimize.js";
 import { findPackage, packageClosure, type Res } from "../lib/packages.js";
 import { pickLoader, type CorpusItem } from "./loaders.js";
+import { ResultWriter, readResults } from "./results.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -165,9 +166,12 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([p, new Promise<T>((_, rej) => (t = setTimeout(() => rej(new Error(`timeout after ${ms} ms`)), ms)))]).finally(() => clearTimeout(t));
 }
 /** --exclude-from a.json[,b.json]: skip ids already compared there (resume / add new corpus items only). */
-const excluded = new Set<string>(
-  (opt("--exclude-from")?.split(",").filter(Boolean) ?? []).flatMap((f) => ((JSON.parse(readFileSync(f, "utf8")) as Res).results as Res[]).filter((x) => x.comparison || x.skip === "raw-unparseable").map((x) => String(x.id))),
-);
+const excluded = new Set<string>();
+for (const f of opt("--exclude-from")?.split(",").filter(Boolean) ?? []) {
+  readResults(f, (x) => {
+    if (x.comparison || x.skip === "raw-unparseable") excluded.add(String(x.id));
+  });
+}
 const crashOnly = args.includes("--crash-only");
 
 const keyOf = (i: SimpleIssue): ErrKey => ({ path: normPath(i.path), cls: errorClass(normMessage(i.message)), msg: normMessage(i.message), ...(i.messageId !== undefined ? { msgid: i.messageId } : {}) });
@@ -183,6 +187,7 @@ async function main(): Promise<void> {
   const validate: Validate = db ? db.validate : fileEngine();
   const ours = async (item: CorpusItem, x: Res): Promise<SimpleIssue[]> => (await validate(item, x)).issues.filter((i) => !isContentCheck(i));
   console.error(`corpus ${dir} (format ${loader.name}, engine ${engineName})`);
+  const writer = new ResultWriter(outFile, { generated: new Date().toISOString(), corpus: dir, format: loader.name, engine: engineName, start, count: Number.isFinite(count) ? count : null, shard: `${shardK}/${shardN}` });
   const results: ItemResult[] = [];
   let n = 0;
   let idx = -1;
@@ -249,12 +254,20 @@ async function main(): Promise<void> {
         r.error = String((e as Error).stack ?? e).split("\n").slice(0, 4).join("\n");
       }
     }
+    writer.add(r);
     results.push(r);
     if (verbose || only) {
       const c = r.comparison;
       console.log(`${r.id} ${r.status}${r.skip ? ` (${r.skip})` : ""}${c ? ` official=${c.expectedErrors} ours=${c.actualErrors}` : ""}${r.flags.length ? ` flags=${r.flags.join(",")}` : ""}${r.error ? `\n  ${r.error}` : ""}`);
       for (const k of c?.missing ?? []) console.log(`   - MISSING ${k}`);
       for (const k of c?.extra ?? []) console.log(`   + EXTRA   ${k}`);
+    }
+    // on disk now: only the summary below reads the item from here on
+    delete r.officialErrors;
+    delete r.ourErrors;
+    if (r.comparison) {
+      r.comparison.missing = [];
+      r.comparison.extra = [];
     }
     if (results.length % 200 === 0) console.error(`… ${results.length} items`);
   }
@@ -273,7 +286,7 @@ async function main(): Promise<void> {
   };
   console.log("top missing classes:\n" + tally((c) => c.lenientMissing.map(cls)).map(([k, v]) => `  ${String(v).padStart(4)}  ${k}`).join("\n"));
   console.log("top extra classes:\n" + tally((c) => c.lenientExtra.map(cls)).map(([k, v]) => `  ${String(v).padStart(4)}  ${k}`).join("\n"));
-  writeFileSync(outFile, JSON.stringify({ generated: new Date().toISOString(), corpus: dir, format: loader.name, engine: engineName, start, count: Number.isFinite(count) ? count : null, shard: `${shardK}/${shardN}`, results }, null, 1));
+  writer.close();
   console.log(`per-item JSON: ${outFile}`);
   if (db) await db.close();
 }

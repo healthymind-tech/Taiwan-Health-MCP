@@ -25,8 +25,9 @@
  *
  *   node --import tsx scripts/parity/corpus/report.ts <results.json>... [--md out.md] [--plan plan.json] [--top 30] [--cmd "<re-run command>"]
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { lenientMessage } from "../lib/compare.js";
+import { readResults } from "./results.js";
 
 type Res = Record<string, any>;
 interface ErrKey {
@@ -44,7 +45,7 @@ const top = Number(opt("--top") ?? 30);
 
 const byId = new Map<string, Res>();
 // the same id can exist in several IGs (corpus ids are per IG): key by ig + id
-for (const f of files) for (const r of (JSON.parse(readFileSync(f, "utf8")) as Res).results as Res[]) byId.set(`${r.ig ?? ""}/${r.id}`, r);
+for (const f of files) readResults(f, (r) => byId.set(`${r.ig ?? ""}/${r.id}`, r));
 const items: Res[] = [...byId.values()];
 /** profile-typo, also inside a combo mutation ("profile-typo/…+…"): validator_cli fetched the typo'd profile online */
 const isNetwork = (it: Res): boolean => it.family === "profile-typo" || /(?:^|\+)profile-typo\//u.test(String(it.mutation ?? ""));
