@@ -1024,7 +1024,13 @@ const USER_FUNCTIONS: Record<string, any> = {
     internalStructures: true,
     arity: { 0: [], 1: ["Expr"] },
     fn: function (this: any, coll: any[], expr?: (d: any) => any[]): any[] {
-      if (!expr) return [(coll || []).length > 0];
+      // funcExists l. 5813: an element with nothing in it (Base.isEmpty) does not count
+      if (!expr) {
+        return [(coll || []).some((x) => {
+          const v = fpUtil.valData(x);
+          return !(v !== null && typeof v === "object" && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype && Object.keys(v).length === 0);
+        })];
+      }
       return [javaWhere.call(this, coll, expr).length > 0];
     },
   },
