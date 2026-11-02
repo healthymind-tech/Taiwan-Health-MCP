@@ -25,6 +25,7 @@ import { readFileSync } from "node:fs";
 import { htmlChecks1, htmlChecks2 } from "./fhirXhtml.js";
 import { numberText } from "./fhirJsonLiterals.js";
 import { ucumCanonicalForm } from "./fhirUcum.js";
+import { UcumDecimal, UcumException } from "./fhirUcumDecimal.js";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 
@@ -120,6 +121,71 @@ function paramString(p: any): string | undefined {
 }
 
 /** FHIRPathEngine.funcStartsWith */
+/** n1.get(0) + Integer.parseInt of funcSkip / funcTake: both fail on what is not an integer. */
+function javaIntParam(param: any): number {
+  const list = fpUtil.arraify(param);
+  if (list.length === 0) throw new JavaFhirPathError("Index 0 out of bounds for length 0");
+  const s = itemString(list[0]);
+  if (s === null || !/^[+-]?\d+$/.test(s)) throw new JavaFhirPathError(`For input string: "${s}"`);
+  return Number(s);
+}
+
+/** FHIRPathEngine.funcSkip (l. 6537-6545). */
+function javaSkip(coll: any[], n: any): any[] {
+  const i = javaIntParam(n);
+  if (i < 0 && i < coll.length) throw new JavaFhirPathError(`Index ${i} out of bounds for length ${coll.length}`);
+  return coll.slice(i);
+}
+
+/** FHIRPathEngine.funcTake (l. 5442-5450). */
+function javaTake(coll: any[], n: any): any[] {
+  return coll.slice(0, Math.max(0, Math.min(coll.length, javaIntParam(n))));
+}
+
+/** FHIRPathEngine.funcSubstring (l. 6286-6324). */
+function javaSubstring(coll: any[], start: any, length?: any): any[] {
+  if (coll.length === 0) return [];
+  const n1 = fpUtil.arraify(start);
+  if (n1.length === 0) return [];
+  const i1 = javaIntParam(n1);
+  let i2 = -1;
+  if (length !== undefined) {
+    const n2 = fpUtil.arraify(length);
+    const s2 = n2.length ? itemString(n2[0]) : null;
+    if (s2 === null || !/^-?\d+$/.test(s2)) return [];
+    i2 = Number(s2);
+  }
+  if (coll.length !== 1 || !isStringTyped(coll[0])) return [];
+  const sw = itemString(coll[0]);
+  if (sw === null || i1 < 0 || i1 >= sw.length) return [];
+  let s = sw.slice(i1);
+  if (length !== undefined) {
+    const end = Math.min(sw.length, (i1 + i2) | 0); // int arithmetic
+    if (end < i1) throw new JavaFhirPathError(`Range [${i1}, ${end}) out of bounds for length ${sw.length}`);
+    s = sw.slice(i1, end);
+  }
+  return s === "" ? [] : [s];
+}
+
+/** Utilities.unescapeJson (Utilities.java:482-530): `\\"` gives `b`, `\\u` does not skip its four digits. */
+function javaUnescapeJson(json: string): string {
+  const simple: Record<string, string> = { '"': "b", "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
+  let b = "";
+  for (let i = 0; i < json.length; i++) {
+    if (json[i] !== "\\") {
+      b += json[i];
+      continue;
+    }
+    i++;
+    const ch = json[i];
+    if (ch === undefined) throw new JavaFhirPathError(`Index ${i} out of bounds for length ${json.length}`);
+    if (ch === "u") b += String.fromCodePoint(parseInt(json.slice(i + 1, i + 5), 16));
+    else if (ch in simple) b += simple[ch];
+    else throw new JavaFhirPathError(`Unknown JSON escape \\${ch}`);
+  }
+  return b;
+}
+
 function javaStartsWith(coll: any[], prefix: any): any[] {
   const sw = paramString(prefix);
   if (!coll || coll.length === 0 || sw === undefined) return [];
@@ -283,21 +349,24 @@ const JAVA_OPERATORS: Record<string, any> = {
   },
 };
 
-/** Wraps a stock operator: comparisons of collections (more than one item) are empty in Java (opLessThan … l. 2590ff). */
-function javaComparison(orig: any): any {
+/**
+ * Wraps a stock operator: comparisons of collections (more than one item) are empty in Java (opLessThan … l. 2590ff).
+ * Two Quantities: the same units compare the values, otherwise the canonical decimals (qtyToCanonicalDecimal, l. 2471-2482),
+ * a null one (outside UCUM, a unit it cannot convert) failing in hasNoPrimitiveValue (l. 1713). "The same units" differs by
+ * operator: `code` children in opLessThan (l. 2611), `unit` children in opGreater / opGreaterOrEqual (l. 2666, 2773),
+ * opLessOrEqual's `lunit.equals(runit)` fails with no left unit and a right one (l. 2718).
+ */
+function javaComparison(orig: any, op: string): any {
   return {
     ...orig,
     fn: function (this: any, a: any[], b: any[]): any {
       if (a.length > 1 || b.length > 1) return [];
       if (a.length === 1 && b.length === 1) {
-        // opLessThan, FHIRPathEngine.java:2611-2627 (opGreater, opLessOrEqual, opGreaterOrEqual alike): the same `code`
-        // children (also none) compare the values; otherwise the canonical decimals (qtyToCanonicalDecimal, l. 2471-2482).
-        // Null there (outside UCUM, a unit it cannot convert) goes into the list and hasNoPrimitiveValue (l. 1713) fails
-        // with a NullPointerException: the invariant fails without a message
         const l = javaQuantity(a[0]);
         const r = javaQuantity(b[0]);
         if (l && r) {
-          if (l.code === r.code) {
+          if (op === "<=" && l.unit === null && r.unit !== null) throw new JavaFhirPathError("null");
+          if (op === "<" ? l.code === r.code : l.unit === r.unit) {
             if (l.value === undefined || r.value === undefined) return [];
             return orig.fn.call(this, [Number(l.value)], [Number(r.value)]);
           }
@@ -313,6 +382,36 @@ function javaComparison(orig: any): any {
 }
 
 // ------------------------------------------------------------ lowBoundary / highBoundary
+
+interface BigText {
+  unscaled: bigint;
+  scale: number;
+}
+
+/** new BigDecimal(text). */
+function bigFromText(text: string): BigText {
+  const [m, e = "0"] = text.toLowerCase().split("e");
+  const neg = m.startsWith("-");
+  const [i, f = ""] = m.replace(/^[+-]/, "").split(".");
+  const digits = BigInt(i + f);
+  return { unscaled: neg ? -digits : digits, scale: f.length - Number(e) };
+}
+
+/** BigDecimal.toPlainString. */
+function bigToText(v: BigText): string {
+  if (v.scale <= 0) return (v.unscaled * 10n ** BigInt(-v.scale)).toString();
+  const neg = v.unscaled < 0n;
+  const d = (neg ? -v.unscaled : v.unscaled).toString().padStart(v.scale + 1, "0");
+  return `${neg ? "-" : ""}${d.slice(0, d.length - v.scale)}.${d.slice(d.length - v.scale)}`;
+}
+
+/** A DecimalType from its text; fhirpath.js would type a text without places as an integer. */
+function javaDecimal(ctx: any, text: string): any {
+  const Dec = ctx.getDecimal(0).constructor;
+  const d = new Dec(text);
+  d.isInteger = () => false;
+  return d;
+}
 
 /** Utilities.applyPrecision (l. 1709-1738): cuts or pads the digits of `v` to `p` decimal places. */
 function boundaryApplyPrecision(v: string, p: number, down: boolean): string {
@@ -447,11 +546,11 @@ function javaBoundary(high: boolean): (this: any, coll: any[], precision?: any) 
       const asStr = String(v.asStr ?? v.toString()).replace(/^@/, "");
       const isDate = v instanceof fpTypes.FP_Date;
       const s = dateBoundary(asStr, p ?? (isDate ? 10 : 17), high);
-      return [s.includes("T") ? new fpTypes.FP_DateTime(this, s) : new fpTypes.FP_Date(this, s)];
+      return [new fpTypes.FP_DateTime(this, s)]; // funcLowBoundary (l. 4646-4648): a DateTimeType whatever the focus
     }
     if (typeof v === "number" || typeof v === "bigint" || v instanceof Dec || (v && typeof v.toFixed === "function")) {
       if (p !== undefined && (p < 0 || p >= 17)) return [];
-      return [new Dec(javaDecimalText(decimalBoundary(sourceNumberText(coll[0]) ?? String(v), p ?? 8, high)))];
+      return [javaDecimal(this, javaDecimalText(decimalBoundary(sourceNumberText(coll[0]) ?? String(v), p ?? 8, high)))];
     }
     throw new JavaFhirPathError(`Error evaluating FHIRPath expression: The parameter type for function sqrt is not valid for ${name}`);
   };
@@ -505,10 +604,54 @@ function qtyUnitsComparable(l: QtyParts, r: QtyParts): boolean {
   return true;
 }
 
-/** removeTrailingZeros + decEqual (FHIRPathEngine.java:2340-2344). */
+/** removeTrailingZeros (FHIRPathEngine.java:2325-2339): also the zeros of a whole number, before any `.`. */
+function javaRemoveTrailingZeros(s: string): string {
+  if (s === "") return "";
+  let i = s.length - 1;
+  let done = false;
+  let dot = false;
+  while (i > 0 && !done) {
+    if (s[i] === ".") {
+      i--;
+      dot = true;
+    } else if (!dot && s[i] === "0") i--;
+    else done = true;
+  }
+  return s.slice(0, i + 1);
+}
+
+/** decEqual (FHIRPathEngine.java:2341-2345). */
 function decEqualText(l: string, r: string): boolean {
-  const strip = (x: string): string => (x.includes(".") ? x.replace(/0+$/, "").replace(/\.$/, "") : x);
-  return strip(l) === strip(r);
+  return javaRemoveTrailingZeros(l) === javaRemoveTrailingZeros(r);
+}
+
+const javaIsDate = (item: any): boolean => ["date", "dateTime", "instant"].includes(javaFhirType(item).type);
+
+/** new DateTimeType(primitiveValue()): a time needs its seconds (BaseDateTimeType:166, 1048). */
+function javaDateTimeType(item: any): void {
+  const s = String(fpUtil.valData(item)?.asStr ?? itemString(item) ?? "").replace(/^@/, "");
+  const m = /T\d{2}(?::\d{2})?(Z|[+-]\d{2}:\d{2})?$/.exec(s);
+  if (!m) return;
+  if (m[1]) throw new JavaFhirPathError(`Invalid date/time string (datatype DateTimeType does not support MINUTE precision): ${s}`);
+  throw new JavaFhirPathError(`Invalid date/time format: "${s}"`);
+}
+
+/**
+ * doEquals (l. 2350-2370) after Quantities and dates: a DecimalType on either side (only literals and computed values are:
+ * the validator's elements are not DecimalType) compares with decEqual, two numbers otherwise by their text. Undefined =
+ * not such a pair.
+ */
+function javaPrimitiveEquals(a: any, b: any): boolean | undefined {
+  const ta = javaFhirType(a);
+  const tb = javaFhirType(b);
+  const numeric = (t: string): boolean => ["integer", "decimal", "unsignedInt", "positiveInt"].includes(t);
+  const text = (x: any): string | null => sourceNumberText(x) ?? itemString(x);
+  const la = text(a);
+  const lb = text(b);
+  if (la === null || lb === null) return undefined;
+  if ((ta.literal && ta.type === "decimal") || (tb.literal && tb.type === "decimal")) return decEqualText(la, lb);
+  if (numeric(ta.type) && numeric(tb.type)) return la === lb;
+  return undefined;
 }
 
 /** Utilities.equivalentNumber (Utilities.java:1258-1273): rounded HALF_UP to the coarser scale. */
@@ -783,9 +926,24 @@ if (loaded.engine) {
     table[op] = {
       ...orig,
       fn: function (this: any, a: any[], b: any[]): any {
+        // doEquivalent (l. 2372): qtyEquivalent's null fails unboxing to boolean (NullPointerException), dates go through
+        // new DateTimeType (compareDateTimeElements, l. 689)
+        const same = (l: any, r: any): boolean | undefined => {
+          if (javaIsDate(l) && javaIsDate(r)) {
+            javaDateTimeType(l);
+            javaDateTimeType(r);
+          }
+          const q = javaQtyCompare(l, r, true);
+          if (q === null) throw new JavaFhirPathError('Cannot invoke "java.lang.Boolean.booleanValue()"');
+          return q;
+        };
+        if (a.length === 1 && b.length === 1) {
+          const q = same(a[0], b[0]);
+          if (q !== undefined) return [not ? !q : q];
+        }
         if (a.length <= 1 && b.length <= 1) return orig.fn.call(this, a, b);
         if (a.length !== b.length) return [not];
-        const all = a.every((l) => b.some((r) => fpUtil.arraify(item.fn.call(this, [l], [r]))[0] === true));
+        const all = a.every((l) => b.some((r) => same(l, r) ?? fpUtil.arraify(item.fn.call(this, [l], [r]))[0] === true));
         return [not ? !all : all];
       },
     };
@@ -799,28 +957,22 @@ if (loaded.engine) {
           const qe = javaQtyCompare(a[0], b[0], false);
           if (qe === null) return [];
           if (qe !== undefined) return [not ? !qe : qe];
+          if (javaIsDate(a[0]) && javaIsDate(b[0])) {
+            javaDateTimeType(a[0]);
+            javaDateTimeType(b[0]);
+          }
           const eq = javaDateEqualsMixedZone(a[0], b[0]);
           if (eq === null) return [];
           if (eq !== undefined) return [not ? !eq : eq];
+          const pe = javaPrimitiveEquals(a[0], b[0]);
+          if (pe !== undefined) return [not ? !pe : pe];
         }
         return orig.fn.call(this, a, b);
       },
     };
   }
   Object.assign(table, JAVA_OPERATORS);
-  for (const op of ["<", ">", "<=", ">="]) table[op] = javaComparison(table[op]);
-  // opEquivalent on two Quantities: qtyEquivalent (FHIRPathEngine.java:2501-2530)
-  const equiv = table["~"];
-  table["~"] = {
-    ...equiv,
-    fn: function (this: any, a: any[], b: any[]): any {
-      if (a.length === 1 && b.length === 1) {
-        const q = javaQtyCompare(a[0], b[0], true);
-        if (q !== undefined) return q === null ? [] : [q];
-      }
-      return equiv.fn.call(this, a, b);
-    },
-  };
+  for (const op of ["<", ">", "<=", ">="]) table[op] = javaComparison(table[op], op);
   // a negated decimal keeps its text (-120.50); fhirpath.js goes through a number
   const polarity = loaded.engine.PolarityExpression;
   loaded.engine.PolarityExpression = function (ctx: any, parentData: any, node: any): any {
@@ -875,16 +1027,154 @@ if (loaded.engine) {
       });
     },
   };
-  // opDivideBy (l. 3235) answers a DecimalType whatever the operands
-  const divide = table["/"];
-  table["/"] = {
-    ...divide,
-    fn: function (this: any, a: any[], b: any[]): any {
-      const r = divide.fn.call(this, a, b);
-      if (r instanceof fpTypes.FP_Decimal) (r as any).isInteger = () => false; // 2 / 2 is the decimal 1, whose text has no places
+  // opDivideBy (l. 3257-3265), opDiv (l. 3306-3315), opMod (l. 3345-3355): org.fhir.ucum.Decimal digit by digit. A
+  // UcumException (a zero divisor) is no result for `/` and `div`, and fails `mod`
+  const NUMBERS = new Set(["integer", "decimal", "unsignedInt", "positiveInt"]);
+  const decimals = (x: any, y: any, set: Set<string>): [UcumDecimal, UcumDecimal] | null => {
+    if (!set.has(javaFhirType(x).type) || !set.has(javaFhirType(y).type)) return null;
+    return [new UcumDecimal(sourceNumberText(x) ?? itemString(x) ?? ""), new UcumDecimal(sourceNumberText(y) ?? itemString(y) ?? "")];
+  };
+  const operator = (op: string, run: (ctx: any, x: UcumDecimal, y: UcumDecimal) => any[], set: Set<string>, ints: boolean): void => {
+    const stock = table[op];
+    table[op] = {
+      ...stock,
+      arity: { 2: ["Any", "Any"] }, // the stock `Number` parameters of div / mod hide the operand's type
+      fn: function (this: any, a: any[], b: any[]): any {
+        if (a.length === 1 && b.length === 1 && !(ints && javaFhirType(a[0]).type === "integer" && javaFhirType(b[0]).type === "integer")) {
+          const d = decimals(a[0], b[0], set);
+          if (d) return run(this, d[0], d[1]);
+        }
+        if (stock.arity[2][0] === "Number" && a.length === 1 && b.length === 1) return stock.fn.call(this, fpUtil.valDataConverted(a[0]), fpUtil.valDataConverted(b[0]));
+        return stock.fn.call(this, a, b);
+      },
+    };
+  };
+  const noResultOnZero = (f: (ctx: any, x: UcumDecimal, y: UcumDecimal) => any) => (ctx: any, x: UcumDecimal, y: UcumDecimal): any[] => {
+    try {
+      return [f(ctx, x, y)];
+    } catch (e) {
+      if (e instanceof UcumException) return [];
+      throw e;
+    }
+  };
+  // opPlus / opMinus / opTimes (l. 2896, 3211, 3039): BigDecimal on the two texts
+  const bigOperator = (op: string, f: (x: BigText, y: BigText) => BigText): void => {
+    const stock = table[op];
+    table[op] = {
+      ...stock,
+      fn: function (this: any, a: any[], b: any[]): any {
+        if (a.length === 1 && b.length === 1) {
+          const [tx, ty] = [javaFhirType(a[0]).type, javaFhirType(b[0]).type];
+          if (DIV_TYPES.has(tx) && DIV_TYPES.has(ty) && !(tx === "integer" && ty === "integer")) {
+            return [javaDecimal(this, bigToText(f(bigFromText(sourceNumberText(a[0]) ?? itemString(a[0]) ?? "0"), bigFromText(sourceNumberText(b[0]) ?? itemString(b[0]) ?? "0"))))];
+          }
+        }
+        return stock.fn.call(this, a, b);
+      },
+    };
+  };
+  const DIV_TYPES = new Set(["decimal", "integer"]);
+  bigOperator("+", (x, y) => {
+    const s = Math.max(x.scale, y.scale);
+    return { unscaled: x.unscaled * 10n ** BigInt(s - x.scale) + y.unscaled * 10n ** BigInt(s - y.scale), scale: s };
+  });
+  bigOperator("-", (x, y) => {
+    const s = Math.max(x.scale, y.scale);
+    return { unscaled: x.unscaled * 10n ** BigInt(s - x.scale) - y.unscaled * 10n ** BigInt(s - y.scale), scale: s };
+  });
+  bigOperator("*", (x, y) => ({ unscaled: x.unscaled * y.unscaled, scale: x.scale + y.scale }));
+  // funcToQuantity → parseQuantityString (l. 6470-6506): a calendar word in a string becomes its UCUM code, `mo_s` / `a`
+  const toQuantity = table.toQuantity;
+  const STRING_UCUM: Record<string, string> = { year: "a", years: "a", month: "mo_s", months: "mo_s" };
+  table.toQuantity = {
+    ...toQuantity,
+    fn: function (this: any, coll: any[], ...rest: any[]): any {
+      const r = fpUtil.arraify(toQuantity.fn.call(this, coll, ...rest));
+      const q = r.length === 1 ? fpUtil.valData(r[0]) : null;
+      if (q instanceof fpTypes.FP_Quantity && coll.length === 1 && isStringTyped(coll[0]) && STRING_UCUM[String(q.unit)]) return [new fpTypes.FP_Quantity(this, q.value, `'${STRING_UCUM[String(q.unit)]}'`)];
       return r;
     },
   };
+  operator("/", noResultOnZero((ctx, x, y) => javaDecimal(ctx, x.divide(y).asDecimal())), NUMBERS, false);
+  operator("div", noResultOnZero((_ctx, x, y) => Number(x.divInt(y).asDecimal())), DIV_TYPES, true);
+  operator("mod", (ctx, x, y) => {
+    try {
+      return [javaDecimal(ctx, x.modulo(y).asDecimal())];
+    } catch (e) {
+      if (e instanceof UcumException) throw new JavaFhirPathError(`org.fhir.ucum.UcumException: ${e.message}`);
+      throw e;
+    }
+  }, DIV_TYPES, true);
+  // opUnion / funcUnion (l. 3079): doContains compares with doEquals
+  for (const op of ["|", "union"]) {
+    const stock = table[op];
+    table[op] = {
+      ...stock,
+      fn: function (this: any, a: any, b: any): any {
+        const dates = [...fpUtil.arraify(a), ...fpUtil.arraify(b)].filter(javaIsDate);
+        if (dates.length > 1) dates.forEach(javaDateTimeType);
+        return stock.fn.call(this, a, b);
+      },
+    };
+  }
+  // funcUnescape (l. 4860): Utilities.unescapeJson
+  const unescape = table.unescape;
+  table.unescape = {
+    ...unescape,
+    fn: function (this: any, coll: any[], format: string): any {
+      if (format === "json" && coll.length === 1 && itemString(coll[0]) !== null) return [javaUnescapeJson(itemString(coll[0]) as string)];
+      return unescape.fn.call(this, coll, format);
+    },
+  };
+  // ClassTypeInfo (FHIRPathUtilityClasses): what the validator evaluates is the element model, no r5 Resource / Element,
+  // so everything is System with the capitalised type name
+  const typeFn = table.type;
+  table.type = {
+    ...typeFn,
+    fn: function (this: any, coll: any[]): any {
+      return coll.map((x) => {
+        const t = javaFhirType(x).type;
+        return t ? new fpTypes.TypeInfo({ namespace: "System", name: t.charAt(0).toUpperCase() + t.slice(1) }) : fpTypes.TypeInfo.fromValue(x);
+      });
+    },
+  };
+  // funcIs (l. 5513-5550): the namespace System, an unqualified primitive name included, compares the capitalised type
+  const isFn = table.is;
+  const SYSTEM_NAMES = new Set(["Boolean", "Integer", "Decimal", "String", "DateTime", "Date", "Time", "SimpleTypeInfo", "ClassInfo"]);
+  table.is = {
+    ...isFn,
+    fn: function (this: any, coll: any[], info: any): any {
+      if (coll.length > 1) return [];
+      if (coll.length === 1 && (info.namespace ?? (SYSTEM_NAMES.has(info.name) ? "System" : "FHIR")) === "System") {
+        const f = javaFhirType(coll[0]).type;
+        const t = f.charAt(0).toUpperCase() + f.slice(1);
+        return [info.name === t || (t === "Date" && info.name === "DateTime")];
+      }
+      return isFn.fn.call(this, coll, info);
+    },
+  };
+  const patchEval = (name: string, fn: (stock: any) => any): void => {
+    const stock = loaded.engine.evalTable?.[name] ?? loaded.engine[name];
+    const replaced = fn(stock);
+    loaded.engine[name] = replaced;
+    if (loaded.engine.evalTable) loaded.engine.evalTable[name] = replaced;
+  };
+  // funcItem (l. 6726): Integer.parseInt(s) < focus.size(), so a negative index reaches List.get
+  patchEval("IndexerExpression", (stock) => function (ctx: any, parentData: any, node: any): any {
+    const idx = loaded.engine.doEval(ctx, parentData, node.children[1]);
+    if (idx.length === 1 && Number(itemString(idx[0])) < 0) throw new JavaFhirPathError(`Index ${itemString(idx[0])} out of bounds`);
+    return stock.call(loaded.engine, ctx, parentData, node);
+  });
+  // FHIRLexer.processConstant (l. 500-505): Integer.parseInt takes a sign; processFixedName (l. 550-554) reads radix 32
+  patchEval("StringLiteral", (stock) => function (ctx: any, parentData: any, node: any): any {
+    const text = String(node.text).replace(/\\u\+([0-9a-fA-F]{3})/g, (_m, h) => `\\u0${h}`);
+    return stock.call(loaded.engine, ctx, parentData, { ...node, text });
+  });
+  patchEval("Identifier", (stock) => function (ctx: any, parentData: any, node: any): any {
+    const text = String(node.text);
+    if (!text.startsWith("`")) return stock.call(loaded.engine, ctx, parentData, node);
+    return stock.call(loaded.engine, ctx, parentData, { ...node, text: text.replace(/\\u(.{4})/g, (_m, h) => String.fromCodePoint(parseInt(h, 32))) });
+  });
   // funcIs: a type name that does not exist in the System namespace is simply not the item's type (no exception)
   const typeSpecifier = loaded.engine.TypeSpecifier;
   loaded.engine.TypeSpecifier = function (ctx: any, parentData: any, node: any): any {
@@ -1290,6 +1580,9 @@ const USER_FUNCTIONS: Record<string, any> = {
   matches: { internalStructures: true, fn: javaMatches(false), arity: { 1: ["Any"] } },
   matchesFull: { internalStructures: true, fn: javaMatches(true), arity: { 1: ["Any"] } },
   length: { internalStructures: true, fn: javaLength },
+  skip: { internalStructures: true, fn: javaSkip, arity: { 1: ["Any"] } },
+  take: { internalStructures: true, fn: javaTake, arity: { 1: ["Any"] } },
+  substring: { internalStructures: true, fn: javaSubstring, arity: { 1: ["Any"], 2: ["Any", "Any"] } },
   conformsTo: {
     internalStructures: true,
     arity: { 1: ["String"] },

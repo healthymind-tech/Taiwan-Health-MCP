@@ -564,3 +564,28 @@ test("an invariant's conformsTo() is answered by validating against that profile
   assert.ok(!has(failing, /could not be evaluated/), "not unevaluable any more: checked_fully stays true");
   assert.ok(has(await run("conformsTo('http://ex.org/unknown')", {}), /Unable to resolve the reference http:\/\/ex.org\/unknown/));
 });
+
+test("FHIRPath outcomes checked on validator_cli 7.0.1 (fhirpath-jar.json)", () => {
+  const p = { resourceType: "Patient", active: true, name: [{ family: "a" }, { family: "b" }] };
+  const run = (e: string): unknown => evaluateConstraint(p, "Patient", e, {} as FhirPathEnv).status;
+  const value = (e: string): unknown[] => evaluateExpression(p, "Patient", e, {} as FhirPathEnv).map((v) => (typeof v === "object" ? String(v) : v));
+  assert.deepEqual(value("100 = 1.0"), [true], "removeTrailingZeros strips the zeros of a whole number");
+  assert.deepEqual(value("10 = 10.0"), [false]);
+  assert.equal(run("1 year ~ 1 'a'"), "fail", "qtyEquivalent's null fails unboxing");
+  assert.equal(run("@2015-02-04T10:00 = @2015-02-04T10:00"), "fail", "new DateTimeType needs seconds");
+  assert.deepEqual(value("@2018-03-01T10:30 < @2018-03-01T10:30:00"), [], "compareDateTimeElements keeps the literal");
+  assert.equal(run("Patient.name.skip(-1).exists()"), "fail");
+  assert.equal(run("Patient.name[-1].exists()"), "fail");
+  assert.equal(run("'abcdefg'.substring(3, -1).exists()"), "fail");
+  assert.deepEqual(value("'abcdefg'.substring(3, 0)"), []);
+  assert.deepEqual(value("'\\\\u0041B'.unescape('json')"), ["A0041B"]);
+  assert.deepEqual(value("1 'kg' <= 999 'g'"), [true], "no unit child on either literal: the values compare");
+  assert.equal(run("1 year > 2 months"), "fail", "different unit children, no canonical form");
+  assert.deepEqual(value("0.0 / 0"), [0]);
+  assert.deepEqual(value("0 div 0.0"), [0]);
+  assert.equal(run("5.5 mod 0"), "fail");
+  assert.deepEqual(value("(0.0 mod 0).exists()"), [true]);
+  assert.deepEqual(value("1.8 - 1.2 = 0.6"), [true]);
+  assert.deepEqual(value("Patient.active.is(Boolean)"), [true]);
+  assert.deepEqual(value("Patient.active.type().namespace"), ["System"]);
+});

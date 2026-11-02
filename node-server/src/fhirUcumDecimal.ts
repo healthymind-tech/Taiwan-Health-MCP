@@ -299,6 +299,88 @@ export class UcumDecimal {
     return result;
   }
 
+  private copy(): UcumDecimal {
+    const r = new UcumDecimal();
+    r.precision = this.precision;
+    r.negative = this.negative;
+    r.digits = this.digits;
+    r.decimal = this.decimal;
+    return r;
+  }
+
+  trunc(): UcumDecimal {
+    if (this.decimal < 0) return new UcumDecimal("0");
+    const r = this.copy();
+    if (r.digits.length >= r.decimal) r.digits = r.digits.slice(0, r.decimal);
+    if (r.digits === "") {
+      r.digits = "0";
+      r.decimal = 1;
+      r.negative = false;
+    }
+    return r;
+  }
+
+  divInt(other: UcumDecimal): UcumDecimal {
+    return this.divide(other).trunc();
+  }
+
+  modulo(other: UcumDecimal): UcumDecimal {
+    return this.subtract(this.divInt(other).multiply(other));
+  }
+
+  subtract(other: UcumDecimal): UcumDecimal {
+    let result: UcumDecimal;
+    if (this.negative && !other.negative) {
+      result = this.doAdd(other);
+      result.negative = true;
+    } else if (!this.negative && other.negative) result = this.doAdd(other);
+    else if (this.negative && other.negative) {
+      result = this.doSubtract(other);
+      result.negative = !result.negative;
+    } else {
+      result = other.doSubtract(this);
+      result.negative = !result.negative;
+    }
+    return result;
+  }
+
+  private aligned(other: UcumDecimal): { max: number; s1: string; s2: string } {
+    const max = Math.max(this.decimal, other.decimal);
+    let s1 = rep("0", max - this.decimal + 1) + this.digits;
+    let s2 = rep("0", max - other.decimal + 1) + other.digits;
+    if (s1.length < s2.length) s1 = s1 + rep("0", s2.length - s1.length);
+    else if (s2.length < s1.length) s2 = s2 + rep("0", s1.length - s2.length);
+    return { max, s1, s2 };
+  }
+
+  private fromDigits(s30: string, max0: number, other: UcumDecimal): UcumDecimal {
+    let s3 = s30;
+    let max = max0;
+    if (s3[0] === "1") max++;
+    else s3 = del(s3, 0, 1);
+    if (max !== s3.length) {
+      if (max < 0 || max >= s3.length) throw new Error("Unhandled");
+      s3 = insert(".", s3, max);
+    }
+    const r = new UcumDecimal();
+    r.setValueDecimal(s3);
+    r.precision = this.decimal < other.decimal ? this.precision : other.decimal < this.decimal ? other.precision : Math.min(this.precision, other.precision);
+    return r;
+  }
+
+  private doAdd(other: UcumDecimal): UcumDecimal {
+    const { max, s1, s2 } = this.aligned(other);
+    return this.fromDigits(stringAddition(s1, s2), max, other);
+  }
+
+  private doSubtract(other: UcumDecimal): UcumDecimal {
+    const a = this.aligned(other);
+    const neg = a.s1 < a.s2;
+    const r = this.fromDigits(neg ? stringSubtraction(a.s2, a.s1) : stringSubtraction(a.s1, a.s2), a.max, other);
+    r.negative = neg;
+    return r;
+  }
+
   checkForCouldBeWholeNumber(): void {
     if (this.precision > 17 && this.digits.length > 3) {
       let i = this.digits.length - 2;
