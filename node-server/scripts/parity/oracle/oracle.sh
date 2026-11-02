@@ -7,7 +7,7 @@
 #   oracle.sh suite [out.jsonl] [--only a,b]            official validator cases -> jar outcomes (testcases/run.ts --oracle)
 #   oracle.sh validate <input...> [validator_cli options]   the CLI itself on your files, e.g.
 #       oracle.sh validate my.json -ig tw.gov.mohw.twcore#1.0.0 -profile https://example.org/StructureDefinition/x
-#     prints the OperationOutcome (JSON) on stdout; the CLI's log goes to stderr.
+#     prints the OperationOutcome (JSON) on stdout; the CLI's log goes to stderr; exit 3 = the CLI crashed, no outcome.
 #
 # Env: ORACLE_WORK (default ~/tools/validator-oracle), VALIDATOR_JAR (default ~/tools/validator-cli/validator_cli.jar),
 # FHIR_TEST_CASES (default ~/ref/fhir-test-cases), HL7_CORE_SRC (default ~/ref/hl7-core-7.0.1), ORACLE_WAIT (lock wait, s),
@@ -98,8 +98,10 @@ case "$cmd" in
     done
     jvm -jar /oracle/validator_cli.jar "${args[@]}" -version 4.0.1 -tx https://tx.fhir.org \
       -output "/work/in/$(basename "$job")/outcome.json" >&2 || true
-    cat "$job/outcome.json"
+    rc=0
+    if [ -f "$job/outcome.json" ]; then cat "$job/outcome.json"; else echo "oracle: the CLI gave no outcome (it crashed, see its log above)" >&2; rc=3; fi
     rm -rf "$job"
+    exit "$rc"
     ;;
   *) sed -n 2,15p "$0"; exit 2 ;;
 esac
