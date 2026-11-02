@@ -260,12 +260,13 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.65.0: FHIRPath boundaries on the number source text, conformsTo() of a non-singleton is false, sort errors with the expression (parity v3 round 7).
   // 1.66.0: FHIRPath equals validator_cli 7.0.1 on the suite (1076/1076): decimal digits through Decimal / BigDecimal, Quantity units per operator, ~ null, date text, skip / take / substring / indexer exceptions, type() and is() over the element model.
   // 1.69.0 (parity v3 review-structure, checked on the jar): fetchCache, element identity across views, memberOf empty, deep element model for invariants, extension context list of embedded resources, UCUM inner text, duplicate contained ids.
-  fhir_validate_bundle: "1.76.0",
+  fhir_validate_bundle: "1.77.0",
   // 1.68.0 (parity v3 tx-validator-wiring, round 7): answers locally what the terminology server would: membership from local tables (concept in / not-in, ICD-10-CM is-a, RxNorm TTY, SNOMED is-not-a and ECL, ISO 3166, UCUM, CVX), urn:oid systems nobody holds are UNKNOWN_CODESYSTEM, a CodeableConcept of a system nobody holds has no binding issue, inactive SNOMED concepts are in no hierarchy, R4 core v2 tables with the version in the url, ATC displays against any installed ValueSet.
   // 1.69.0 (parity v3 tx-validator-wiring, round 9): systems the server answers but nobody holds here (EDQM, ICD-O-3, ICD-11, HCPCS …) are undecided, not UNKNOWN_CODESYSTEM; a Coding.system spelled url|version is checked as that version.
   // 1.70.0 (parity v3 tx-validator-wiring, round 9): LOINC regex filters (a find, jar); a ValueSet nobody holds outside the HL7 space is a definite not found.
   // 1.71.0 (parity v3 tx-validator-wiring, round 9): CVX Wrong Display names the language 'en' (jar CLI, corpus).
   // 1.68.0 (parity v3, unsafe releases): JSON null beside a shadow is a parser error; codings without a code under a non-example binding (tx issues); a code system nothing here holds outside the IG namespaces is not fully checked; whitespace displays ignored for server-side systems; example URLs only when absolute.
+  // 1.69.0 (parity v3 ROUND 9): checked_fully = every check validator_cli would do (an unknown profile, a system neither held nor on the terminology server no longer lower it; a system on the server with no local data does); data.extended_findings (only when there is something to report).
   // 1.59.0: FHIRPath sort keys, the decimal type of `/` and the `id` type of Resource.id as FHIRPathEngine (parity v3 round 7).
   // 1.59.0 (parity v3 json-xhtml): an object emptied by the parser on a choice element gets no ele-1, as a source `{}` there.
   // 1.53.0: data carries codes_unchecked / slices_unchecked / invariants_unchecked / lookups_failed (the reasons for checked_fully=false, as fhir_validate_resource; they were dropped), and undecided_causes (`system|valueSet` behind undecided codes and slices).
@@ -331,12 +332,13 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.62.0: validation as fhir_validate_bundle 1.65.0.
   // 1.63.0: validation as fhir_validate_bundle 1.66.0.
   // 1.66.0: validation as fhir_validate_bundle 1.69.0 (parity v3 review-structure, checked on the jar).
-  fhir_validate_resource: "1.73.0",
+  fhir_validate_resource: "1.74.0",
   // 1.65.0: validation as fhir_validate_bundle 1.68.0.
   // 1.66.0: validation as fhir_validate_bundle 1.69.0.
   // 1.67.0: validation as fhir_validate_bundle 1.70.0.
   // 1.68.0: validation as fhir_validate_bundle 1.71.0.
   // 1.65.0: validation as fhir_validate_bundle 1.68.0.
+  // 1.66.0 (parity v3 ROUND 9): as fhir_validate_bundle 1.69.0.
   // 1.56.0: validation as fhir_validate_bundle 1.59.0.
   // 1.56.0: validation as fhir_validate_bundle 1.59.0.
   // 1.50.0: undecided_causes as fhir_validate_bundle 1.53.0.
@@ -473,7 +475,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.23.0 (ISSUES_v17.4, with source_text): validation as fhir_validate_resource 1.26.0 (narrowed IG-defined exemption).
   // 1.24.0 (ISSUES_v20, with source_text): the record checks of fhir_validate_resource 1.28.0 (as fhir_finalize_bundle 1.19.0).
   // 1.25.0 (ISSUES_v20.1, with source_text only): record_issues / validation carry `gate`; the record checks of fhir_validate_bundle 1.33.0. Output without source_text unchanged.
-  fhir_finalize_resource: "1.25.0",
+  // 1.26.0 (parity v3 ROUND 9): an unresolvable meta.profile that maps to exactly one profile is repaired (profile_changes); validation carries extended_findings.
+  fhir_finalize_resource: "1.26.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -593,7 +596,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   grounding_errors / record_check_errors; advisory errors are counted in content.advisory_errors (+ advisory_rules);
   //   neither targets nor facts → reason incomplete-input (completeness cannot be judged), never released.
   // 1.2.0 (v20.2, evaluator decision): only decidable conditions stop a release (official 0 errors, targets, blocking G-UNGROUNDED on structured values); fact coverage and suspected-empty-bundle → `advisories`; no targets → incomplete-input.
-  fhir_release_check: "1.2.0",
+  // 1.3.0 (parity v3 ROUND 9): release = parity 0 errors, checked_fully=true, extended 0 errors (extended-error, extended-incomplete, not-fully-checked even with require_official=false); validation.extended.
+  fhir_release_check: "1.3.0",
   // 1.1.0 (evaluation feedback): (1) a model display the validator's terminology rule rejects for a resolvable code is
   //   replaced by the code's display (provenance lookup; the model wording moves to CodeableConcept.text when empty;
   //   case-only differences are valid, whitespace-only ones take the valid spelling); (2) a single object / scalar where
@@ -777,7 +781,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.18.0 (ISSUES_v17.4, with source_text): data.record_issues as fhir_validate_bundle 1.29.0 (narrowed IG-defined exemption).
   // 1.19.0 (ISSUES_v20, with source_text): the record checks of fhir_validate_bundle 1.31.0 in data.record_issues (identifier-truncated, ROC range ends, no allergy resolution from 停藥; code-meaning-mismatch needs normalize candidates, which finalize does not fetch). Output without source_text unchanged.
   // 1.20.0 (ISSUES_v20.1, with source_text only): record_issues carry `gate`; the record checks of fhir_validate_bundle 1.33.0. Output without source_text unchanged.
-  fhir_finalize_bundle: "1.20.0",
+  // 1.21.0 (parity v3 ROUND 9): rule meta-profile (a unique mapping of an unresolvable meta.profile; errors it exposes were hidden, the guard keeps it); data.extended_findings.
+  fhir_finalize_bundle: "1.21.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

@@ -33,7 +33,7 @@ import { contentGateOf } from "../recordChecks/contentGates.js";
 type Json = Record<string, any>;
 const isObj = (x: unknown): x is Json => !!x && typeof x === "object" && !Array.isArray(x);
 
-export const RELEASE_CHECK_VERSION = "1.1.0";
+export const RELEASE_CHECK_VERSION = "1.2.0";
 
 export interface ReleaseTarget {
   /** Resource type the Bundle must contain (Patient, Encounter, Observation …). */
