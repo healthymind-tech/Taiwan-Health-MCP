@@ -3,9 +3,7 @@
  * evaluateFunctionType, operateTypes, getChildTypesByName), with Java's exception texts: validator_cli prints them in
  * TEXT_LINK_SELECTOR_INVALID. Warnings (typeWarnings) are not ported: they never reach a validation message here.
  *
- * Deliberately not exact: `children()` / `descendants()`, `aggregate()` / `$total`, a Resource-typed element and an
- * abstract type's descendants give an open type set (`any`), which accepts every further name: Java lists every
- * structure there (analysis.allTypes / worker.getResourceNames), which PathCheckDeps cannot enumerate.
+ * Deliberately not exact: a function or operator this file has no case for gives an open type set (`any`).
  */
 import type { ExprNode } from "./fhirPathJavaParser.js";
 
@@ -32,7 +30,7 @@ const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
 
 class TD {
   types: string[] = [];
-  /** An open type set (see the file header). */
+  /** An open type set: a function / operator without a case here (see the file header). */
   any = false;
   constructor(
     public status: Status,
@@ -86,6 +84,8 @@ export interface PathCheckDeps {
   fetch(url: string): Promise<Record<string, any> | null>;
   /** Names of the primitive types (analysis.primitiveTypes). */
   primitiveTypes: ReadonlySet<string>;
+  /** Candidate names of the context's non-logical specializations (analysis.allTypes); one that `fetch` cannot find is not there. */
+  allTypes: readonly string[];
 }
 
 interface Ctx {
@@ -170,7 +170,87 @@ class Checker {
     return [];
   }
 
-  /** getChildTypesByName for a name (`*` / `**` are open: see the file header). */
+  private structuresCache: Array<Record<string, any>> | null = null;
+
+  /** The context's non-logical specializations (analysis.allTypes). */
+  private async structures(): Promise<Array<Record<string, any>>> {
+    if (!this.structuresCache) {
+      const out: Array<Record<string, any>> = [];
+      for (const n of this.deps.allTypes) {
+        const sd = await this.deps.fetch(ns(n));
+        if (sd && sd.derivation === "specialization" && sd.kind !== "logical") out.push(sd);
+      }
+      this.structuresCache = out;
+    }
+    return this.structuresCache;
+  }
+
+  /** IWorkerContext.getResourceNames. */
+  private async resourceNames(): Promise<string[]> {
+    return (await this.structures())
+      .filter((sd) => sd.kind === "resource" && sd.derivation === "specialization" && sd.abstract !== true)
+      .map((sd) => String(sd.name))
+      .sort();
+  }
+
+  /** anything(status): a type set of every analysis.allTypes name. */
+  private async anything(status: Status): Promise<TD> {
+    return new TD(status, ...(await this.structures()).map((sd) => String(sd.name)));
+  }
+
+  private async addTypeAndDescendents(sdl: Array<Record<string, any>>, dt: Record<string, any>): Promise<void> {
+    sdl.push(dt);
+    for (const sd of await this.structures()) {
+      if (String(sd.baseDefinition ?? "").split("|")[0] === dt.url && sd.derivation === "specialization") await this.addTypeAndDescendents(sdl, sd);
+    }
+  }
+
+  /** The `**` branch: every element below `path`, depth first. */
+  private async allDescendants(sdi: Record<string, any>, path: string, result: TD, exp: ExprNode): Promise<void> {
+    for (const ed of this.elements(sdi)) {
+      if (!String(ed.path).startsWith(path)) continue;
+      if (ed.contentReference) {
+        const cr = String(ed.contentReference);
+        const tn = `${sdi.type}${cr.slice(cr.indexOf("#"))}`;
+        if (!(await this.hasW(result, tn))) {
+          result.add(tn);
+          await this.childTypes(ns(tn), "**", result, exp);
+        }
+        continue;
+      }
+      for (const t of (ed.type ?? []) as any[]) {
+        const code = String(t.code ?? "");
+        if (!code) continue;
+        const tn = ["Element", "BackboneElement", "Base"].includes(code) || (await this.abstractType(code)) ? `${sdi.type}#${ed.path}` : code;
+        if (code === "Resource") {
+          for (const rn of await this.resourceNames()) {
+            if (await this.hasW(result, rn)) continue;
+            result.add(rn);
+            await this.childTypes(ns(rn), "**", result, exp);
+          }
+        } else if (!(await this.hasW(result, tn))) {
+          result.add(tn);
+          await this.childTypes(ns(tn), "**", result, exp);
+        }
+      }
+    }
+  }
+
+  /** The `*` branch. */
+  private async directChildren(sdi: Record<string, any>, path: string, result: TD): Promise<void> {
+    for (const ed of this.elements(sdi)) {
+      if (!String(ed.path).startsWith(path) || String(ed.path).slice(path.length).includes(".")) continue;
+      for (const t of (ed.type ?? []) as any[]) {
+        const code = String(t.code ?? "");
+        if (!code) result.add("System.string");
+        else if (code === "Element" || code === "BackboneElement") result.add(`${sdi.type}#${ed.path}`);
+        else if (code === "Resource") for (const rn of await this.resourceNames()) result.add(rn);
+        else result.add(code);
+      }
+    }
+  }
+
+  /** getChildTypesByName. */
   private async childTypes(type: string, name: string, result: TD, exp: ExprNode): Promise<void> {
     if (type === `${CORE}xhtml`) return;
     if (type === FP.SimpleTypeInfo || type === FP.ClassInfo) {
@@ -185,30 +265,62 @@ class Checker {
       if (url.startsWith(FP_NS)) return;
       throw fail(exp, `Error evaluating FHIRPath expression: The type '${url}' is unknown or not supported at getChildTypesByName#1`);
     }
+    const sdl: Array<Record<string, any>> = [];
     let tail = "";
-    if (type.includes("#")) {
-      const t = type.slice(type.indexOf("#") + 1);
-      tail = t.includes(".") ? t.slice(t.indexOf(".")) : "";
+    const list = type.includes("#") ? await this.elementDefinition(sd, type.slice(type.indexOf("#") + 1)) : [];
+    const m = list.length === 1 ? list[0].ed : null;
+    if (m && Array.isArray(m.type) && m.type.length > 0 && !m.type.some((t: any) => t.code === "Element" || t.code === "BackboneElement")) {
+      for (const t of m.type as any[]) {
+        const dt = await this.deps.fetch(ns(String(t.code)));
+        if (!dt) throw fail(exp, `Error evaluating FHIRPath expression: The type '${ns(String(t.code))}' is unknown or not supported at getChildTypesByName#3`);
+        await this.addTypeAndDescendents(sdl, dt);
+      }
+    } else {
+      await this.addTypeAndDescendents(sdl, sd);
+      if (type.includes("#")) {
+        const t = type.slice(type.indexOf("#") + 1);
+        tail = t.includes(".") ? t.slice(t.indexOf(".")) : "";
+      }
     }
-    if (sd.abstract === true) result.any = true;
-    const path = `${this.elements(sd)[0]?.path}${tail}.${name}`;
-    for (const { ed, source } of await this.elementDefinition(sd, path)) {
-      if (source) {
-        result.add(`${sd.type}#${ed.path}`);
-        result.status = source.max === "*" ? "ORDERED" : (result.status ?? "SINGLETON");
+    for (const sdi of sdl) {
+      const root = `${this.elements(sdi)[0]?.path}${tail}`;
+      if (name === "**") {
+        await this.allDescendants(sdi, `${root}.`, result, exp);
         continue;
       }
-      for (const t of (ed.type ?? []) as any[]) {
-        const code = String(t.code ?? "");
-        if (!code) break;
-        if (code === "Element" || code === "BackboneElement" || (await this.abstractType(code))) result.add(`${sd.url}#${path}`);
-        else if (code === "Resource") result.any = true;
-        else result.add(workingCode(t));
-        // addType(status, pt): an unbounded element makes the result an ordered collection
-        if (ed.max === "*") result.status = "ORDERED";
-        else result.status = result.status ?? "SINGLETON";
+      if (name === "*") {
+        await this.directChildren(sdi, `${root}.`, result);
+        continue;
+      }
+      const path = `${root}.${name}`;
+      for (const { ed, source } of await this.elementDefinition(sdi, path)) {
+        if (source) {
+          result.add(`${sdi.type}#${ed.path}`);
+          result.status = source.max === "*" ? "ORDERED" : (result.status ?? "SINGLETON");
+          continue;
+        }
+        for (const t of (ed.type ?? []) as any[]) {
+          const code = String(t.code ?? "");
+          if (!code) break;
+          if (code === "Resource") {
+            for (const rn of await this.resourceNames()) result.add(rn);
+            continue;
+          }
+          if (code === "Element" || code === "BackboneElement" || (await this.abstractType(code))) result.add(`${sdi.url}#${path}`);
+          else result.add(workingCode(t));
+          // addType(status, pt): an unbounded element makes the result an ordered collection
+          if (ed.max === "*") result.status = "ORDERED";
+          else result.status = result.status ?? "SINGLETON";
+        }
       }
     }
+  }
+
+  /** childTypes(focus, mask): the mask over every type of the focus. */
+  private async maskTypes(focus: TD, mask: string, exp: ExprNode): Promise<TD> {
+    const result = new TD("UNORDERED");
+    for (const f of focus.types) await this.childTypes(f, mask, result, exp);
+    return result;
   }
 
   private checkOrdered(focus: TD, name: string, exp: ExprNode): void {
@@ -296,8 +408,7 @@ class Checker {
       case "select": case "repeat":
         return paramTypes[0];
       case "aggregate": {
-        const a = new TD(focus.status);
-        a.any = true;
+        const a = await this.anything(focus.status);
         return a;
       }
       case "item":
@@ -369,11 +480,10 @@ class Checker {
       case "length":
         this.contextPrimitive(focus, "length", false, exp);
         return int();
-      case "children": case "descendants": {
-        const r = new TD("UNORDERED");
-        r.any = true;
-        return r;
-      }
+      case "children":
+        return this.maskTypes(focus, "*", exp);
+      case "descendants":
+        return this.maskTypes(focus, "**", exp);
       case "memberOf":
         await this.contextOne(focus, ["string", "code", "uri", "Coding", "CodeableConcept"], "The function memberOf can only be used on ordered string, code, uri, Coding, CodeableConcept but found", exp);
         await this.checkParams(exp, paramTypes, str());
@@ -561,7 +671,7 @@ class Checker {
     switch (exp.kind) {
       case "Name":
         if (atEntry && exp.name === "$this") result.update(ctx.thisItem);
-        else if (atEntry && exp.name === "$total") result.any = true;
+        else if (atEntry && exp.name === "$total") result.update(await this.anything("UNORDERED"));
         else if (atEntry && exp.name === "$index") result.add(FP.Integer);
         else {
           for (const s of focus.types) result.update(await this.nameType(s, exp, atEntry, focus));

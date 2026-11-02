@@ -1648,6 +1648,7 @@ export class InstanceValidator {
   private readonly pathCheckDeps = {
     fetch: (url: string): Promise<Record<string, any> | null> => this.resolver.fetchStructureDefinition(url),
     primitiveTypes: new Set(Object.keys(PRIMITIVES)),
+    allTypes: [...R4_RESOURCE_NAMES, "Resource", "DomainResource", ...COMPLEX_TYPES, ...Object.keys(PRIMITIVES)],
   };
 
   /** element.fhirType() of `target`, an object inside `resource` (or a resource): by the definitions, null when not found. */
@@ -4875,28 +4876,43 @@ export class InstanceValidator {
    * it (the parser reported them once).
    */
   private async resourceConforms(ctx: ResourceCtx, url: string, path: string, depth: number, checkSpecials = false, forReference = false): Promise<boolean> {
-    // validateResource(forReference = true): checkContainedReferences is skipped (IV:9051). A duplicate contained id never
-    // fails a reference match, whether the target comes before or after the source (validator_cli, both orders of a Bundle)
-    const counted = (i: Issue): boolean => !isParseIssue(i) && !(forReference && (/ \(dom-3\)$/u.test(i.message) || /^Duplicate ID for contained resource: /u.test(i.message)));
+    // conformsTo() and a reference into the Bundle validate on a new NodeStack, whose workingLang is the validation
+    // language (NodeStack:41, 75), not the language inherited from the Bundle; a contained target stays on the stack
+    if (ctx.container !== null) return this.resourceConformsOn(ctx, url, path, depth, checkSpecials, forReference);
+    const saved = this.workingLang;
+    const own = typeof ctx.resource?.language === "string" ? ctx.resource.language.trim() : "";
+    this.workingLang = own ? [own] : null; // checkLang (IV:7380) on the new stack
+    try {
+      return await this.resourceConformsOn(ctx, url, path, depth, checkSpecials, forReference);
+    } finally {
+      this.workingLang = saved;
+    }
+  }
+
+  private async resourceConformsOn(ctx: ResourceCtx, url: string, path: string, depth: number, checkSpecials: boolean, forReference: boolean): Promise<boolean> {
+    // validateResource(forReference = true): checkContainedReferences is skipped (IV:9051)
+    const counted = (i: Issue): boolean => !isParseIssue(i) && !(forReference && / \(dom-3\)$/u.test(i.message));
+    // start (IV:6905-7001) never stops at a failure: `ok = startInner(…) && ok` for defn, its dependencies and every
+    // meta.profile. Order matters: what each of them visits fills the tracker and validator_contained_Id for later ones
     const passes = async (u: string): Promise<boolean> => {
-      if (!isValid((await this.conformance(ctx, u, path, depth)).filter(counted))) return false;
+      let ok = isValid((await this.conformance(ctx, u, path, depth)).filter(counted));
       // start, IV:6917-6937 / 6981-7001: the profile's imposeProfile dependencies (one level); an unresolved one is a warning
       const sdx = await this.sdx(u);
       for (const x of Array.isArray(sdx?.sd.extension) ? sdx!.sd.extension : []) {
         if (!isObject(x) || x.url !== IMPOSE_PROFILE_EXT) continue;
         const ip = typeof x.valueCanonical === "string" ? x.valueCanonical : typeof x.valueUri === "string" ? x.valueUri : null;
         if (!ip || !(await this.sdx(ip))) continue;
-        if (!isValid((await this.conformance(ctx, ip, path, depth)).filter(counted))) return false;
+        if (!isValid((await this.conformance(ctx, ip, path, depth)).filter(counted))) ok = false;
       }
-      return true;
+      return ok;
     };
-    if (!(await passes(url))) return false;
-    if (await this.emptiedByParser(ctx.resource)) return false;
+    let ok = await passes(url);
+    if (await this.emptiedByParser(ctx.resource)) ok = false;
     const meta = isObject(ctx.resource.meta) && Array.isArray(ctx.resource.meta.profile) ? ctx.resource.meta.profile : [];
     for (const mp of meta) {
       if (typeof mp !== "string" || !mp || mp === url) continue;
       if (!(await this.sdx(mp))) continue; // Validation_VAL_Profile_Unknown: a warning
-      if (!(await passes(mp))) return false;
+      if (!(await passes(mp))) ok = false;
     }
     if (checkSpecials) {
       // startInner with checkSpecials (IV:7181-7184): conformsTo() runs in a new ValidationContext, where it is on
@@ -4904,18 +4920,18 @@ export class InstanceValidator {
       // validator can fail on here: ObservationValidator's vital-signs profile, validateResourceRules' security labels.
       if (ctx.resource.resourceType === "Observation") {
         const vs = impliedVitalSignProfile(ctx.resource.code);
-        if (vs && vs !== url && !meta.includes(vs) && (await this.sdx(vs)) && !(await passes(vs))) return false;
+        if (vs && vs !== url && !meta.includes(vs) && (await this.sdx(vs)) && !(await passes(vs))) ok = false;
       }
       if (Array.isArray(ctx.resource.meta?.security)) {
         const tags = new Set<string>();
         for (const e of ctx.resource.meta.security) {
           const t = `${isObject(e) && typeof e.system === "string" ? e.system : null}#${isObject(e) && typeof e.code === "string" ? e.code : null}`;
-          if (tags.has(t)) return false; // duplicate security label
+          if (tags.has(t)) ok = false; // duplicate security label
           tags.add(t);
         }
       }
     }
-    return true;
+    return ok;
   }
 
   /**
@@ -6277,7 +6293,8 @@ export class InstanceValidator {
     if (syn) issues.push({ severity: "error", path: item.path, code: "invalid", message: syn });
     // (parity v3, F23) InstanceValidator.validateReference (IV:3986-4011): an example URL is an error only when it
     // does not resolve (a definition loaded from an example.org namespace is fine) and the path is not exempt
-    if (typeCode !== "oid" && typeCode !== "uuid" && !v.startsWith("#") && isExampleUrl(v) && !this.inExampleExemptContext(item.path)) {
+    // checkPrimitive l. 3417: Bundle.entry.fullUrl never reaches validateReference (validator_cli: no message on an example.org fullUrl)
+    if (typeCode !== "oid" && typeCode !== "uuid" && !v.startsWith("#") && el.path !== "Bundle.entry.fullUrl" && isExampleUrl(v) && !this.inExampleExemptContext(item.path)) {
       const u = v.includes("|") ? v.slice(0, v.lastIndexOf("|")) : v;
       const found = !!this.resolver.definitionExists && (await this.defExists(u));
       // settings.isAllowExamples(): "nothing - these do need to resolve"

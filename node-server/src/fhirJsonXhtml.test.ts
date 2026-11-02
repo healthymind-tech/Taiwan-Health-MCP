@@ -371,3 +371,9 @@ test("FHIRPathEngine.parse: FHIRLexer's wording and Java's NullPointerException 
   assert.equal(msg("a.("), "Error @1, 4: Expression terminated unexpectedly");
   assert.match(msg("given[0"), /Cannot invoke "String\.equals\(Object\)" because the return value of "org\.hl7\.fhir\.services\.fhirpath\.FHIRLexer\.getCurrent\(\)" is null/);
 });
+
+test("checkPrimitive l. 3417: Bundle.entry.fullUrl is not a reference, an example.org one gets no TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE", async () => {
+  const b = { resourceType: "Bundle", type: "collection", entry: [{ fullUrl: "http://example.org/fhir/Patient/p1", resource: { resourceType: "Patient", id: "p1" } }] };
+  const issues = await new InstanceValidator(new FakeResolver()).validate(b);
+  assert.deepEqual(issues.filter((i) => /Example URLs/.test(i.message)), []);
+});
