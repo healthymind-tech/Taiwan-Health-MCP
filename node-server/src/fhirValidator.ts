@@ -1416,6 +1416,8 @@ interface ExtensionHost {
   primitiveExt?: Record<string, any>;
   /** Literal path (indexes stripped) + logical paths, sorted, de-duplicated. */
   plist: string[];
+  /** The literal path (NodeStack, indexes stripped): the first entry of the plist before the logical paths. */
+  literal: string;
   isResource: boolean;
   /** Url of the host when it is itself an Extension (or the value[x] of one). */
   extUrl: string | null;
@@ -1469,7 +1471,9 @@ function expandPlist(message: string, path: string, comment: string): string {
       return e;
     });
     if (relative) return PLIST_TOKEN + JSON.stringify(list) + PLIST_TOKEN;
-    return `[${[...new Set(list.map(stripIndexes))].sort().join(", ")}]`;
+    const tail = list.filter((e) => e.startsWith(PLIST_TAIL)).map((e) => e.slice(1));
+    const sorted = [...new Set(list.filter((e) => !e.startsWith(PLIST_TAIL)).map(stripIndexes))].sort();
+    return `[${[...sorted, ...tail].join(", ")}]`;
   });
 }
 
@@ -1568,6 +1572,8 @@ const LITERAL_ROOT_TOKEN = "\u0002";
  * paths, of which NodeStack keeps the embedding one (`Bundle.entry.resource.x`) beside the resource's own (`Patient.x`).
  */
 const PLIST_TOKEN = "\u0003";
+/** Marks a plist entry added after the sort (l. 2854 `plist.add(ext)`): it stays last. */
+const PLIST_TAIL = "\u0004";
 
 /** Nesting past MAX_DEPTH is not walked: reported as not checked, never a pass. */
 function tooDeep(path: string): Issue {
@@ -3866,6 +3872,7 @@ export class InstanceValidator {
       path,
       value: item.value,
       plist: extensionPlist(literal, item.lp),
+      literal,
       isResource: false,
       // checkExtensionContext l. 2838-2846: the value[x] of an extension is that extension for an `extension` context
       extUrl: item.parentExtUrl ?? null,
@@ -3922,6 +3929,7 @@ export class InstanceValidator {
           path: item.path,
           value: node,
           plist,
+          literal: rootedLit,
           isResource: isResourceRoot,
           extUrl: typeCode === "Extension" && typeof node.url === "string" ? node.url : item.parentExtUrl ?? null,
           typeCode,
@@ -6766,8 +6774,10 @@ export class InstanceValidator {
     }
     if (!ok) {
       const allowed = shown.join(", ");
+      const rootType = String(rctx.resource.resourceType);
+      const rel = host.literal.startsWith(rootType) ? host.literal.slice(rootType.length) : stripIndexes(host.path.slice(1));
       const elementIs = host.path.startsWith(ROOT_TOKEN)
-        ? PLIST_TOKEN + JSON.stringify([...plist, ROOT_TOKEN + stripIndexes(host.path.slice(1)), LITERAL_ROOT_TOKEN + stripIndexes(host.path.slice(1))]) + PLIST_TOKEN
+        ? PLIST_TOKEN + JSON.stringify([...host.plist, ...plist.slice(host.plist.length).map((x) => PLIST_TAIL + x), ROOT_TOKEN + rel, LITERAL_ROOT_TOKEN + rel]) + PLIST_TOKEN
         : `[${plist.join(", ")}]`;
       if (typeof sd[XVER_SOURCE] === "string") {
         // EXTENSION_EXTP / EXTM_CONTEXT_WRONG_XVER: a warning for a cross-version extension

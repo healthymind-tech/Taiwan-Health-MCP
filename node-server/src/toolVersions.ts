@@ -259,7 +259,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.64.0 (parity v3 json-xhtml round 7): "" fullUrl is a value, "" url opens an extension scope, fixed on a blank primitive skipped, TEXT_LINK_SELECTOR_INVALID.
   // 1.65.0: FHIRPath boundaries on the number source text, conformsTo() of a non-singleton is false, sort errors with the expression (parity v3 round 7).
   // 1.66.0: FHIRPath equals validator_cli 7.0.1 on the suite (1076/1076): decimal digits through Decimal / BigDecimal, Quantity units per operator, ~ null, date text, skip / take / substring / indexer exceptions, type() and is() over the element model.
-  fhir_validate_bundle: "1.68.0",
+  // 1.69.0 (parity v3 review-structure, checked on the jar): fetchCache, element identity across views, memberOf empty, deep element model for invariants, extension context list of embedded resources, UCUM inner text, duplicate contained ids.
+  fhir_validate_bundle: "1.69.0",
   // 1.59.0: FHIRPath sort keys, the decimal type of `/` and the `id` type of Resource.id as FHIRPathEngine (parity v3 round 7).
   // 1.59.0 (parity v3 json-xhtml): an object emptied by the parser on a choice element gets no ele-1, as a source `{}` there.
   // 1.53.0: data carries codes_unchecked / slices_unchecked / invariants_unchecked / lookups_failed (the reasons for checked_fully=false, as fhir_validate_resource; they were dropped), and undecided_causes (`system|valueSet` behind undecided codes and slices).
@@ -324,7 +325,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.61.0: validation as fhir_validate_bundle 1.64.0.
   // 1.62.0: validation as fhir_validate_bundle 1.65.0.
   // 1.63.0: validation as fhir_validate_bundle 1.66.0.
-  fhir_validate_resource: "1.65.0",
+  // 1.66.0: validation as fhir_validate_bundle 1.69.0 (parity v3 review-structure, checked on the jar).
+  fhir_validate_resource: "1.66.0",
   // 1.56.0: validation as fhir_validate_bundle 1.59.0.
   // 1.56.0: validation as fhir_validate_bundle 1.59.0.
   // 1.50.0: undecided_causes as fhir_validate_bundle 1.53.0.
