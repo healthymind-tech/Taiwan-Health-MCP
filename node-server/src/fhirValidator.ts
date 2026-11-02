@@ -1392,6 +1392,10 @@ interface Item {
   actualType?: string;
   /** A primitive validated as the complex type of its profile (`value` is then an empty object). */
   primitiveValue?: unknown;
+  /** VALIDATION_VAL_PROFILE_NOTYPE was reported: the value has no definition to be validated against. */
+  typeUnknown?: boolean;
+  /** `value` is already what the parser kept of a value validated as another type. */
+  parsedValue?: boolean;
   /** JSON property the item came from (choice elements: e.g. valueQuantity). */
   key: string;
   path: string;
@@ -3339,6 +3343,14 @@ export class InstanceValidator {
       issues.push(tooDeep(item.path));
       return;
     }
+    if (item.typeUnknown) return;
+    if (item.profileType && !item.parsedValue && item.actualType && !isPrimitive(item.actualType) && !isPrimitive(typeCode) && isObject(item.value)) {
+      // what the profile's type is checked against is the parser's tree of the written type: `value` in a CodeableConcept is not there
+      const own = await this.sdx(CORE + item.actualType);
+      const value = own ? await this.constraintView(item.value, own, own.root, item.actualType) : item.value;
+      await this.validateItemAgainst(sdx, el, { ...item, value, parsedValue: true }, typeCode, rctx, issues, depth, isResourceRoot);
+      return;
+    }
     if (item.profileType && !isPrimitive(typeCode) && item.value !== null && item.value !== undefined && typeof item.value !== "object") {
       // a primitive written where the profile wants a complex type: an element with a value and no children of that type,
       // so the required ones are missing and the type's invariants see that value
@@ -4277,7 +4289,10 @@ export class InstanceValidator {
                 message: `The type of element ${key} is not known - it could not be determined from the information available. Valid types at this point are ${allowedTypes.join(", ")}`,
                 element: def.id,
               });
-              items.push({ value: node[key], ext: undefined, key, path: `${item.path}.${key}` });
+              const it: Item = { value: node[key], ext: undefined, key, path: `${item.path}.${key}`, typeUnknown: true, actualType: KNOWN_TYPE_SUFFIX.get(suffix) };
+              items.push(it);
+              // type slices still judge the element (jar: NotSlice beside the unknown type); nothing else validates it
+              if (grp.base?.slicing && grp.slices.length) typedItems.push({ item: it, type: it.actualType! });
             }
             continue;
           }
