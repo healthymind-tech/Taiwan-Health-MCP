@@ -684,6 +684,7 @@ export class DbValidatorResolver implements ValidatorResolver {
     // ValueSet URL: validator_cli 7.0.1 does not resolve it either and only warns
     // "A definition for CodeSystem ... could not be found".)
     if (idx && idx.url && idx.url.split("|")[0] !== system) idx = null;
+    if (idx && !version && idx.url.startsWith("http://terminology.hl7.org/CodeSystem/")) idx = (await terminology.loadThoCurrentIndex(system)) ?? idx;
     if (idx && version && idx.version !== version) {
       // REVIEW_port_2 G3: Coding.version names the CodeSystem version to check against (resolveCodeSystem(system, version))
       const vidx = await terminology.loadCodeSystemIndex(`${system}|${version}`, this.pkg, true);

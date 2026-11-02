@@ -359,6 +359,31 @@ async function loadCodeSystemVersion(canonical: string, version: string, pkg: Pa
   return pick ? pick.json : null;
 }
 
+/**
+ * The current edition of a THO CodeSystem: validator_cli answers terminology.hl7.org codes from the terminology server
+ * (official corpus: "Unknown code … version '4.0.0'" in an IG whose closure holds v3-RoleCode 2.2.0), which serves the
+ * latest hl7.terminology release — the newest copy any installed package holds. null when none is installed.
+ */
+export async function loadThoCurrentIndex(canonical: string): Promise<CodeSystemIndex | null> {
+  const key = `tho-current|${canonical}`;
+  const cached = csCache.get(key);
+  if (cached !== undefined) return cached;
+  const rows = (
+    await query<{ raw_json: any; package_id: string; package_version: string; fhir_version: string | null }>(
+      "SELECT a.raw_json, a.package_id, a.package_version, p.fhir_version FROM fhir.artifacts a " +
+        "JOIN fhir.ig_packages p ON p.package_id = a.package_id AND p.version = a.package_version " +
+        "WHERE a.resource_type = 'CodeSystem' AND a.canonical_url = $1 AND a.package_id LIKE 'hl7.terminology%'",
+      [canonical],
+    )
+  ).rows;
+  const cands = rows.map((r, i) => ({ ...r, packageId: r.package_id, packageVersion: r.package_version, fhirVersion: r.fhir_version, ord: i }));
+  const best = rankCandidates(canonical, cands)[0];
+  const cs = best ? jsonOf(best.raw_json) : null;
+  const idx = cs && cs.content === "complete" ? indexCodeSystem(cs) : null;
+  csCache.set(key, idx, 1 + (idx ? idx.concepts.size : 0));
+  return idx;
+}
+
 /** Versions of the CodeSystem `canonical` held in the package closure (UNKNOWN_CODESYSTEM_VERSION's "Valid versions"). */
 export async function codeSystemVersionsInClosure(canonical: string, pkg: PackageRow): Promise<string[]> {
   const [pids, pvers] = closureArrays(pkg);
