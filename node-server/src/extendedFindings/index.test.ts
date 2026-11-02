@@ -130,7 +130,9 @@ test("the terminology server's published list decides (the bundled file, and a f
   assert.equal(txKnowsSystem("https://twcore.mohw.gov.tw/ig/twcore/CodeSystem/icd-10-cm-2023-tw"), false);
   setTxSystemsForTest(["http://only"]);
   assert.equal(terminologyServerKnows("http://only"), true);
-  assert.equal(terminologyServerKnows("http://loinc.org"), false);
+  assert.equal(terminologyServerKnows("http://other"), false);
+  // preferServerSide: SERVER_SIDE_LIST comes before the capability list
+  assert.equal(terminologyServerKnows("http://loinc.org"), true);
   setTxSystemsForTest(null);
   assert.equal(txKnowsSystem("http://only"), null);
   assert.equal(terminologyServerKnows("http://loinc.org"), true, "without the list: the built-in rules");
