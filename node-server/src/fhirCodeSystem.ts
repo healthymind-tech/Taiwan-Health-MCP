@@ -30,6 +30,8 @@ export interface CodeSystemIndex {
   /** CodeSystem.language (null when absent). */
   language: string | null;
   caseSensitive: boolean;
+  /** Declared properties: code → code, uri → code (CodeSystemUtilities.getPropertyDefinition). */
+  propertyCodes?: Map<string, string>;
   /** CodeSystem.supplements (a supplement's base CodeSystem canonical), when stated. */
   supplements?: string | null;
   concepts: Map<string, CsConcept>;
@@ -130,6 +132,11 @@ export function indexCodeSystem(cs: Record<string, any>): CodeSystemIndex {
     // CodeSystem.getCaseSensitive(): false when not stated (REVIEW_port_2 G5)
     caseSensitive: cs.caseSensitive === true,
     supplements: typeof cs.supplements === "string" && cs.supplements ? cs.supplements : null,
+    propertyCodes: new Map(
+      (Array.isArray(cs.property) ? cs.property : [])
+        .filter((p: any) => p && typeof p.code === "string")
+        .flatMap((p: any) => [[p.code, p.code], ...(typeof p.uri === "string" ? [[p.uri, p.code]] : [])] as Array<[string, string]>),
+    ),
     concepts,
     lower,
   };
@@ -219,6 +226,63 @@ function conceptPropertyMatches(c: CsConcept, property: string, test: (v: string
   const vals = c.properties.get(property);
   if (!vals) return false;
   return vals.some((v) => v !== undefined && v !== null && test(String(v)));
+}
+
+/**
+ * ValueSetValidator.codeInFilter (standalone tag 7.0.1:2235-2438; REVIEW_port_2 G24) for a concept the CodeSystem
+ * holds, with Java's semantics and quirks: `concept` / `code` with `=` read a *property* of that name (normally absent →
+ * no match); is-a / descendent-of / is-not-a / child-of on the hierarchy; `code` regex on the code; a property the
+ * CodeSystem declares (or notSelectable) compares its FIRST value (CodeSystemUtilities.getProperty) — `exists` ignores the
+ * filter value (any value present → match); anything else (display, generalizes, an undeclared property, a filter
+ * without value) is handed to the terminology server by Java → undefined here.
+ */
+export function codeInFilter(cs: CodeSystemIndex, f: ComposeFilter, c: CsConcept): boolean | undefined {
+  if (f.value === undefined || f.value === null) return undefined; // UNABLE_TO_HANDLE_SYSTEM_FILTER_WITH_NO_VALUE
+  const v = String(f.value);
+  const op = String(f.op || "");
+  const prop = String(f.property || "");
+  const first = (name: string): string | null => {
+    const vals = c.properties.get(name);
+    const x = vals && vals.length ? vals[0] : undefined;
+    return x === undefined || x === null ? null : String(x);
+  };
+  const isA = (excludeRoot: boolean): boolean => {
+    if (!excludeRoot && c.code === v) return true;
+    const root = findConcept(cs, v);
+    if (!root) return false;
+    return c.code !== root.code && descendantsOf(cs, root.code).has(c.code);
+  };
+  if (prop === "concept") {
+    if (op === "is-a") return isA(false);
+    if (op === "=") return first("concept") === v;
+    if (op === "is-not-a") return !isA(false);
+    if (op === "descendent-of") return isA(true);
+    if (op === "child-of") {
+      const root = findConcept(cs, v);
+      return !!root && root.children.has(c.code);
+    }
+    return undefined;
+  }
+  if (prop === "code" && op === "regex") {
+    const re = safeRegex(v);
+    return re ? re.test(c.code) : undefined;
+  }
+  if (prop === "code" && op === "=") return first("code") === v;
+  const declared = cs.propertyCodes?.get(prop) ?? null;
+  if (declared !== null || prop === "notSelectable") {
+    const name = declared ?? prop;
+    const d = first(name);
+    if (op === "=") return d === v;
+    if (op === "exists") return d !== null;
+    if (op === "regex") {
+      const re = safeRegex(v);
+      return re ? d !== null && re.test(d) : undefined;
+    }
+    if (declared !== null && op === "in") return d !== null && v.split(",").some((x) => x.trim() === d);
+    if (declared !== null && op === "not-in") return !(d !== null && v.split(",").some((x) => x.trim() === d));
+    return undefined;
+  }
+  return undefined;
 }
 
 /**
@@ -415,14 +479,11 @@ async function systemPartContains(
     for (const f of filters) {
       let r: boolean | undefined;
       if (cs) {
-        const set = applyFilter(cs, f);
-        if (set === null) r = undefined;
-        else {
-          const c = findConcept(cs, code);
-          r = c ? set.has(c.code) : false;
-          // A fragment / example CodeSystem cannot prove non-membership.
-          if (r === false && cs.content !== "complete") r = undefined;
-        }
+        // REVIEW_port_2 G24: membership follows ValueSetValidator.codeInFilter (not the expansion's applyFilter)
+        const c = findConcept(cs, code);
+        r = c ? codeInFilter(cs, f, c) : false;
+        // A fragment / example CodeSystem cannot prove non-membership.
+        if (r === false && cs.content !== "complete") r = undefined;
       } else if (system === SNOMED_SYSTEM && deps.snomedSubsumedBy && ["is-a", "descendent-of"].includes(String(f.op))) {
         const sub = await deps.snomedSubsumedBy(code, String(f.value));
         r = sub === undefined ? undefined : sub && (f.op === "is-a" || code !== String(f.value));

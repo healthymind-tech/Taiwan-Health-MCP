@@ -4,7 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyFilter, composeContains, expandComposeWith, findConcept, indexCodeSystem, type TerminologyDeps } from "./fhirCodeSystem.js";
+import { applyFilter, codeInFilter, composeContains, expandComposeWith, findConcept, indexCodeSystem, type TerminologyDeps } from "./fhirCodeSystem.js";
 import { judgeHeldCodeSystem } from "./fhirValidationResolver.js";
 
 type Json = Record<string, any>;
@@ -72,4 +72,34 @@ test("G28: an exclude that cannot be expanded leaves the expansion incomplete (u
   const compose = { include: [{ system: "http://x/cs" }], exclude: [{ system: "http://x/cs", filter: [{ property: "concept", op: "is-a", value: "NOPE" }] }] };
   const ex = await expandComposeWith(compose, depsWith(CS));
   assert.ok(ex.unresolved.length > 0, JSON.stringify(ex));
+});
+
+test("G24: membership filters as ValueSetValidator.codeInFilter (VSV:2235-2438), Java quirks kept", () => {
+  const cs = indexCodeSystem({
+    ...CS,
+    property: [{ code: "kind", type: "code" }],
+    concept: [
+      { code: "A", display: "a", property: [{ code: "kind", valueCode: "x" }, { code: "kind", valueCode: "y" }] },
+      { code: "B", display: "b" },
+    ],
+  });
+  const a = findConcept(cs, "A")!;
+  const b = findConcept(cs, "B")!;
+  // `concept` / `code` with = read a property of that name: no match
+  assert.equal(codeInFilter(cs, { property: "concept", op: "=", value: "A" }, a), false);
+  assert.equal(codeInFilter(cs, { property: "code", op: "=", value: "A" }, a), false);
+  // the first value only
+  assert.equal(codeInFilter(cs, { property: "kind", op: "=", value: "x" }, a), true);
+  assert.equal(codeInFilter(cs, { property: "kind", op: "=", value: "y" }, a), false);
+  assert.equal(codeInFilter(cs, { property: "kind", op: "in", value: "y,z" }, a), false);
+  // exists ignores the filter value
+  assert.equal(codeInFilter(cs, { property: "kind", op: "exists", value: "false" }, a), true);
+  assert.equal(codeInFilter(cs, { property: "kind", op: "exists", value: "false" }, b), false);
+  // handed to the terminology server by Java
+  assert.equal(codeInFilter(cs, { property: "display", op: "=", value: "a" }, a), undefined);
+  assert.equal(codeInFilter(cs, { property: "concept", op: "generalizes", value: "A" }, a), undefined);
+  assert.equal(codeInFilter(cs, { property: "undeclared", op: "=", value: "a" }, a), undefined);
+  // a code regex, and is-a with an unknown root (false, VSV:2433)
+  assert.equal(codeInFilter(cs, { property: "code", op: "regex", value: "[AB]" }, a), true);
+  assert.equal(codeInFilter(cs, { property: "concept", op: "is-a", value: "NOPE" }, a), false);
 });
