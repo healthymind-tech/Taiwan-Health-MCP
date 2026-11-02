@@ -119,8 +119,9 @@ function stringValue(item: any): string {
 
 function normExpected(type: string | null, s: string): string {
   let v = s.trim();
+  const timeLiteral = v.startsWith("@T");
   if (type === "date" || type === "dateTime" || type === "time" || v.startsWith("@")) v = v.replace(/^@/, "");
-  if (type === "time") v = v.replace(/^T/, "");
+  if (type === "time" || timeLiteral) v = v.replace(/^T/, "");
   return v;
 }
 function normFound(type: string, s: string): string {

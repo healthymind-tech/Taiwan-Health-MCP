@@ -23,6 +23,7 @@
 
 import { readFileSync } from "node:fs";
 import { htmlChecks1, htmlChecks2 } from "./fhirXhtml.js";
+import { convertUcum } from "./fhirUcum.js";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 
@@ -287,9 +288,179 @@ function javaComparison(orig: any): any {
     ...orig,
     fn: function (this: any, a: any[], b: any[]): any {
       if (a.length > 1 || b.length > 1) return [];
+      if (a.length === 1 && b.length === 1 && quantityCodeDiffers(a[0], b[0])) {
+        // one side has only the unit text: comparable when the text is the same unit
+        if (quantityUnitText(a[0]) === null || quantityUnitText(a[0]) !== quantityUnitText(b[0])) return [];
+        return orig.fn.call(this, [quantityNumber(a[0])], [quantityNumber(b[0])]);
+      }
       return orig.fn.call(this, a, b);
     },
   };
+}
+
+// ------------------------------------------------------------ lowBoundary / highBoundary
+
+/** Utilities.applyPrecision (l. 1709-1738): cuts or pads the digits of `v` to `p` decimal places. */
+function boundaryApplyPrecision(v: string, p: number, down: boolean): string {
+  let nv = v;
+  let dp = -1;
+  if (nv.includes(".")) {
+    dp = nv.indexOf(".");
+    nv = nv.slice(0, dp) + nv.slice(dp + 1);
+  }
+  const places = v.includes(".") ? v.length - v.indexOf(".") - 1 : 0;
+  const d = p - places;
+  let out: string;
+  if (d === 0) out = nv;
+  else if (d > 0) out = nv + "0".repeat(d);
+  else {
+    let ld = v.length + d;
+    if (dp > -1) ld--;
+    out = nv.slice(0, ld);
+    if (nv[ld] >= "5" && !down) {
+      // Java adds one to the last char only (`9` becomes `:`); the suite's carry tests want a real carry
+      const c = [...out];
+      let i = c.length - 1;
+      for (; i >= 0; i--) {
+        if (c[i] === "9") c[i] = "0";
+        else {
+          c[i] = String.fromCharCode(c[i].charCodeAt(0) + 1);
+          break;
+        }
+      }
+      out = c.join("");
+      if (i < 0) {
+        out = `1${out}`;
+        if (dp > -1) dp++;
+      }
+    }
+  }
+  if (out.endsWith(".")) out = out.slice(0, -1);
+  const r = dp === -1 || dp >= out.length ? out : `${out.slice(0, dp)}.${out.slice(dp)}`;
+  return r.replace(/^(-?)0+(?=\d)/, "$1"); // minusOne of 10 is 09
+}
+
+function boundaryMinusOne(value: string): string {
+  const c = [...value];
+  for (let i = c.length - 1; i >= 0; i--) {
+    if (c[i] === "0") c[i] = "9";
+    else if (c[i] !== ".") {
+      c[i] = String.fromCharCode(c[i].charCodeAt(0) - 1);
+      break;
+    }
+  }
+  return c.join("");
+}
+
+/** Utilities.lowBoundaryForDecimal / highBoundaryForDecimal (l. 1688-1773), without the exponent text. */
+function decimalBoundary(value: string, precision: number, high: boolean): string {
+  const zero = value.replace(/[.-]/g, "").replace(/0/g, "") === "";
+  const abs = value.startsWith("-") ? value.slice(1) : value;
+  const frac = abs.includes(".") ? "50000000000000000000000000000" : ".50000000000000000000000000000";
+  if (high) {
+    if (zero) return boundaryApplyPrecision("0.50000000000000000000000000000", precision, false);
+    if (value.startsWith("-")) return `-${decimalBoundary(abs, precision, false)}`;
+    return boundaryApplyPrecision(abs + frac, precision, false);
+  }
+  if (zero) return boundaryApplyPrecision("-0.5000000000000000000000000", precision, true);
+  if (value.startsWith("-")) return `-${decimalBoundary(abs, precision, true)}`;
+  return boundaryApplyPrecision(boundaryMinusOne(abs) + frac, precision, true);
+}
+
+/** DateTimeUtil.splitTimezone. */
+function splitTimezone(value: string): [string, string] {
+  const plus = value.indexOf("+");
+  if (plus >= 0) return [value.slice(0, plus), value.slice(plus)];
+  const t = value.indexOf("T");
+  const minus = value.lastIndexOf("-");
+  if (t >= 0 && minus > t) return [value.slice(0, minus), value.slice(minus)];
+  const z = value.indexOf("Z");
+  return z >= 0 ? [value.slice(0, z), value.slice(z)] : [value, ""];
+}
+
+/** DateTimeUtil.lowBoundaryForDate / highBoundaryForDate (l. 65-89, 156-180); a precision it does not know throws. */
+function dateBoundary(value: string, precision: number, high: boolean): string {
+  const [body, tz0] = splitTimezone(value);
+  let b = body;
+  if (b.length === 13) b += ":00"; // BaseDateTimeType writes an hour-precision value with its minutes
+  if (b.length === 4) b += high ? "-12" : "-01";
+  if (b.length === 7) b += high ? `-${new Date(Date.UTC(+b.slice(0, 4), +b.slice(5, 7), 0)).getUTCDate()}` : "-01";
+  if (b.length === 10) b += high ? "T23:59" : "T00:00";
+  if (b.length === 16) b += high ? ":59" : ":00";
+  if (b.length === 19) b += high ? ".999" : ".000";
+  const tz = precision <= 10 ? "" : tz0 || (high ? "-12:00" : "+14:00");
+  const cut: Record<number, number> = { 4: 4, 6: 7, 7: 7, 8: 10, 10: 10, 14: 17, 17: b.length };
+  if (cut[precision] === undefined) throw new JavaFhirPathError(`Unsupported Date precision for boundary operation: ${precision}`);
+  return b.slice(0, cut[precision]) + tz;
+}
+
+/** DateTimeUtil.lowBoundaryForTime / highBoundaryForTime (l. 100-127). */
+function timeBoundary(value: string, precision: number, high: boolean): string {
+  const [body, tz] = splitTimezone(value);
+  let b = body;
+  if (b.length === 2) b += high ? ":59" : ":00";
+  if (b.length === 5) b += high ? ":59" : ":00";
+  if (b.length === 8) b += high ? ".999" : ".000";
+  const cut: Record<number, number> = { 2: 3, 4: 6, 6: 9, 9: b.length };
+  if (cut[precision] === undefined) throw new JavaFhirPathError(`Unsupported Time precision for boundary operation: ${precision}`);
+  return b.slice(0, cut[precision]) + tz;
+}
+
+/** FHIRPathEngine.funcLowBoundary / funcHighBoundary (l. 4618-4705). */
+function javaBoundary(high: boolean): (this: any, coll: any[], precision?: any) => any[] {
+  return function (this: any, coll: any[], precision?: any): any[] {
+    if (!coll || coll.length === 0) return [];
+    const name = high ? "highBoundary" : "lowBoundary";
+    if (coll.length > 1) throw new JavaFhirPathError(`Error evaluating FHIRPath expression: focus for ${name} can only have one value, but has ${coll.length} values`);
+    const v = fpUtil.valDataConverted ? fpUtil.valDataConverted(coll[0]) : fpUtil.valData(coll[0]);
+    const p: number | undefined = precision === undefined || precision === null ? undefined : Number(Array.isArray(precision) ? fpUtil.valData(precision[0]) : fpUtil.valData(precision));
+    const Dec = this.getDecimal(0).constructor;
+    if (v instanceof fpTypes.FP_Quantity) {
+      const text = decimalBoundary(String(v.value), p ?? 8, high);
+      return [new fpTypes.FP_Quantity(this, new Dec(text), v.unit)];
+    }
+    if (v instanceof fpTypes.FP_Time) {
+      const s = timeBoundary(String(v.asStr ?? v.toString()).replace(/^@?T?/, ""), p ?? 9, high);
+      return [new fpTypes.FP_Time(this, s)];
+    }
+    if (v instanceof fpTypes.FP_DateTime) {
+      const asStr = String(v.asStr ?? v.toString()).replace(/^@/, "");
+      const isDate = v instanceof fpTypes.FP_Date;
+      const s = dateBoundary(asStr, p ?? (isDate ? 10 : 17), high);
+      return [s.includes("T") ? new fpTypes.FP_DateTime(this, s) : new fpTypes.FP_Date(this, s)];
+    }
+    if (typeof v === "number" || typeof v === "bigint" || v instanceof Dec || (v && typeof v.toFixed === "function")) {
+      if (p !== undefined && (p < 0 || p >= 17)) return [];
+      return [new Dec(decimalBoundary(String(v), p ?? 8, high))];
+    }
+    throw new JavaFhirPathError(`Error evaluating FHIRPath expression: The parameter type for function sqrt is not valid for ${name}`);
+  };
+}
+
+/** A Quantity operand's `code` (stock fhirpath.js leaves a Quantity without system + code a plain object); undefined: not a Quantity. */
+function quantityCode(item: any): string | null | undefined {
+  const v = fpUtil.valData(item);
+  if (v instanceof fpTypes.FP_Quantity) return String(v.unit ?? "");
+  if (v !== null && typeof v === "object" && javaFhirType(item).type === "Quantity") return typeof v.code === "string" ? v.code : null;
+  return undefined;
+}
+
+function quantityUnitText(item: any): string | null {
+  const v = fpUtil.valData(item);
+  if (v instanceof fpTypes.FP_Quantity) return String(v.unit ?? "").replace(/^'|'$/g, "");
+  return v !== null && typeof v === "object" ? (typeof v.unit === "string" ? v.unit : typeof v.code === "string" ? v.code : null) : null;
+}
+
+function quantityNumber(item: any): number {
+  const v = fpUtil.valData(item);
+  return Number(v instanceof fpTypes.FP_Quantity ? String(v.value) : v?.value);
+}
+
+/** Two Quantities of which only one has a code: qtyEqual is null (FHIRPathEngine l. 2446-2449), and they are not comparable. */
+function quantityCodeDiffers(a: any, b: any): boolean {
+  const l = quantityCode(a);
+  const r = quantityCode(b);
+  return l !== undefined && r !== undefined && (l === null) !== (r === null);
 }
 
 // ------------------------------------------------------------ dates and times
@@ -484,6 +655,13 @@ if (loaded.engine) {
       ...orig,
       fn: function (this: any, a: any[], b: any[]): any {
         if (a.length === 1 && b.length === 1) {
+          if (quantityCodeDiffers(a[0], b[0])) return [];
+          // qtyEqual l. 2449-2453 (suite testQuantityUnitComparison): no codes: the unit texts must be the same
+          if (quantityCode(a[0]) === null && quantityCode(b[0]) === null) {
+            const lu = quantityUnitText(a[0]);
+            const ru = quantityUnitText(b[0]);
+            if ((lu === null) !== (ru === null) || lu !== ru) return [];
+          }
           const eq = javaDateEqualsMixedZone(a[0], b[0]);
           if (eq === null) return [];
           if (eq !== undefined) return [not ? !eq : eq];
@@ -494,6 +672,53 @@ if (loaded.engine) {
   }
   Object.assign(table, JAVA_OPERATORS);
   for (const op of ["<", ">", "<=", ">="]) table[op] = javaComparison(table[op]);
+  // opEquivalent on Quantities (qtyEquivalent l. 2501-2530): the canonical values, equivalentNumber (the coarser scale)
+  const equiv = table["~"];
+  table["~"] = {
+    ...equiv,
+    fn: function (this: any, a: any[], b: any[]): any {
+      if (a.length === 1 && b.length === 1) {
+        const l = fpUtil.valData(a[0]);
+        const r = fpUtil.valData(b[0]);
+        if (l instanceof fpTypes.FP_Quantity && r instanceof fpTypes.FP_Quantity && l.unit !== r.unit) {
+          const lu = String(l.unit).replace(/^'|'$/g, "");
+          const ru = String(r.unit).replace(/^'|'$/g, "");
+          const n = convertUcum(Number(String(r.value)), ru, lu);
+          if (n !== null) {
+            const ls = String(l.value);
+            const rs = String(Number(n.toFixed(12)));
+            const scale = Math.min(ls.includes(".") ? ls.length - ls.indexOf(".") - 1 : 0, rs.includes(".") ? rs.length - rs.indexOf(".") - 1 : 0);
+            return [Number(ls).toFixed(scale) === Number(rs).toFixed(scale)];
+          }
+        }
+      }
+      return equiv.fn.call(this, a, b);
+    },
+  };
+  // a negated decimal keeps its text (-120.50); fhirpath.js goes through a number
+  const polarity = loaded.engine.PolarityExpression;
+  loaded.engine.PolarityExpression = function (ctx: any, parentData: any, node: any): any {
+    if (node.text === "-") {
+      const r = loaded.engine.doEval(ctx, parentData, node.children[0]);
+      if (r.length === 1 && r[0] instanceof fpTypes.FP_Decimal) {
+        const t = String(r[0]);
+        const zero = /^-?[0.]+$/.test(t);
+        return [new (r[0].constructor as any)(t.startsWith("-") ? t.slice(1) : zero ? t : `-${t}`)];
+      }
+    }
+    return polarity.call(loaded.engine, ctx, parentData, node);
+  };
+  // funcIs: a type name that does not exist in the System namespace is simply not the item's type (no exception)
+  const typeSpecifier = loaded.engine.TypeSpecifier;
+  loaded.engine.TypeSpecifier = function (ctx: any, parentData: any, node: any): any {
+    try {
+      return typeSpecifier.call(loaded.engine, ctx, parentData, node);
+    } catch (e) {
+      const m = /^System\.(.+)$/.exec(String(node.text));
+      if (!m) throw e;
+      return { namespace: "System", name: m[1], is: () => false, toString: () => node.text, isValid: () => false };
+    }
+  };
   // opContains: every right item must be in left (no singleton rule); opIn: the left operand must be single
   const contains = table.containsOp;
   table.containsOp = {
@@ -846,6 +1071,8 @@ const USER_FUNCTIONS: Record<string, any> = {
       return [];
     },
   },
+  lowBoundary: { internalStructures: true, arity: { 0: [], 1: ["Integer"] }, fn: javaBoundary(false) },
+  highBoundary: { internalStructures: true, arity: { 0: [], 1: ["Integer"] }, fn: javaBoundary(true) },
   // FHIRPathEngine.funcReplaceMatches (l. 5252-5277): an empty regex returns the input unchanged
   replaceMatches: {
     internalStructures: true,
