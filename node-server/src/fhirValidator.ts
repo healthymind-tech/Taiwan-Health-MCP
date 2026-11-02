@@ -1459,6 +1459,20 @@ function stripIndexes(path: string): string {
   return path.replace(/\[[^\]]*\]/g, "");
 }
 
+/** One embedding level of a PLIST_TOKEN list: `path` is where the resource sits, the list is rendered once it is absolute. */
+function expandPlist(message: string, path: string, comment: string): string {
+  return message.replace(new RegExp(`${PLIST_TOKEN}(.*?)${PLIST_TOKEN}`, "u"), (_, json: string) => {
+    const relative = path.startsWith(ROOT_TOKEN);
+    const list = (JSON.parse(json) as string[]).map((e) => {
+      if (e.startsWith(ROOT_TOKEN)) return path + e.slice(1);
+      if (e.startsWith(LITERAL_ROOT_TOKEN)) return (relative ? LITERAL_ROOT_TOKEN + path.slice(1) : path) + comment + e.slice(1);
+      return e;
+    });
+    if (relative) return PLIST_TOKEN + JSON.stringify(list) + PLIST_TOKEN;
+    return `[${[...new Set(list.map(stripIndexes))].sort().join(", ")}]`;
+  });
+}
+
 /**
  * Logical paths of a child item (port of NodeStack.pushInternal, 7.0.1). Complex
  * datatypes (validated against their type definition): parent paths + "." +
@@ -1548,6 +1562,12 @@ const MAX_DEPTH = 60;
 const ROOT_TOKEN = "\u0001";
 /** In a message: the resource root as NodeStack.getLiteralPath shows it (with validateContains' path comment). */
 const LITERAL_ROOT_TOKEN = "\u0002";
+/**
+ * Wraps the plist of EXTENSION_EXTP_CONTEXT_WRONG while it is relative to the resource (conformance results are cached per
+ * resource): checkExtensionContext l. 2740-2749 lists the literal path (with the embedding's pathComment) and the logical
+ * paths, of which NodeStack keeps the embedding one (`Bundle.entry.resource.x`) beside the resource's own (`Patient.x`).
+ */
+const PLIST_TOKEN = "\u0003";
 
 /** Nesting past MAX_DEPTH is not walked: reported as not checked, never a pass. */
 function tooDeep(path: string): Issue {
@@ -1572,6 +1592,9 @@ export class InstanceValidator {
   private sdCache = new Map<string, Promise<SdIndex | null>>();
   private conformCache = new WeakMap<object, Map<string, Promise<Issue[]>>>();
   private inProgress = new WeakMap<object, Set<string>>();
+  private viewSource = new WeakMap<object, object>();
+  /** InstanceValidator.fetchCache (l. 555): fetched targets by reference, seeded with the root (clearInternalState l. 1118). */
+  private fetchCache = new Map<string, Record<string, any>>();
   /** ValidationContext.INTERNAL_REFERENCES_NAME: the '#…' references met while validating each resource (dom-3). */
   private internalRefs = new WeakMap<object, Set<string>>();
   private vsHeaderCache = new Map<string, Promise<Record<string, any> | null>>();
@@ -1615,6 +1638,13 @@ export class InstanceValidator {
    * objects the parser emptied (Element.isEmpty: FHIRPathEngine.funcExists does not count them; cmp-1 on a section whose
    * only entry lost its reference).
    */
+  /** The element a view stands for: every view of one Element is that Element (ResourceValidationTracker, conformsToProfile). */
+  private sourceOf(v: object): object {
+    let cur = v;
+    for (let next = this.viewSource.get(cur); next; next = this.viewSource.get(cur)) cur = next;
+    return cur;
+  }
+
   private fhirPathView(v: any): any {
     if ((!this.unparsed.size && !this.parserEmptiedAny) || v === null || typeof v !== "object") return v;
     const hit = this.strippedCache.get(v);
@@ -1644,6 +1674,7 @@ export class InstanceValidator {
       if (changed) copyLiterals(v, o);
       out = changed ? o : v;
     }
+    if (out !== v) this.viewSource.set(out, v);
     this.strippedCache.set(v, out);
     return out;
   }
@@ -1736,6 +1767,9 @@ export class InstanceValidator {
     this.parserEmptiedAny = false;
     const resource = await this.dropBadPrimitiveValues(resource0, rootType, issues, 0);
     const bundle = resource.resourceType === "Bundle" ? this.bundleCtx(resource) : null;
+    // clearInternalState l. 1117-1118: a reference back to the root is that element, not a fresh fetch
+    this.fetchCache.clear();
+    this.fetchCache.set(`${resource.resourceType}/${resource.id ?? null}`, resource);
     const rctx: ResourceCtx = { resource, container: null, root: resource, bundle, entry: null };
     // `|version` is kept: HL7 resolves a versioned canonical to that version only.
     const extra = (opts.profiles || []).map((p) => String(p || "").trim()).filter((p) => p !== "");
@@ -2950,6 +2984,7 @@ export class InstanceValidator {
   }
 
   private parsedViews = new WeakMap<object, Record<string, any>>();
+  private constraintViews = new WeakMap<object, Record<string, any>>();
 
   /** The properties of `resource` its own core definition knows (JsonParser keeps only those). */
   private async parsedView(resource: Record<string, any>, base: SdIndex): Promise<Record<string, any>> {
@@ -2973,8 +3008,67 @@ export class InstanceValidator {
     };
     const out: Record<string, any> = {};
     for (const [k, v] of Object.entries(resource)) if (keep(k, v)) out[k] = v;
+    this.viewSource.set(out, resource);
     this.parsedViews.set(resource, out);
     return out;
+  }
+
+  /**
+   * The element model of a complex node for FHIRPath, at any depth: what JsonParser dropped (an unknown property, an array
+   * where the base element is single, an object for a primitive) is not there for an invariant. The same node when nothing
+   * was dropped. Resources inside it have their own views; a contentReference element is not descended.
+   */
+  private async constraintView(node: Record<string, any>, sdx: SdIndex, el: Record<string, any>, typeCode: string): Promise<Record<string, any>> {
+    const hit = this.constraintViews.get(node);
+    if (hit) return hit;
+    let owner = sdx;
+    let groups = sdx.children(el);
+    if (!groups) {
+      const own = isPrimitive(typeCode) || !typeCode ? null : await this.sdx(CORE + typeCode);
+      if (!own) return node;
+      owner = own;
+      groups = own.children(own.root);
+    }
+    const list = groups ? [...groups.values()] : [];
+    if (!list.length) return node;
+    const out: Record<string, any> = {};
+    let changed = false;
+    for (const [k, v] of Object.entries(node)) {
+      if (k === "resourceType") {
+        out[k] = v;
+        continue;
+      }
+      const n = k.startsWith("_") ? k.slice(1) : k;
+      const g = list.find((x) => (x.name.endsWith("[x]") ? n.startsWith(x.name.slice(0, -3)) && n.length > x.name.length - 3 : x.name === n));
+      if (!g) {
+        changed = true;
+        continue;
+      }
+      const d = g.base || g.slices[0];
+      const max = String((d?.base && d.base.max) ?? d?.max ?? "*");
+      if (Array.isArray(v) && (max === "1" || max === "0")) {
+        changed = true;
+        continue;
+      }
+      const choiceType = g.name.endsWith("[x]") ? KNOWN_TYPE_SUFFIX.get(n.slice(g.name.length - 3)) : undefined;
+      const types: string[] = choiceType ? [choiceType] : (d?.type || []).map(typeCodeOf);
+      if (!k.startsWith("_") && types.length === 1 && isPrimitive(types[0]) && (isObject(v) || (Array.isArray(v) && v.some(isObject)))) {
+        changed = true;
+        continue;
+      }
+      if (k.startsWith("_") || !d || d.contentReference || types.length !== 1 || isPrimitive(types[0])) {
+        out[k] = v;
+        continue;
+      }
+      const child = async (x: unknown): Promise<unknown> => (isObject(x) && typeof x.resourceType !== "string" ? this.constraintView(x, owner, d, types[0]) : x);
+      const y = Array.isArray(v) ? await Promise.all(v.map(child)) : await child(v);
+      if (Array.isArray(v) ? (y as unknown[]).some((e, i) => e !== v[i]) : y !== v) changed = true;
+      out[k] = y;
+    }
+    const view = changed ? out : node;
+    if (changed) this.viewSource.set(out, node);
+    this.constraintViews.set(node, view);
+    return view;
   }
 
   /** Issues of `rctx.resource` against one StructureDefinition (memoised per resource object). */
@@ -2985,15 +3079,17 @@ export class InstanceValidator {
       this.conformCache.set(rctx.resource, byUrl);
     }
     let p = byUrl.get(url);
-    if (p && this.inProgress.get(rctx.resource)?.has(url)) {
+    // startInner l. 7153-7165: the tracker belongs to the Element, whichever view of it this is
+    const element = this.sourceOf(rctx.resource);
+    if (this.inProgress.get(element)?.has(url)) {
       // Re-entrant request (reference cycle): assume conformance for the inner check.
       return Promise.resolve([]);
     }
     if (!p) {
-      let running = this.inProgress.get(rctx.resource);
+      let running = this.inProgress.get(element);
       if (!running) {
         running = new Set();
-        this.inProgress.set(rctx.resource, running);
+        this.inProgress.set(element, running);
       }
       running.add(url);
       const done = running;
@@ -3047,10 +3143,11 @@ export class InstanceValidator {
       list.map((i) => {
         // Messages that quote their location (parser-stage "(at …)" / "(key at …)") carry the token too.
         let message = i.message.includes(ROOT_TOKEN) ? i.message.split(ROOT_TOKEN).join(path) : i.message;
+        // validateContains l. 7516: stack.pathComment(type/id) on an embedded resource
+        const r = rctx.resource;
+        const comment = path.includes(".") ? `/*${this.typeOfResource(r)}/${typeof r.id === "string" ? r.id : "null"}*/` : "";
+        if (message.includes(PLIST_TOKEN)) message = expandPlist(message, path, comment);
         if (message.includes(LITERAL_ROOT_TOKEN)) {
-          // validateContains l. 7516: stack.pathComment(type/id) on an embedded resource
-          const r = rctx.resource;
-          const comment = path.includes(".") ? `/*${this.typeOfResource(r)}/${typeof r.id === "string" ? r.id : "null"}*/` : "";
           const outer = path.startsWith(ROOT_TOKEN) ? LITERAL_ROOT_TOKEN + path.slice(ROOT_TOKEN.length) : path;
           message = message.split(LITERAL_ROOT_TOKEN).join(outer + comment);
         }
@@ -4704,11 +4801,10 @@ export class InstanceValidator {
    * against one of the resource's own declared profiles also makes the match fail. Parse-time issues are not part of
    * it (the parser reported them once).
    */
-  private async resourceConforms(ctx: ResourceCtx, url: string, path: string, depth: number, checkSpecials = false, forReference: { containedSeen: boolean } | null = null): Promise<boolean> {
-    // validateResource(forReference = true): checkContainedReferences is skipped (IV:9051), and a contained resource
-    // already seen in this session is not checked for a duplicate id again (validator_contained_Id, IV:7533)
-    const counted = (i: Issue): boolean =>
-      !isParseIssue(i) && !(forReference && (/ \(dom-3\)$/u.test(i.message) || (forReference.containedSeen && /^Duplicate ID for contained resource: /u.test(i.message))));
+  private async resourceConforms(ctx: ResourceCtx, url: string, path: string, depth: number, checkSpecials = false, forReference = false): Promise<boolean> {
+    // validateResource(forReference = true): checkContainedReferences is skipped (IV:9051). A duplicate contained id never
+    // fails a reference match, whether the target comes before or after the source (validator_cli, both orders of a Bundle)
+    const counted = (i: Issue): boolean => !isParseIssue(i) && !(forReference && (/ \(dom-3\)$/u.test(i.message) || /^Duplicate ID for contained resource: /u.test(i.message)));
     const passes = async (u: string): Promise<boolean> => {
       if (!isValid((await this.conformance(ctx, u, path, depth)).filter(counted))) return false;
       // start, IV:6917-6937 / 6981-7001: the profile's imposeProfile dependencies (one level); an unresolved one is a warning
@@ -4767,9 +4863,9 @@ export class InstanceValidator {
     return p;
   }
 
-  /** FHIRPath memberOf() on a code / Coding / CodeableConcept; a ValueSet that cannot be read answers empty → unknown. */
-  private async hostMemberOf(value: any, url: string): Promise<boolean | undefined> {
-    if (!(await this.vsHeader(url))) return false; // funcMemberOf: no ValueSet → no match
+  /** FHIRPath memberOf() on a code / Coding / CodeableConcept: null = empty (funcMemberOf l. 5181-5183, no ValueSet). */
+  private async hostMemberOf(value: any, url: string): Promise<boolean | null | undefined> {
+    if (!(await this.vsHeader(url))) return null;
     if (typeof value === "string") return this.member(url, null, value);
     return this.bindingClause(url, [value]);
   }
@@ -4780,7 +4876,7 @@ export class InstanceValidator {
     if (!psdx) return null;
     if (!isObject(value)) return undefined;
     if (typeof value.resourceType === "string") {
-      const same = value.resourceType === rctx.resource.resourceType && value.id === rctx.resource.id;
+      const same = this.sourceOf(value) === this.sourceOf(rctx.resource);
       const ctx: ResourceCtx = same ? rctx : { resource: value, container: null, root: rctx.root, bundle: rctx.bundle, entry: this.entryFor(value, rctx, false) };
       return this.resourceConforms(ctx, url, item.path, 0, true);
     }
@@ -6319,7 +6415,8 @@ export class InstanceValidator {
             const vsv = `${vs.url}${vs.version ? `|${vs.version}` : ""}`;
             const desc = `'${vs.title || vs.name || b.valueSet}' (${vsv})`;
             if (strength === "required") {
-              err(`The code provided (${system}#${code}) was not found in the value set ${desc}, and a code from this value set is required: The provided code '${system}#${code}' was not found in the value set '${vsv}'`, "code-invalid");
+              const why = checkUcumCode(code) === "invalid" ? `; ${ucumUnknownCodeMessage(code)}` : "";
+              err(`The code provided (${system}#${code}) was not found in the value set ${desc}, and a code from this value set is required: The provided code '${system}#${code}' was not found in the value set '${vsv}'${why}`, "code-invalid");
             } else {
               issues.push({ severity: "warning", path, code: "code-invalid", message: `The code provided (${system}#${code}) is not in the value set ${desc}, and a code should come from this value set unless it has no suitable code (the validator cannot judge what is suitable)` });
             }
@@ -6425,9 +6522,10 @@ export class InstanceValidator {
     // (internal / contained ones are always CHECK_VALID)
     const policy = refType === "external" ? this.referencePolicy : "CHECK_VALID";
     let fetched = false;
-    if (!target && refType === "external" && policy && this.resolver.fetchReference && !(ref.includes("?") && R4_RESOURCE_NAMES.has(ref.slice(0, ref.indexOf("?"))))) {
-      const f = await this.resolver.fetchReference(ref).catch(() => null);
+    if (!target && refType === "external" && policy && (this.fetchCache.has(ref) || this.resolver.fetchReference) && !(ref.includes("?") && R4_RESOURCE_NAMES.has(ref.slice(0, ref.indexOf("?"))))) {
+      const f = this.fetchCache.get(ref) ?? (await this.resolver.fetchReference?.(ref).catch(() => null));
       if (isObject(f) && typeof f.resourceType === "string") {
+        this.fetchCache.set(ref, f);
         target = f;
         fetched = true;
       }
@@ -6552,7 +6650,6 @@ export class InstanceValidator {
       return;
     }
     if (anyType) return;
-    if (target === rctx.resource || target === rctx.root) return;
     if (fetched && policy !== "CHECK_VALID") return; // pol.checkValid() false
     const tctx: ResourceCtx = {
       resource: target,
@@ -6566,8 +6663,7 @@ export class InstanceValidator {
     // Reference_REF_MultipleMatches (warning, versioned urls sorted)
     const good: SdIndex[] = [];
     for (const c of candidates) {
-      const seen = (tctx.entry?.index ?? Infinity) < (rctx.entry?.index ?? -1);
-      if (await this.resourceConforms(tctx, c.url, `${item.path}.resolve()`, depth + 1, false, { containedSeen: seen })) good.push(c);
+      if (await this.resourceConforms(tctx, c.url, `${item.path}.resolve()`, depth + 1, false, true)) good.push(c);
     }
     if (good.length > 1) {
       issues.push({
@@ -6670,7 +6766,9 @@ export class InstanceValidator {
     }
     if (!ok) {
       const allowed = shown.join(", ");
-      const elementIs = `[${plist.join(", ")}]`;
+      const elementIs = host.path.startsWith(ROOT_TOKEN)
+        ? PLIST_TOKEN + JSON.stringify([...plist, ROOT_TOKEN + stripIndexes(host.path.slice(1)), LITERAL_ROOT_TOKEN + stripIndexes(host.path.slice(1))]) + PLIST_TOKEN
+        : `[${plist.join(", ")}]`;
       if (typeof sd[XVER_SOURCE] === "string") {
         // EXTENSION_EXTP / EXTM_CONTEXT_WRONG_XVER: a warning for a cross-version extension
         issues.push({
@@ -7100,18 +7198,20 @@ export class InstanceValidator {
       pendingHost.set(key, { key, fetch });
       return undefined;
     };
-    env.memberOf = (value, url) => ask("member", value, url, () => this.hostMemberOf(value, url)) ?? undefined;
+    env.memberOf = (value, url) => ask("member", value, url, () => this.hostMemberOf(value, url));
     env.conformsTo = (value, url) => ask("conforms", value, url, () => this.hostConformsTo(value, url, item, rctx));
     const base = fhirPathBase(String(el.path || sdx.type), typeCode);
     // the element model: a resource's dropped properties are not there for FHIRPath (bdl-9 on an `identifier` array …)
     let constraintNode = this.fhirPathView(item.value);
     if (item.value === rctx.resource && isObject(item.value) && typeof item.value.resourceType === "string") {
       const own = await this.sdx(CORE + item.value.resourceType);
-      if (own) constraintNode = await this.parsedView(this.fhirPathView(item.value), own);
+      if (own) constraintNode = await this.constraintView(await this.parsedView(this.fhirPathView(item.value), own), own, own.root, item.value.resourceType);
     } else if (typeCode === "Extension" && isObject(item.value)) {
       // ext-1: a value the parser dropped is no value
       const own = await this.sdx(CORE + "Extension");
-      if (own) constraintNode = await this.parsedView(this.fhirPathView(item.value), own);
+      if (own) constraintNode = await this.constraintView(await this.parsedView(this.fhirPathView(item.value), own), own, own.root, "Extension");
+    } else if (isObject(constraintNode) && typeof constraintNode.resourceType !== "string") {
+      constraintNode = await this.constraintView(constraintNode, sdx, el, typeCode);
     }
     for (const c of constraints) {
       // ele-1: structural pass; dom-3: never evaluated (checkInvariant l. 8868-8872) — checkContainedReferences

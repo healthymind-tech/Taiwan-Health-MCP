@@ -1362,8 +1362,8 @@ export interface FhirPathEnv {
   rootResource: Record<string, any>;
   /** Resolve a Reference.reference string seen from `fromResource`; null when not resolvable. */
   resolveReference?: (reference: string, fromResource: Record<string, any>) => Record<string, any> | null;
-  /** Membership of a code / Coding / CodeableConcept in a ValueSet; undefined = unknown. */
-  memberOf?: (value: any, valueSetUrl: string) => boolean | undefined;
+  /** Membership of a code / Coding / CodeableConcept in a ValueSet; null = no such ValueSet (empty), undefined = unknown. */
+  memberOf?: (value: any, valueSetUrl: string) => boolean | null | undefined;
   /** conformsTo(): does the value conform to the profile; undefined = unknown. */
   conformsTo?: (value: any, profileUrl: string) => boolean | null | undefined;
 }
@@ -1443,7 +1443,7 @@ const USER_FUNCTIONS: Record<string, any> = {
       if (t && !["code", "string", "uri", "Coding", "CodeableConcept"].includes(t)) return [];
       const answer = env?.memberOf ? env.memberOf(fpUtil.valData(coll[0]), url) : undefined;
       if (answer === undefined) throw new Unevaluable(`memberOf('${url}') not resolvable locally`);
-      return [answer];
+      return answer === null ? [] : [answer];
     },
   },
   htmlChecks: {

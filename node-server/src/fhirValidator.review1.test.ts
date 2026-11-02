@@ -434,6 +434,92 @@ test("VALIDATION_VAL_PROFILE_MINIMUM / _MAXIMUM name the versioned profile; opti
   assert.ok(!f.some((i) => i.severity === "error" && i.path === "Patient.managingOrganization" && /not found/.test(i.message)), JSON.stringify(f));
 });
 
+test("fetchCache: a reference back to the root is the root, not a fetch (clearInternalState l. 1118, checkReference l. 5282)", async () => {
+  const asked: string[] = [];
+  class R4 extends Resolver {
+    async fetchReference(ref: string): Promise<Json | null> {
+      asked.push(ref);
+      return { resourceType: "Organization", id: "o1" };
+    }
+  }
+  const v = () => new InstanceValidator(new R4());
+  await v().validate({ resourceType: "Patient", id: "a", managingOrganization: { reference: "Patient/a" } }, { validateReference: "CHECK_VALID" });
+  assert.deepEqual(asked, []);
+  await v().validate({ resourceType: "Patient", id: "a", managingOrganization: { reference: "Organization/o1" } }, { validateReference: "CHECK_VALID" });
+  assert.deepEqual(asked, ["Organization/o1"]);
+});
+
+test("funcMemberOf l. 5181-5183: a ValueSet that cannot be resolved answers empty, not false", async () => {
+  const P = "http://example.org/fhir/StructureDefinition/member-empty";
+  EXTRA[P] = sd(P, "Patient", "resource", SDS[CORE + "Patient"].snapshot.element.map((e: Json) =>
+    e.path === "Patient" ? { ...e, constraint: [{ key: "mbr-1", severity: "error", human: "empty", expression: "gender.memberOf('http://example.org/fhir/ValueSet/none').empty()" }] } : e,
+  ), { baseDefinition: CORE + "Patient", derivation: "constraint" });
+  const issues = await run({ resourceType: "Patient", gender: "male" }, [P]);
+  assert.ok(!issues.some((i) => /mbr-1/.test(i.message)), JSON.stringify(issues));
+});
+
+test("conformsToProfile validates the Element itself: a contained resource with the root's type and id is not the root", async () => {
+  const S = "http://example.org/fhir/StructureDefinition/needs-birth";
+  const C = "http://example.org/fhir/StructureDefinition/contained-conforms";
+  EXTRA[S] = sd(S, "Patient", "resource", [
+    ...SDS[CORE + "Patient"].snapshot.element.filter((e: Json) => e.path !== "Patient.birthDate"),
+    el("Patient.birthDate", 1, "1", ["date"]),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint" });
+  EXTRA[C] = sd(C, "Patient", "resource", SDS[CORE + "Patient"].snapshot.element.map((e: Json) =>
+    e.path === "Patient" ? { ...e, constraint: [{ key: "cnf-1", severity: "error", human: "contained conforms", expression: `contained.conformsTo('${S}')` }] } : e,
+  ), { baseDefinition: CORE + "Patient", derivation: "constraint" });
+  const issues = await run({ resourceType: "Patient", id: "a", birthDate: "2000-01-01", contained: [{ resourceType: "Patient", id: "a" }] }, [C]);
+  assert.ok(issues.some((i) => /cnf-1/.test(i.message)), JSON.stringify(issues));
+});
+
+test("the element model at any depth for invariants: an array in a single backbone child is gone (jar: pat-1 on contact.name[])", async () => {
+  const P = "http://example.org/fhir/StructureDefinition/deep-view";
+  EXTRA[P] = sd(P, "Patient", "resource", [
+    ...SDS[CORE + "Patient"].snapshot.element,
+    el("Patient.contact", 0, "*", ["BackboneElement"], { constraint: [{ key: "dv-1", severity: "error", human: "needs a name", expression: "name.exists()" }] }),
+    el("Patient.contact.name", 0, "1", ["HumanName"]),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint" });
+  const bad = errs(await run({ resourceType: "Patient", contact: [{ name: [{ family: "x" }] }] }, [P])).map(([, m]) => m);
+  assert.ok(bad.some((m) => m.startsWith("Constraint failed: dv-1")), JSON.stringify(bad));
+  const good = errs(await run({ resourceType: "Patient", contact: [{ name: { family: "x" } }] }, [P])).map(([, m]) => m);
+  assert.ok(!good.some((m) => m.startsWith("Constraint failed: dv-1")), JSON.stringify(good));
+});
+
+test("checkReference has no self-reference shortcut: the root against another profile is validated, the same profile is the tracker's cycle", async () => {
+  const S = "http://example.org/fhir/StructureDefinition/self-birth";
+  EXTRA[S] = sd(S, "Patient", "resource", [
+    ...SDS[CORE + "Patient"].snapshot.element.filter((e: Json) => e.path !== "Patient.birthDate").map((e: Json) => (e.path === "Patient.managingOrganization" ? { ...e, type: [{ code: "Reference" }] } : e)),
+    el("Patient.birthDate", 1, "1", ["date"]),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint" });
+  const R = "http://example.org/fhir/StructureDefinition/self-ref";
+  EXTRA[R] = sd(R, "Patient", "resource", SDS[CORE + "Patient"].snapshot.element.map((e: Json) =>
+    e.path === "Patient.managingOrganization" ? { ...e, type: [{ code: "Reference", targetProfile: [S] }] } : e,
+  ), { baseDefinition: CORE + "Patient", derivation: "constraint" });
+  const patient = (p: Json): Json => ({ resourceType: "Patient", id: "s", managingOrganization: { reference: "Patient/s" }, ...p });
+  const go = (p: Json) => new InstanceValidator(new Resolver()).validate(patient(p), { profiles: [R], validateReference: "CHECK_VALID" });
+  const bad = await go({});
+  assert.ok(bad.some((i) => i.message.startsWith("Unable to find a profile match for Patient/s among choices:")), JSON.stringify(bad));
+  const good = await go({ birthDate: "2000-01-01" });
+  assert.ok(!good.some((i) => i.message.startsWith("Unable to find a profile match")), JSON.stringify(good));
+});
+
+test("checkExtensionContext: the element list of an embedded resource has the literal path with its comment and the embedding's logical path (jar)", async () => {
+  const E = "http://example.org/fhir/StructureDefinition/only-on-patient";
+  EXTRA[E] = sd(E, "Extension", "complex-type", [
+    el("Extension", 0, "*", []),
+    el("Extension.url", 1, "1", ["uri"], { fixedUri: E }),
+    el("Extension.value[x]", 0, "1", ["string"]),
+  ], { baseDefinition: CORE + "Extension", derivation: "constraint", context: [{ type: "element", expression: "Patient" }] });
+  const issues = await run({
+    resourceType: "Patient",
+    id: "h",
+    contained: [{ resourceType: "Organization", id: "k", extension: [{ url: E, valueString: "x" }] }],
+    managingOrganization: { reference: "#k" },
+  });
+  const m = issues.find((i) => /is not allowed to be used at this point/.test(i.message))?.message ?? JSON.stringify(issues);
+  assert.ok(m.includes("(this element is [Organization, Patient.contained, Patient.contained/*Organization/k*/];"), m);
+});
+
 test("F10 invariants with memberOf() / conformsTo() are evaluated (FHIRPathEngine.funcMemberOf, funcConformsTo)", async () => {
   const NEED = "http://example.org/fhir/StructureDefinition/pat-need-birth";
   EXTRA[NEED] = sd(NEED, "Patient", "resource", [

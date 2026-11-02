@@ -274,8 +274,6 @@ export async function executeRun(run: TestRun, base: { store: ResourceStore; ids
       p = (async () => {
         const m = /^(?:.*\/)?([A-Z][A-Za-z]+)\/([A-Za-z0-9\-.]{1,64})$/.exec(ref);
         if (!m) return null;
-        // the instance under validation is the same element (ResourceValidationTracker: a cycle back to it is valid)
-        if (resource && resource.resourceType === m[1] && resource.id === m[2]) return resource;
         for (const f of [`${m[2]}.json`, `${m[2]}.xml`]) {
           const res = await loadFile(join(suite, f));
           if (res && res.resourceType === m[1] && res.id === m[2]) return res;
