@@ -755,7 +755,9 @@ export class DbValidatorResolver implements ValidatorResolver {
     }
     if (system === ISO3166) return this.checkIso3166(code, display);
     // CVX: bundled tx.fhir.org table (fhirCvx.ts).
-    if (system === CVX) return judgeCvx(code, display, langs);
+    // CVX names 'en' whatever the request language: the CLI on the suite's cvx.json, and 3972 of 4126 corpus messages (a Bundle in
+    // en-NZ too; the rest are the same inputs, answered from the tx cache)
+    if (system === CVX) return judgeCvx(code, display);
     if (system === ICD10_WHO) return this.checkIcd10Who(code, display);
     if (system === RXNORM) return this.checkRxnorm(code, display);
     if (SILENT_SYSTEMS.includes(system)) {
