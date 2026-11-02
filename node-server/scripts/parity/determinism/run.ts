@@ -195,7 +195,7 @@ async function determinism(items: Item[], validate: Validate): Promise<{ rows: R
     rows.push(row);
     const ref = reference.get(item);
     const d = ref ? ((JSON.parse(ref) as Json).data ?? JSON.parse(ref)) as Json : null;
-    console.log(`${item} [${mode}] ${n} runs, ${texts.size} distinct, ${row.ms} ms${d ? `, valid ${d.valid}, checked_fully ${d.checked_fully}, ${JSON.stringify({ i: d.invariants_unchecked, l: d.limits_exceeded, f: d.lookups_failed })}` : ""}`);
+    console.log(`${item} [${mode}] ${n} runs, ${texts.size} distinct, ${row.ms} ms${d ? `, valid ${d.valid}, checked_fully ${d.checked_fully}, ${JSON.stringify({ i: d.invariants_unchecked, l: d.limits_exceeded, f: d.lookups_failed })}, sha ${sha(ref!)}` : ""}`);
   };
   for (const mode of modes) {
     if (mode === "mixed4") continue;
