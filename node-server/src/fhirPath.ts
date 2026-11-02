@@ -722,6 +722,17 @@ if (loaded.engine) {
     }
     return polarity.call(loaded.engine, ctx, parentData, node);
   };
+  // FHIRPathBaseSorter.compare (FHIRPathEngine.java:6575-6578): any unary sort expression (`-`, and `+` alike) reverses the
+  // order and its operand is the key
+  const sortArg = loaded.engine.evalTable?.SortDirectionArgument ?? loaded.engine.SortDirectionArgument;
+  const reversedSortArg = function (ctx: any, parentData: any, node: any): any {
+    const r = sortArg.call(loaded.engine, ctx, parentData, node);
+    let e = r?.expr;
+    while (e?.type === "TermExpression" && e.children?.length === 1) e = e.children[0];
+    return e?.type === "PolarityExpression" ? { expr: e.children[0], direction: "desc" } : r;
+  };
+  loaded.engine.SortDirectionArgument = reversedSortArg;
+  if (loaded.engine.evalTable) loaded.engine.evalTable.SortDirectionArgument = reversedSortArg;
   // funcIs: a type name that does not exist in the System namespace is simply not the item's type (no exception)
   const typeSpecifier = loaded.engine.TypeSpecifier;
   loaded.engine.TypeSpecifier = function (ctx: any, parentData: any, node: any): any {
