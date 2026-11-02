@@ -757,9 +757,13 @@ export class DbValidatorResolver implements ValidatorResolver {
       const r = await this.checkCodeUncached(base, code, display, system.slice(bar + 1), langs);
       return nameSystemAsWritten(r, base, system);
     }
-    // the terminology server ignores a whitespace-only display; the jar's local check of an IG CodeSystem does not
-    // (evaluator corpus: LOINC / SNOMED / THO no issue; nhi-outpatient-case-type Display_Name_for__should_be_one_of__instead_of)
-    if (display !== null && display.trim() === "" && txKnownSystem(system)) display = null;
+    // the terminology server ignores a whitespace-only display; the jar's local check of a CodeSystem it holds complete
+    // does not (jar, one item per JVM: LOINC / SNOMED no issue; condition-clinical Wrong Display + not in the value set.
+    // The batch corpus files say otherwise for condition-clinical: a reused cached validation)
+    if (display !== null && display.trim() === "" && txKnownSystem(system)) {
+      const held = await terminology.loadCodeSystemIndex(system, this.pkg, true);
+      if (held?.content !== "complete") display = null;
+    }
     if (system === ISO3166) return this.checkIso3166(code, display);
     // CVX: bundled tx.fhir.org table (fhirCvx.ts).
     // CVX names 'en' whatever the request language: the CLI on the suite's cvx.json, and 3972 of 4126 corpus messages (a Bundle in
