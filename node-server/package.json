@@ -14,7 +14,7 @@
     "typecheck": "tsc -p tsconfig.dev.json --noEmit",
     "test": "node --import tsx --test 'src/**/*.test.ts'",
     "test:safe": "sh scripts/dev/run-limited.sh node --import tsx --test --test-concurrency=1 'src/**/*.test.ts'",
-    "test:determinism": "node --max-old-space-size=2500 --import tsx scripts/parity/determinism/run.ts"
+    "test:determinism": "node --max-old-space-size=4000 --import tsx scripts/parity/determinism/run.ts"
   },
   "dependencies": {
     "@lhncbc/ucum-lhc": "7.1.9",

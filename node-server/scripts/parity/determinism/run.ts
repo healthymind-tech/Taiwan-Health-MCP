@@ -9,8 +9,9 @@
  *   sequential   one after another
  *   concurrent4  four at a time, the same Bundle object
  *   tiny         every cache forced to one entry / weight 1 (setCacheLimits), so everything is evicted constantly
- *   expired      TTL 0, two at a time: no cache entry survives, the request pin is the only thing that holds (each request
- *                then holds its own copy of every definition: four at a time exceeds a 2.5 GB heap on a large IG closure)
+ *   expired      TTL 0: no cache entry survives, the request pin is the only thing that holds. One at a time by default (each
+ *                request then holds its own copy of every definition: two at a time exceed a 2.5 GB heap on a large IG
+ *                closure); --expired-width n for more
  *   mixed4       all the Bundles interleaved four at a time (state leaking between different validations)
  *
  * Engines: `db` (default when DATABASE_URL is set): FHIRIGService.validateBundle exactly as fhir_validate_bundle calls it, on
@@ -205,7 +206,7 @@ async function determinism(items: Item[], validate: Validate): Promise<{ rows: R
   for (const mode of modes) {
     if (mode === "mixed4") continue;
     setCacheLimits(mode === "tiny" ? { maxEntries: 1, maxWeight: 1 } : mode === "expired" ? { ttlMs: -1 } : {});
-    const width = mode === "concurrent4" ? 4 : mode === "expired" ? Number(opt("--expired-width") ?? 2) : 1;
+    const width = mode === "concurrent4" ? 4 : mode === "expired" ? Number(opt("--expired-width") ?? 1) : 1;
     for (const item of items) {
       const t0 = performance.now();
       const q0 = queries();
