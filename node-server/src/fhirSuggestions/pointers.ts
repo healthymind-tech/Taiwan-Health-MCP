@@ -302,7 +302,7 @@ function messageCandidates(issue: Json, root: unknown, w: WalkResult): Candidate
   if ((/^This property must be a simple value, not an Array/.test(msg) || /^The property \S+ must be a JSON Object, not an Array/.test(msg)) && Array.isArray(v) && v.length === 1) {
     out.push({ ops: [{ op: "replace", path: ptr, value: v[0] }], reason: "the element does not repeat: write its only item without the array", kind: "unwrap_array", confidence: 0.95 });
   }
-  if (/^Array cannot be empty/.test(msg) || /^The property \S+ cannot be null$/.test(msg) || /^Array entries cannot be null$/.test(msg)) {
+  if (/^Array cannot be empty/.test(msg) || /^The property \S+ cannot be null$/.test(msg) || /^Array entries cannot be null$/.test(msg) || (/^The property \S+ must be an Array, not a Null \(at /.test(msg) && v === null)) {
     out.push({ ops: [{ op: "remove", path: ptr }], reason: "empty / null values are not allowed in FHIR JSON: remove it", kind: "remove_empty", confidence: 0.95 });
   }
   if (/^Constraint failed: ele-1:/.test(msg) && ((isObj(v) && !Object.keys(v).length) || (Array.isArray(v) && !v.length) || v === "")) {

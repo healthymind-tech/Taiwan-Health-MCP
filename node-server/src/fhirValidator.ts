@@ -1304,6 +1304,10 @@ interface Item {
   host?: ExtensionHost;
   /** (parity v3) Source spelling of a JSON number value when it differs from String(value) (fhirJsonLiterals). */
   numText?: string;
+  /** (parity v3) The JSON parser's path of a primitive property (choice: the [x] name; arrays: no index). */
+  parserPath?: string;
+  /** (parity v3) The element model path (JsonParser npath: choice elements by their [x] name, arrays indexed). */
+  jpath?: string;
 }
 
 /** The element an extension sits on, as InstanceValidator.checkExtensionContext sees it. */
@@ -2946,9 +2950,9 @@ export class InstanceValidator {
       if (item.profileType) return;
       issues.push({
         severity: "error",
-        path: item.path,
+        path: item.jpath ?? item.path,
         code: "structure",
-        message: `The property ${item.key} must be ${item.inList ? "an Array" : "an Object"}, not ${describeJson(v)} (at ${item.path})`,
+        message: `The property ${item.key} must be ${item.inList ? "an Array" : "an Object"}, not ${describeJson(v)} (at ${item.jpath ?? item.path})`,
       });
       return;
     }
@@ -3262,11 +3266,21 @@ export class InstanceValidator {
       issues.push({ severity: "error", path, code: "structure", message: `This property must be an object, not ${describeJson(ext)} (${item.key} at ${path})` });
       return;
     }
+    // JsonParser.parseChildPrimitiveInstance → checkObject(fork): OBJECT_MUST_HAVE_SOME_CONTENT for an empty `_x`
+    if (Object.keys(ext).length === 0 && !this.xmlSource) issues.push({ severity: "error", path: item.parserPath ?? path, code: "invalid", message: "Object must have some content" });
+    // xhtml has no extension element: an extension on `_div` is an unknown property (and is not a child), so a shadow
+    // alone leaves no value and no children (PRIMITIVE_VALUE_ALTERNATIVES_MESSAGE + ele-1)
+    const xhtml = item.typeCode === "xhtml";
+    if (!this.xmlSource && xhtml && (item.value === null || item.value === undefined) && Object.keys(ext).length > 0) {
+      issues.push({ severity: "error", path, code: "invalid", message: PRIMITIVE_VALUEEXT_MESSAGE });
+      issues.push({ severity: "error", path, code: "invariant", message: ELE1_MESSAGE });
+    }
     for (const k of Object.keys(ext)) {
-      if (k !== "id" && k !== "extension") {
+      if (k !== "id" && (k !== "extension" || xhtml)) {
         issues.push({ severity: "error", path, code: "structure", message: `Unrecognized property '${k}'` });
       }
     }
+    if (xhtml) return;
     const list = ext.extension;
     if (list === undefined) return;
     if (!Array.isArray(list)) {
@@ -3293,7 +3307,7 @@ export class InstanceValidator {
       await this.validateItemAgainst(
         extSdx,
         { id: "Element.extension", path: "Element.extension", min: 0, max: "*", type: [{ code: "Extension" }] },
-        { value: list[i], ext: undefined, key: "extension", path: `${path}.extension[${i}]`, typeCode: "Extension", lp: extLp, host },
+        { value: list[i], ext: undefined, key: "extension", path: `${path}.extension[${i}]`, jpath: `${item.parserPath ?? path}.extension[${i}]`, inList: true, typeCode: "Extension", lp: extLp, host },
         "Extension",
         rctx,
         issues,
@@ -3365,7 +3379,12 @@ export class InstanceValidator {
         const parentExtUrl = item.typeCode === "Extension" && key.startsWith("value") && typeof node.url === "string" ? node.url : undefined;
         const host = name === "extension" || name === "modifierExtension" ? hostOf(name === "modifierExtension") : undefined;
         const baseMax0 = String((def.base && def.base.max) ?? def.max ?? "*");
-        const mk = (value: any, ext: any, p: string): Item => ({ value, ext, key, path: p, typeCode, lp, parentExtUrl, host, inList: baseMax0 !== "1" && baseMax0 !== "0", profileType: profileTypeKeys.has(key) });
+        const jbase = `${item.jpath ?? item.path}.${name}`;
+        const mk = (value: any, ext: any, p: string): Item => {
+          const idx = /\[(\d+)\]$/.exec(p);
+          const jpath = idx && p !== path ? `${jbase}[${idx[1]}]` : jbase;
+          return { value, ext, key, path: p, jpath, typeCode, lp, parentExtUrl, host, inList: baseMax0 !== "1" && baseMax0 !== "0", profileType: profileTypeKeys.has(key) };
+        };
         const raw = node[key];
         const rawExt = node["_" + key];
         const baseMax = String((def.base && def.base.max) ?? def.max ?? "*");
@@ -3391,11 +3410,20 @@ export class InstanceValidator {
           });
           return;
         }
+        // (parity v3) JsonParser.parseChildPrimitive: issues about the `_x` fork are reported at the property path
+        // (path + "." + property name: the [x] name of a choice, no index)
+        const npath = jbase;
+        const notObject = (v: unknown): string => `This property must be an object, not ${describeJson(v)} (${key} at ${npath})`;
+        if (primitiveType && !this.xmlSource && expectArray && rawExt !== undefined && rawExt !== null && !Array.isArray(rawExt)) {
+          // THIS_BASE_PROPERTY_MUST_BE_AN_ARRAY_NOT_ ((sic) describes the main value); nothing of the property is kept
+          issues.push({ severity: "error", path: npath, code: "invalid", message: `This base property must be an Array, not ${describeJson(raw === undefined ? rawExt : raw)}` });
+          return;
+        }
         if (Array.isArray(raw) || (raw === undefined && Array.isArray(rawExt))) {
           const arr = Array.isArray(raw) ? raw : [];
           const exts = Array.isArray(rawExt) ? rawExt : [];
           if (arr.length === 0 && exts.length === 0 && raw !== undefined) {
-            issues.push({ severity: "error", path, code: "structure", message: `Array cannot be empty - the property should not be present if it has no values` });
+            issues.push({ severity: "error", path: npath, code: "structure", message: `Array cannot be empty - the property should not be present if it has no values` });
             return;
           }
           const n = Math.max(arr.length, exts.length);
@@ -3407,10 +3435,21 @@ export class InstanceValidator {
                 // XML: an element without value or children (InstanceValidator.checkPrimitive + ele-1)
                 issues.push({ severity: "error", path: `${path}[${i}]`, code: "invalid", message: PRIMITIVE_VALUEEXT_MESSAGE });
                 issues.push({ severity: "error", path: `${path}[${i}]`, code: "invariant", message: ELE1_MESSAGE });
-              } else issues.push({ severity: "error", path: `${path}[${i}]`, code: "structure", message: "Array entries cannot be null" });
+              } else if (primitiveType) {
+                // JSON_PROPERTY_INVALID_ARRAY ((sic) formatted with the index only: {1} stays literal)
+                issues.push({ severity: "error", path, code: "invalid", message: `The JSON array for '${i}' is invalid at index {1} - must have at least one valid value` });
+              } else {
+                // parseChildComplexInstance on a JsonNull: THIS_PROPERTY_MUST_BE__NOT_
+                issues.push({ severity: "error", path: `${npath}[${i}]`, code: "invalid", message: `The property ${key} must be an Array, not a Null (at ${npath}[${i}])` });
+              }
+              continue;
+            }
+            if (primitiveType && !this.xmlSource && ex !== null && !isObject(ex) && !(val !== null && (isObject(val) || Array.isArray(val)))) {
+              issues.push({ severity: "error", path: npath, code: "invalid", message: notObject(ex) });
               continue;
             }
             const it = mk(val, ex ?? undefined, `${path}[${i}]`);
+            if (primitiveType) it.parserPath = npath;
             const nt = numberText(arr, i);
             if (nt !== undefined) it.numText = nt;
             items.push(it);
@@ -3424,10 +3463,22 @@ export class InstanceValidator {
             // XML: an element without value or children (InstanceValidator.checkPrimitive + ele-1)
             issues.push({ severity: "error", path, code: "invalid", message: PRIMITIVE_VALUEEXT_MESSAGE });
             issues.push({ severity: "error", path, code: "invariant", message: ELE1_MESSAGE });
-          } else issues.push({ severity: "error", path, code: "structure", message: `The property ${key} cannot be null` });
+          } else if (primitiveType) {
+            // parseChildPrimitiveInstance on a JsonNull: THIS_PROPERTY_MUST_BE_AN_SIMPLE_VALUE_NOT_
+            issues.push({ severity: "error", path: npath, code: "structure", message: `This property must be a simple value, not a Null (${key} at ${npath})` });
+          } else {
+            // parseChildComplexInstance on a JsonNull: THIS_PROPERTY_MUST_BE__NOT_
+            issues.push({ severity: "error", path: npath, code: "structure", message: `The property ${key} must be an Object, not a Null (at ${npath})` });
+          }
+          return;
+        }
+        if (primitiveType && !this.xmlSource && rawExt !== undefined && rawExt !== null && !isObject(rawExt) && !(raw !== undefined && raw !== null && (isObject(raw) || Array.isArray(raw)))) {
+          // parseChildPrimitiveInstance: a `_x` that is not an object — the element (value too) is not created
+          issues.push({ severity: "error", path: npath, code: "invalid", message: notObject(rawExt) });
           return;
         }
         const it = mk(raw === undefined ? null : raw, rawExt, path);
+        if (primitiveType) it.parserPath = npath;
         const nt = numberText(node, key);
         if (nt !== undefined) it.numText = nt;
         items.push(it);
@@ -4569,7 +4620,8 @@ export class InstanceValidator {
     // Resource.id is checked by InstanceValidator.validateResource (RESOURCE_RES_ID_MALFORMED_LENGTH / _CHARS) and
     // not as an `id` here (checkPrimitive: type == id && base path != Resource.id)
     const isResourceId = isObject(el.base) && el.base.path === "Resource.id";
-    if (isResourceId && s !== "") {
+    // (parity v3) "" too: FormatUtilities.isValidId("") is false (IV:9029; corpus empty-string id items)
+    if (isResourceId) {
       if (s.length > 64) rule(false, `Invalid Resource id: Too long (${s.length} chars)`);
       else rule(ID_RE.test(s), `Invalid Resource id: Invalid Characters ('${s}')`);
       if (typeCode === "id") typeCode = "string";
@@ -6224,8 +6276,19 @@ export class InstanceValidator {
         const arr = bm !== "1" && bm !== "0";
         // a primitive is kept only as a JSON primitive (an object / array there is dropped: "must be a simple value")
         const primOk = (x: unknown): boolean => x === null || typeof x !== "object";
-        const shapeOk = isPrimitive(typeCode) ? (arr ? Array.isArray(raw) && raw.some(primOk) : primOk(raw)) : arr === Array.isArray(raw);
-        if (name !== "id" && (primExt || shapeOk)) kept++;
+        // (parity v3) an empty array / an array of nulls creates no element (ARRAY_CANNOT_BE_EMPTY, null entries)
+        const shapeOk = isPrimitive(typeCode)
+          ? arr
+            ? Array.isArray(raw) && raw.some((x) => x !== null && primOk(x))
+            : raw !== null && primOk(raw)
+          : arr
+            ? Array.isArray(raw) && raw.some((x) => x !== null)
+            : raw !== null && !Array.isArray(raw);
+        // (parity v3) a `_x` shadow that is not an object (scalar property) drops the whole property in
+        // JsonParser.parseChildPrimitiveInstance: neither the value nor the shadow is a child
+        const shadow = node["_" + name];
+        const shadowDrops = isPrimitive(typeCode) && !arr && shadow !== undefined && shadow !== null && !isObject(shadow);
+        if (name !== "id" && !shadowDrops && ((primExt && (isObject(raw) || (Array.isArray(raw) && raw.some(isObject)))) || (!primExt && shapeOk))) kept++;
       }
       if (primExt) {
         const list = Array.isArray(raw) ? raw : [raw];
@@ -6268,7 +6331,7 @@ export class InstanceValidator {
         }
       }
     }
-    if (!isRoot && kept === 0 && Object.keys(node).some((k) => k !== "fhir_comments")) {
+    if (!isRoot && kept === 0 && Object.keys(node).length > 0) {
       issues.push({ severity: "error", path, code: "invariant", message: ELE1_MESSAGE });
     }
   }
