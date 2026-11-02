@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { InstanceValidator, type Issue } from "./fhirValidator.js";
 import { CORE, FakeResolver, el, sd } from "./fhirTestKit.test.js";
 import { jsonSyntaxIssues, parseFhirJsonText, JsonSyntaxError, toPlain } from "./fhirJsonParser.js";
+import { FHIRLexerError, parseFhirPathJava } from "./fhirPathJavaParser.js";
 import { duplicateKeys, numberText, registerLosslessLiterals } from "./fhirJsonLiterals.js";
 import { parseLossless } from "./losslessJson.js";
 import { checkHtmlNames, checkValidUrl, javaHashSetOrder, languageXhtmlIssues, narrativeControlIssues, parseXhtml, textLinkIssues, validateXhtml, xhtmlHrefIssues } from "./fhirXhtml.js";
@@ -206,7 +207,7 @@ test("textLink (TEXT_LINK_*), Language_XHTML_*, data: URL mime types", () => {
     "No data element was found in the textLink extension",
   ]);
   const bad = { url: "http://hl7.org/fhir/StructureDefinition/textLink", extension: [{ url: "data", valueUri: "#n1" }, { url: "selector", valueString: "a.(" }] };
-  assert.deepEqual(textLinkIssues(narr([bad]), res, null, () => "bad path").map((i) => i.message), ["The textLink selector 'a.(' is invalid: bad path"]);
+  assert.deepEqual(textLinkIssues(narr([bad]), res, null).map((i) => i.message), ["The textLink selector 'a.(' is invalid: Error @1, 4: Expression terminated unexpectedly"]);
   assert.deepEqual(languageXhtmlIssues("en", `<div ${NS} lang="de" xml:lang="de">x</div>`).map((i) => i.message), [
     // (sic) Java: no Different2 when xml:lang equals lang
     "Resource has a language (en), and the XHTML has a lang (de), but they differ",
@@ -313,4 +314,60 @@ test("fixed values: a blank primitive is not compared (checkPrimitive returns fi
     got.some((m) => m.includes("Issues: [ValidationMessage[level=ERROR,type=VALUE,location=Basic.cat.coding.code,message=Value is '' but is fixed to 'A' in the profile " + P + "|1.0.0#Basic]]")),
     JSON.stringify(got),
   );
+});
+
+test("validator_contained_Id (IV:7533) + the profile tracker (IV:7157-7165): the duplicate stays in the first validation's profile", async () => {
+  // validator_cli: a Bundle profile's conformsTo() slice sees the entry first; the message is in that profile's outcomes
+  const B = "http://example.tw/fhir/StructureDefinition/bundle";
+  const P = "http://example.tw/fhir/StructureDefinition/pat";
+  const pat = (meta: Record<string, any>): Record<string, any> => ({
+    resourceType: "Patient",
+    id: "p1",
+    ...meta,
+    contained: [{ resourceType: "Basic", id: "c" }, { resourceType: "Basic", id: "c" }],
+  });
+  const dup = async (profiles: string[], patMeta: Record<string, any>): Promise<number> => {
+    const b = { resourceType: "Bundle", type: "collection", entry: [{ fullUrl: "http://ex.org/fhir/Patient/p1", resource: pat(patMeta) }] };
+    return (await new InstanceValidator(new FakeResolver()).validate(b, { profiles })).filter((i) => i.message === "Duplicate ID for contained resource: c").length;
+  };
+  assert.equal(await dup([], {}), 1); // no trial: the real pass
+  assert.equal(await dup([B], {}), 0); // only the trial against P saw it, and the entry is not validated against P
+  assert.equal(await dup([B], { meta: { profile: [P] } }), 1); // the real pass against P returns the trial's outcomes
+});
+
+test("checkFixedPattern: a blank primitive is compared only with inline children (validator_cli, fixed + Patient.gender.extension)", async () => {
+  // jar: `gender: ""` gives no fixed message; when the profile defines Patient.gender.extension, "Value is '' but is fixed to 'male'"
+  const B = sd(CORE + "Basic", "Basic", "resource", [el("Basic", 0, "*"), el("Basic.status", 0, "1", ["code"])]);
+  const P = "http://example.tw/fhir/StructureDefinition/fx-inline";
+  const profile = (inline: boolean): Record<string, any> =>
+    sd(P, "Basic", "resource", [el("Basic", 0, "*"), el("Basic.status", 0, "1", ["code"], { fixedCode: "final" }), ...(inline ? [el("Basic.status.extension", 0, "*", ["Extension"])] : [])], {
+      baseDefinition: CORE + "Basic",
+      derivation: "constraint",
+      version: "1.0.0",
+    });
+  const fixed = async (inline: boolean): Promise<string[]> => {
+    class R extends FakeResolver {
+      override async fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
+        const m: Record<string, Record<string, any>> = { [CORE + "Basic"]: B, [P]: profile(inline) };
+        return m[url.split("|")[0]] ?? super.fetchStructureDefinition(url);
+      }
+    }
+    return (await new InstanceValidator(new R()).validate({ resourceType: "Basic", status: "" }, { profiles: [P] })).map((i) => i.message).filter((m) => /but is fixed/.test(m));
+  };
+  assert.deepEqual(await fixed(false), []);
+  assert.deepEqual(await fixed(true), [`Value is '' but is fixed to 'final' in the profile ${P}|1.0.0#Basic.status`]);
+});
+
+test("FHIRPathEngine.parse: FHIRLexer's wording and Java's NullPointerException text", () => {
+  const msg = (p: string): string => {
+    try {
+      parseFhirPathJava(p);
+    } catch (e) {
+      return e instanceof FHIRLexerError ? e.message : `other: ${(e as Error).message}`;
+    }
+    return "";
+  };
+  assert.equal(msg("name.given"), "");
+  assert.equal(msg("a.("), "Error @1, 4: Expression terminated unexpectedly");
+  assert.match(msg("given[0"), /Cannot invoke "String\.equals\(Object\)" because the return value of "org\.hl7\.fhir\.services\.fhirpath\.FHIRLexer\.getCurrent\(\)" is null/);
 });

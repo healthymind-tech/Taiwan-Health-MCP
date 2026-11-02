@@ -35,7 +35,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { evaluateConstraint, evaluateExpression, fhirPathBase, fhirPathSyntaxError, invariantExpression, primitiveValueAlias, type FhirPathEnv } from "./fhirPath.js";
+import { evaluateConstraint, evaluateExpression, fhirPathBase, invariantExpression, primitiveValueAlias, type FhirPathEnv } from "./fhirPath.js";
 import { fixedPattern } from "./fhirSnapshot.js";
 import { generateSnapshotAsync } from "./fhirSnapshotGenerator.js";
 import { validateStructureDefinition } from "./fhirSdValidator.js";
@@ -49,7 +49,8 @@ import { isAbsoluteUrl } from "./fhirSpecialSystems.js";
 import { validateCodeSystemResource } from "./fhirCodeSystemResource.js";
 import { validateConceptMapResource } from "./fhirConceptMapResource.js";
 import { validateValueSetResource } from "./fhirValueSetResource.js";
-import { languageXhtmlIssues, narrativeControlIssues, parseXhtml, textLinkIssues, validateXhtml, xhtmlHrefIssues } from "./fhirXhtml.js";
+import { checkFhirPathJava, PathEngineError } from "./fhirPathJavaCheck.js";
+import { languageXhtmlIssues, narrativeControlIssues, parseXhtml, textLinkIssues, validateXhtml, xhtmlHrefIssues, type TextLinkSelector } from "./fhirXhtml.js";
 import { copyLiterals, duplicateKeys, numberText } from "./fhirJsonLiterals.js";
 import { dropUnprocessed, JsonSyntaxError, jsonSyntaxIssues, parseFhirJsonText, toPlain, type JObject } from "./fhirJsonParser.js";
 import { withValidationSnapshot } from "./fhirValidationSnapshot.js";
@@ -1589,6 +1590,7 @@ function tooDeep(path: string): Issue {
 /** HL7 core / THO ValueSets: tx.fhir.org knows them server-side, so they are a ValueSet as system in any context. */
 /** Marker on a pending IG-ValueSet-as-system issue (removed by settleVsSystems before validate() returns). */
 const VS_SYSTEM = "__vsSystem";
+/** The contained resource a RESOURCE_DUPLICATE_CONTAINED_ID issue is about (settled at the end of validate()). */
 
 function isHl7ValueSetUrl(url: string): boolean {
   return url.startsWith("http://hl7.org/fhir/ValueSet/") || url.startsWith("http://terminology.hl7.org/ValueSet/");
@@ -1636,8 +1638,54 @@ export class InstanceValidator {
   /** Objects with content in the source that lost all of it in the parser (dropBadPrimitivesIn). */
   private parserEmptied = new WeakSet<object>();
   private parserEmptiedAny = false;
+  /** > 0 while a slice discriminator's conformsTo validates a resource (its messages are discarded). */
+  /** validator_contained_Id (IV:7533): the contained resources whose id has been checked in this run */
+  private containedIdChecked = new WeakSet<object>();
   private strippedCache = new WeakMap<object, any>();
   private emptiedCache = new WeakMap<object, Promise<boolean>>();
+
+  /** The StructureDefinitions fpe.check reads. */
+  private readonly pathCheckDeps = {
+    fetch: (url: string): Promise<Record<string, any> | null> => this.resolver.fetchStructureDefinition(url),
+    primitiveTypes: new Set(Object.keys(PRIMITIVES)),
+  };
+
+  /** element.fhirType() of `target`, an object inside `resource` (or a resource): by the definitions, null when not found. */
+  private async typeOfObjectIn(resource: Record<string, any>, target: unknown): Promise<string | null> {
+    if (!isObject(target)) return null;
+    if (typeof target.resourceType === "string") return target.resourceType;
+    const walk = async (node: any, sdx: SdIndex, el: Record<string, any>, depth: number): Promise<string | null> => {
+      if (depth > 40 || !isObject(node)) return null;
+      const groups = sdx.children(el);
+      if (!groups) return null;
+      for (const [k, v] of Object.entries(node)) {
+        if (k.startsWith("_") || v === null || typeof v !== "object") continue;
+        let def: Record<string, any> | null = groups.get(k)?.base ?? null;
+        let code = def ? typeCodeOf((def.type ?? [])[0] ?? {}) : "";
+        if (!def) {
+          for (const g of groups.values()) {
+            if (!g.name.endsWith("[x]") || !k.startsWith(g.name.slice(0, -3))) continue;
+            def = g.base;
+            code = k.charAt(g.name.length - 3).toLowerCase() + k.slice(g.name.length - 2);
+            code = (def?.type ?? []).map(typeCodeOf).find((c: string) => c.toLowerCase() === code.toLowerCase()) ?? "";
+          }
+        }
+        if (!def || !code) continue;
+        for (const x of Array.isArray(v) ? v : [v]) {
+          if (!isObject(x)) continue;
+          if (x === target) return code;
+          if (typeof x.resourceType === "string") continue;
+          const inline = sdx.hasChildren(def);
+          const tsdx = inline ? sdx : await this.sdx(CORE + code);
+          const r = tsdx ? await walk(x, tsdx, inline ? def : tsdx.root, depth + 1) : null;
+          if (r !== null) return r;
+        }
+      }
+      return null;
+    };
+    const root = await this.sdx(CORE + String(resource.resourceType));
+    return root ? walk(resource, root, root.root, 0) : null;
+  }
 
   /**
    * The FHIRPath view of a value: what has no content in the element model is removed — unparsed embedded resources,
@@ -1771,6 +1819,7 @@ export class InstanceValidator {
     this.xmlSource = opts.format === "xml";
     this.parserEmptied = new WeakSet();
     this.parserEmptiedAny = false;
+    this.containedIdChecked = new WeakSet();
     const resource = await this.dropBadPrimitiveValues(resource0, rootType, issues, 0);
     const bundle = resource.resourceType === "Bundle" ? this.bundleCtx(resource) : null;
     // clearInternalState l. 1117-1118: a reference back to the root is that element, not a fresh fetch
@@ -3387,14 +3436,19 @@ export class InstanceValidator {
       for (const t of typeForResource ? [typeForResource] : elTypes) for (const p of t.profile || []) if (typeof p === "string" && p) profiles.push(p);
       const isContained = /\.contained$/.test(String(el.path || ""));
       if (isContained) {
-        // InstanceValidator.validateContains l. 7533-7545: RESOURCE_DUPLICATE_CONTAINED_ID, in the container's id scope
-        // (once per contained resource: validator_contained_Id); validateResource l. 9017: a contained resource's id
-        // is REQUIRED (RESOURCE_RES_ID_MISSING)
+        // InstanceValidator.validateContains l. 7533-7545: RESOURCE_DUPLICATE_CONTAINED_ID, in the container's id scope,
+        // once per contained resource in the whole run (validator_contained_Id): only the first validation of the
+        // container sees it, and the message stays in that profile's outcomes (startInner's tracker, IV:7157-7165 =
+        // conformance()). It is reported when the resource is validated against that same profile for real, and stays
+        // in a slice / reference trial against any other. validateResource l. 9017: a contained resource's id is
+        // REQUIRED (RESOURCE_RES_ID_MISSING)
         const cid = v.id;
-        if (typeof cid === "string" && rctx.ids) {
-          const seen = rctx.ids.get("!" + cid);
-          if (seen !== undefined && seen !== v) issues.push({ severity: "error", path: item.path, code: "duplicate", message: `Duplicate ID for contained resource: ${cid}` });
-          rctx.ids.set("!" + cid, v);
+        if (rctx.ids && !this.containedIdChecked.has(v)) {
+          this.containedIdChecked.add(v);
+          if (typeof cid === "string") {
+            if (rctx.ids.has("!" + cid)) issues.push({ severity: "error", path: item.path, code: "duplicate", message: `Duplicate ID for contained resource: ${cid}` });
+            rctx.ids.set("!" + cid, v);
+          }
         }
         if (v.id === undefined && v._id === undefined) issues.push({ severity: "error", path: item.path, code: "invalid", message: "Resource requires an id, but none is present" });
       }
@@ -3668,7 +3722,18 @@ export class InstanceValidator {
       for (const x of narrativeControlIssues(v, el, lang, sdx.url)) issues.push({ severity: x.severity, path: item.path, code: "business-rule", message: x.message });
       // textLink extensions (TEXT_LINK_*): the Bundle the resource sits in (getElementBundle), when it is an entry
       const inBundle = rctx.root !== rctx.resource && rctx.root?.resourceType === "Bundle" && Array.isArray(rctx.root.entry) && !rctx.container;
-      for (const x of textLinkIssues(v, rctx.resource, inBundle ? rctx.root.entry : null, fhirPathSyntaxError)) issues.push({ severity: x.severity, path: item.path, code: "structure", message: x.message });
+      const selectors: TextLinkSelector[] = [];
+      for (const x of textLinkIssues(v, rctx.resource, inBundle ? rctx.root.entry : null, selectors)) issues.push({ severity: x.severity, path: item.path, code: "structure", message: x.message });
+      for (const s of selectors) {
+        const type = await this.typeOfObjectIn(rctx.resource, s.target);
+        if (type === null) continue;
+        try {
+          await checkFhirPathJava(s.expr, String(rctx.resource.resourceType), type, this.pathCheckDeps);
+        } catch (e) {
+          if (!(e instanceof PathEngineError)) throw e;
+          issues.push({ severity: "error", path: item.path, code: "invalid", message: `The textLink selector '${s.selector}' is invalid: ${e.message}` });
+        }
+      }
     }
     if (typeCode === "Reference") await this.checkReference(el, v, item, rctx, issues, depth);
     await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
@@ -5109,7 +5174,8 @@ export class InstanceValidator {
         for (const c of cur) {
           const ref = isObject(c) ? c.reference : typeof c === "string" ? c : null;
           if (typeof ref === "string") {
-            const r = this.resolveRef(ref, rctx);
+            // the slice discriminator is a FHIRPath resolve(): host resolveReference, not the fullUrl rules (IV:385-409)
+            const r = this.resolveRefForFhirPath(ref, rctx);
             if (r) next.push(r);
           }
         }
@@ -5502,12 +5568,14 @@ export class InstanceValidator {
    */
   /**
    * The fixed / pattern check of one element. A primitive: checkPrimitive l. 3658 — after the blank-value return of
-   * l. 3236, so a blank value is not compared — with `#<its id>`. A complex element: checkChildByDefinition l. 8021,
+   * l. 3236, so a blank value is not compared — with `#<its id>`; with inline children validateElement l. 7725 runs
+   * too and does compare it (validator_cli: `Value is ' ' but is fixed to …`, only when the profile has
+   * Patient.gender.extension). A complex element: checkChildByDefinition l. 8021,
    * with `#<the parent definition's id>` (`definition` there). Primitives inside a complex fixed value are compared
    * by the complex check, blank or not (checkCoding → checkFixedValue).
    */
   private checkFixedPattern(el: Record<string, any>, v: any, item: Item, sdx: SdIndex, issues: Issue[], primitive = false): void {
-    if (primitive && typeof v === "string" && isJavaBlank(v)) return;
+    if (primitive && typeof v === "string" && isJavaBlank(v) && !sdx.hasChildren(el)) return;
     const [fixed, pattern] = fixedPattern(el);
     if (fixed && isPrimitive(String(fixed.field.replace(/^fixed/u, "")).replace(/^./u, (c: string) => c.toLowerCase())) && isObject(item.ext) && Array.isArray(item.ext.extension) && item.ext.extension.length) {
       // checkFixedValue l. 3120-3122: EXTENSION_EXT_FIXED_BANNED also for a primitive's extensions

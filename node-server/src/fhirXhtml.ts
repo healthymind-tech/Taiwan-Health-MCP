@@ -11,6 +11,7 @@
  *  - htmlChecks1() / htmlChecks2(): FHIRPathEngine.funcHtmlChecks1 / 2 (checkHtmlNames / checkForContent) over the
  *    parsed tree — the R4 txt-1 / txt-2 invariants.
  */
+import { FHIRLexerError, parseFhirPathJava, type ExprNode } from "./fhirPathJavaParser.js";
 import { xhtmlEntity } from "./fhirXhtmlEntities.js";
 
 export const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -897,14 +898,21 @@ function divHasId(n: XNode, id: string): boolean {
  * InstanceValidator.checkNarrative, textLink part (TEXT_LINK_*): `narrative` has textLink extensions; `resource` is
  * the resource holding it; `bundleEntries` the entries of the Bundle it sits in (getElementBundle), or null.
  * (sic) the "no div / no id / no data" rules test Narrative.display, which does not exist, so they always fire.
- * TEXT_LINK_SELECTOR_INVALID: `selectorError` gives the syntax error of a selector; the wording after "is invalid:"
- * is the TS parser's, and Java's type check (fpe.check against the target) is not ported.
+ * TEXT_LINK_SELECTOR_INVALID: fpe.parse here; each selector that parses is handed back in `selectors` with the target
+ * the data reference found, for the caller's fpe.check against that target's type.
  */
+export interface TextLinkSelector {
+  selector: string;
+  expr: ExprNode;
+  /** The resource or element the data reference found, null when there is none. */
+  target: unknown;
+}
+
 export function textLinkIssues(
   narrative: Record<string, any>,
   resource: Record<string, any>,
   bundleEntries: Array<Record<string, any>> | null,
-  selectorError: (expression: string) => string | null = () => null,
+  selectors: TextLinkSelector[] = [],
 ): XhtmlIssue[] {
   const exts = (Array.isArray(narrative.extension) ? narrative.extension : []).filter((e: any) => e?.url === EXT_TEXT_LINK);
   if (!exts.length) return [];
@@ -924,12 +932,11 @@ export function textLinkIssues(
     return null;
   };
   const entryResources = (bundleEntries ?? []).filter((e) => e && typeof e.resource === "object" && e.resource);
-  const fragmentMatches = (target: Record<string, any>, fragment: string, withBundle: boolean): number => {
+  const fragmentMatches = (from: Record<string, any>, fragment: string, withBundle: boolean): unknown[] => {
     const found: unknown[] = [];
-    elementIdMatches(target, fragment, found);
-    let n = found.length;
-    if (withBundle) for (const e of entryResources) if (e.resource.id === fragment) n++;
-    return n;
+    elementIdMatches(from, fragment, found);
+    if (withBundle) for (const e of entryResources) if (e.resource.id === fragment) found.push(e.resource);
+    return found;
   };
   for (const ex of exts) {
     for (const h of sub(ex, "htmlid")) {
@@ -939,11 +946,16 @@ export function textLinkIssues(
     const data = str(sub(ex, "data")[0]);
     const notFound = (): void => err("TEXT_LINK_DATA_NOT_FOUND", `The target of the textLink data reference '${data}' was not found in the resource`);
     const multiple = (): void => err("TEXT_LINK_DATA_MULTIPLE_MATCHES", `Multiple matching targets for the textLink data reference '${data}' were found in the resource`);
+    // the element `type` is taken from (matches.get(0).fhirType()), when one was found
+    let target: unknown = null;
     if (data === null) err("TEXT_LINK_NO_DATA", "No data element was found in the textLink extension");
     else if (data.startsWith("#")) {
-      const n = fragmentMatches(resource, data.slice(1), bundleEntries !== null);
-      if (n === 0) notFound();
-      else if (n > 1) multiple();
+      const found = fragmentMatches(resource, data.slice(1), bundleEntries !== null);
+      if (found.length === 0) notFound();
+      else {
+        if (found.length > 1) multiple();
+        target = found[0];
+      }
     } else {
       const hash = data.indexOf("#");
       const url = hash >= 0 ? data.slice(0, hash) : data;
@@ -952,17 +964,25 @@ export function textLinkIssues(
       if (!matches.length) notFound();
       else {
         if (matches.length > 1) multiple();
+        target = matches[0];
         if (fragment !== null) {
-          const n = fragmentMatches(matches[0], fragment, false);
-          if (n === 0) notFound();
-          else if (n > 1) multiple();
+          const found = fragmentMatches(matches[0], fragment, false);
+          if (found.length === 0) notFound();
+          else {
+            if (found.length > 1) multiple();
+            target = found[0];
+          }
         }
       }
     }
     const selector = str(sub(ex, "selector")[0]);
     if (selector !== null) {
-      const e = selectorError(selector);
-      if (e !== null) err("TEXT_LINK_SELECTOR_INVALID", `The textLink selector '${selector}' is invalid: ${e}`);
+      try {
+        selectors.push({ selector, expr: parseFhirPathJava(selector), target });
+      } catch (e) {
+        if (!(e instanceof FHIRLexerError)) throw e;
+        err("TEXT_LINK_SELECTOR_INVALID", `The textLink selector '${selector}' is invalid: ${e.message}`);
+      }
     }
   }
   return out;

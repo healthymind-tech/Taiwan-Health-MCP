@@ -1681,19 +1681,6 @@ function checkFunctionNames(node: any): void {
   for (const c of node.children || []) checkFunctionNames(c);
 }
 
-/**
- * FHIRPathEngine.parse: the syntax / function-name error of an expression, null when it parses. The text is this
- * parser's, not Java's (fhirpath.js has its own grammar messages).
- */
-export function fhirPathSyntaxError(expression: string): string | null {
-  try {
-    checkFunctionNames(fhirpath.parse(expression));
-    return null;
-  } catch (e) {
-    return e instanceof Error ? e.message : String(e);
-  }
-}
-
 function compile(base: string, expression: string): (data: any, env: any) => any[] {
   const key = base + "\u0000" + expression;
   let fn = compiled.get(key);
