@@ -41,6 +41,7 @@ import {
   rxnormStrict,
   loincNonTermCheckDigitValid,
   loincUnknownMessage,
+  SNOMED_TX_VERSION,
   snomedStrict,
 } from "./fhirExternalTerminology.js";
 import { probeQueryFailures, query } from "./db.js";
@@ -716,7 +717,7 @@ export class DbValidatorResolver implements ValidatorResolver {
     }
     if (kind === "snomed") {
       if (!snomedCheckDigitValid(code)) {
-        return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}' (invalid SCTID format / check digit)` };
+        return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}' version '${SNOMED_TX_VERSION}' (International Edition)` };
       }
       if (!(await terminology.externalSystemHeld(system))) return { ...noLocalDisplay(system, display), undecided: true };
       const strict = snomedStrict(await terminology.snomedEdition(), version);
@@ -727,7 +728,7 @@ export class DbValidatorResolver implements ValidatorResolver {
     }
     if (kind === "loinc") {
       if (!loincCheckDigitValid(code)) {
-        return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}' (invalid LOINC format / check digit)` };
+        return { status: "invalid-code", severity: "error", message: loincUnknownMessage(code) };
       }
       if (!(await terminology.externalSystemHeld(system))) return { ...noLocalDisplay(system, display), undecided: true };
       const held = await terminology.externalDisplays(system, code);
@@ -740,6 +741,14 @@ export class DbValidatorResolver implements ValidatorResolver {
       }
       if (display !== null) {
         const bad = judgeDisplay(system, code, display, held.displays, "error");
+        // tx.fhir.org names LOINC displays as designations: the display, the long common name again, then the others,
+        // each '(en-US)', for the request's language (validator_cli corpus: "one of 3 choices: 'A' (en-US), 'A' (en-US)
+        // or 'B' (en-US) (for the language(s) 'en')")
+        if (bad && bad.status === "invalid-display" && held.displays.length) {
+          const names = [held.displays[0], ...new Set(held.displays)].map((d) => `'${d}' (en-US)`);
+          const list = `one of ${names.length} choices: ${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+          return { ...bad, message: `${bad.message.split(". Valid display is ")[0]}. Valid display is ${list} (for the language(s) '${(langs && langs.length ? langs : ["en"]).join(",")}')` };
+        }
         if (bad) return bad;
       }
       return { status: "ok" };

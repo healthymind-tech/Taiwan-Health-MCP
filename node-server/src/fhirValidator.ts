@@ -4966,6 +4966,17 @@ export class InstanceValidator {
    * includes by their concept list, whole-system includes by the CodeSystem. null when undecidable here (imports,
    * filters, an unknown CodeSystem: the HL7 validator reports other messages for those, which are not reproduced).
    */
+  /** Every include of the value set is a CodeSystem the validator checks locally (BaseWorkerContext: no server call). */
+  private async valueSetIsLocal(vs: Record<string, any>): Promise<boolean> {
+    const includes: any[] = isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
+    if (!includes.length || !this.resolver.codeSystemLocal) return true;
+    for (const inc of includes) {
+      if (!isObject(inc) || typeof inc.system !== "string") return false;
+      if (!(await this.resolver.codeSystemLocal(inc.system).catch(() => true))) return false;
+    }
+    return true;
+  }
+
   private async inferCodeSystems(vs: Record<string, any>, code: string): Promise<Set<string> | null> {
     const includes = isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
     if (!includes.length) return null;
@@ -5052,6 +5063,13 @@ export class InstanceValidator {
     }
     // checkCodedElement (IV:2405, tag 7.0.1): a Coding is checked against its binding only with both system and code
     if ((typeCode === "Coding" || typeCode === "Quantity") && codings[0][0] === null) return;
+    // A CodeableConcept whose codings have no system: the local ValueSetValidator answers not-in-value-set (a value set
+    // of held CodeSystems), the terminology server only the warning Coding_has_no_system__cannot_validate (a value set
+    // over LOINC / SNOMED CT …) — official corpus: PAS Claim.priority NoValid_1_CC, IPS Observation.code no error
+    if (typeCode === "CodeableConcept" && codings.every(([s]) => s === null) && !(await this.valueSetIsLocal(vs))) {
+      issues.push({ severity: "warning", path: `${item.path}.coding[0]`, code: "invalid", message: "Coding has no system. A code with no system has no defined meaning, and it cannot be validated. A system should be provided" });
+      return;
+    }
     if ((strength === "required" || strength === "extensible") && ["code", "string", "uri", "url", "canonical"].includes(typeCode)) {
       // REVIEW_port_2 G20 — ValueSetValidator.systemForCodeInValueSet (standalone, tag 7.0.1:1603): a bare code that
       // more than one include defines cannot be given a system (UNABLE_TO_RESOLVE_SYSTEM__VALUE_SET_HAS_MULTIPLE_MATCHES)

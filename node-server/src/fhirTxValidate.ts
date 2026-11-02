@@ -190,7 +190,8 @@ export async function txValidateCode(
   for (const ext of (vs?.compose?.extension ?? []) as any[]) {
     if (ext?.url !== "http://hl7.org/fhir/StructureDefinition/valueset-expansion-parameter" && ext?.url !== "http://hl7.org/fhir/tools/StructureDefinition/valueset-expansion-parameter") continue;
     const sub: any[] = Array.isArray(ext.extension) ? ext.extension : [];
-    if (sub.find((e) => e?.url === "name")?.valueString !== "displayLanguage") continue;
+    const nameExt = sub.find((e) => e?.url === "name");
+    if ((nameExt?.valueString ?? nameExt?.valueCode) !== "displayLanguage") continue;
     const val = sub.find((e) => e?.url === "value");
     const parsed = parseLangs(val ? (Object.entries(val).find(([k]) => k.startsWith("value"))?.[1] as unknown) : null);
     if (parsed.length) langs = parsed;
