@@ -98,6 +98,11 @@ case "$cmd" in
         *) cp "$1" "$job/"; args+=("/work/in/$(basename "$job")/$(basename "$1")"); shift ;;
       esac
     done
+    # a terminology cache of this job: the default one (java.io.tmpdir) spans every job, so one job's tx answers leak into the next
+    case " ${args[*]} " in
+      *" -txCache "*) ;;
+      *) args+=(-txCache "/work/in/$(basename "$job")/txcache") ;;
+    esac
     jvm -jar /oracle/validator_cli.jar "${args[@]}" -version 4.0.1 -tx "${ORACLE_TX:-https://tx.fhir.org}" \
       -output "/work/in/$(basename "$job")/outcome.json" >&2 || true
     rc=0
