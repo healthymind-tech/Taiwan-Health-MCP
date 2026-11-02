@@ -36,6 +36,8 @@ export interface CorpusItem {
   official: SimpleIssue[];
   /** Free-form source info (file names), for reports. */
   source: string;
+  /** evaluator layout: the file text — what a client sends; the db engine re-reads it the way mcp.ts re-reads a request. */
+  text?: string;
   /** evaluator layout: the manifest row (ig, kind, family, mutation, mutation_path, raw, …). */
   meta?: Res;
   /** evaluator layout: validator_cli crashed on this item (no official issues) — excluded from the metrics. */
@@ -174,6 +176,7 @@ function* evaluatorDir(dir: string): Generator<CorpusItem> {
       source: `${m.ig ?? ""}/${id}`,
       meta: m,
       officialCrash: !!off.crash || m.status === "official_crash",
+      text,
       ...(raw ? { raw: { ...raw, text } } : {}),
     };
   }

@@ -56,7 +56,7 @@ const k = (e: ErrKey): string => `${e.path} | ${e.cls}`;
 /** normalised text for id-less (parse-layer) messages. */
 const textKey = (e: ErrKey): string => `${e.path} | ${lenientMessage(e.msg)}`;
 /** Official <-> ours one-to-one: an official error with a Java id by (path, class), one without by (path, text). */
-function matchErrors(off: ErrKey[], ours: ErrKey[]): { miss: ErrKey[]; extra: ErrKey[] } {
+export function matchErrors(off: ErrKey[], ours: ErrKey[]): { miss: ErrKey[]; extra: ErrKey[] } {
   const used = new Array<boolean>(ours.length).fill(false);
   const miss: ErrKey[] = [];
   // id-less first: they need the stricter text match, so they must not lose their counterpart to a class match
@@ -70,21 +70,35 @@ function matchErrors(off: ErrKey[], ours: ErrKey[]): { miss: ErrKey[]; extra: Er
   return { miss, extra: ours.filter((_, x) => !used[x]) };
 }
 
-/** The TS area a bucket most likely belongs to (for dispatch; a heuristic over the class / Java id). */
+/**
+ * The owner of a failure key (for dispatch): a Java class / rule family, from the class, the Java id and the message.
+ * Order matters: the specific families first; `other` is what none of them names.
+ */
 export function area(cls: string, msgid: string | null | undefined, msg: string): string {
   const id = String(msgid ?? "");
   if (/^tool error /u.test(msg)) return "harness/tool-boundary";
-  if (/^slice-/u.test(cls) || /SLICE|_NotSlice/u.test(id) || /does not match any known slice|matching slice/u.test(msg)) return "slicing";
-  if (/^constraint:/u.test(cls) || /^Constraint failed/u.test(msg)) return "fhirpath";
-  if (/^Bundle_|BUNDLE/u.test(id) || /^(?:reachable|first-composition|cant-find)$/u.test(cls)) return "bundle";
-  if (/^Terminology_|TX_|_DISPLAY_|UCUM/u.test(id) || /^(?:valueset|display|unknown-code|system-uri)$/u.test(cls) || /value set|code system|CodeSystem|Wrong Display/u.test(msg)) return "terminology";
-  if (/^Reference_REF_/u.test(id) || /^(?:target-type|profile-match)$/u.test(cls) || /Unable to find a profile match|Profile reference/u.test(msg)) return "snapshot";
+  // elementmodel.JsonParser: the parse layer has no message ids
   if (
-    /^(?:type|array|unrecognized|min-card|max-card|fixed|not-allowed)$/u.test(cls) ||
-    /CONTAINED|RES_ID|DUPLICATE|Validation_VAL_Profile_M|TYPE_SPECIFIC|_DT_|XHTML|JSON/u.test(id) ||
-    /JSON|Array entries|Object must have some content|resource ?type|resourceType|cannot be parsed|does not appear to be a FHIR resource|contained resource|Duplicate ID|requires an id|XHTML|primitive|Extension\.url|must be an absolute URL/iu.test(msg)
+    /^(?:array|unrecognized)$/u.test(cls) ||
+    /^(?:The property \S+ (?:must be (?:an?|a JSON) |cannot be null)|This property must be (?:a simple value|an? object)|Array entries cannot be null|Array cannot be empty|Object must have some content|The JSON (?:property|array|element)|Error parsing JSON|The property '[^']*' is invalid|Extensions are not allowed on Resource\.id|Unrecognized property)/u.test(msg) ||
+    /^(?:ILLEGAL_PROPERTY|FHIR_RESOURCE_ID_CANT_BE_EXTENDED)$/u.test(id)
   )
-    return "structure";
+    return "json-parser";
+  if (/XHTML|Xhtml/u.test(id) || /^(?:Hyperlink |Wrong (?:name|namespace) on the XHTML|Error parsing XHTML|Illegal element|Illegal attribute)/u.test(msg) || /^constraint:txt-/u.test(cls)) return "xhtml";
+  if (/^Extension_|_EXT_|EXTP_/u.test(id) || /^(?:The Extension |The extension |Sub-extension url |Extension\.url )/u.test(msg) || /^constraint:ext-/u.test(cls)) return "extensions";
+  if (/^slice-/u.test(cls) || /SLICE|_NotSlice|SLICING/u.test(id) || /does not match any known slice|matching slice|^Slicing cannot be evaluated/u.test(msg)) return "slicing";
+  if (/^constraint:/u.test(cls) || /^Constraint failed/u.test(msg)) return "fhirpath";
+  if (
+    /^Bundle_|BUNDLE/u.test(id) ||
+    /^(?:reachable|first-composition|cant-find)$/u.test(cls) ||
+    /^(?:Bundle entry missing fullUrl|Relative Reference appears inside Bundle|Except for transactions and batches|Relative URLs must be of the format|Found \d+ matches for|Multiple matches in bundle)/u.test(msg)
+  )
+    return "bundle";
+  if (/^Validation_VAL_Profile_WrongType$/u.test(id) || /^(?:Specified profile type was|Unknown resource type|Resource has no resourceType|This content cannot be parsed|Unable to find resourceType|Contained resource does not appear)/u.test(msg)) return "resource-root";
+  if (/^Terminology_|TX_|_DISPLAY_|UCUM|Unknown_Code|Display_Name/u.test(id) || /^(?:valueset|display|unknown-code|system-uri)$/u.test(cls) || /value set|code system|CodeSystem|Wrong Display|^Coding has no code for system/u.test(msg)) return "terminology";
+  if (/^Reference_REF_/u.test(id) || /^(?:target-type|profile-match)$/u.test(cls) || /Unable to find a profile match|Profile reference/u.test(msg)) return "references-profiles";
+  if (/_URL_|_DT_URL|URI_|OID_|UUID_|CANONICAL/u.test(id) || /^(?:Example URLs are not allowed|Coding\.system must be|Canonical URLs|URI values|No definition could be found for URL)/u.test(msg)) return "uri";
+  if (/^(?:type|min-card|max-card|fixed|not-allowed)$/u.test(cls) || /CONTAINED|RES_ID|DUPLICATE|Validation_VAL_Profile_|TYPE_SPECIFIC|Type_Specific|_DT_/u.test(id) || /resource ?type|contained resource|Duplicate ID|requires an id|primitive|must be an absolute URL/iu.test(msg)) return "structure";
   return "other";
 }
 
@@ -111,6 +125,8 @@ interface IgStats {
   ocFailValid: number;
   ocFailThrow: number;
   ocNotReceivable: number;
+  /** items no tool call can carry (validateText measured the validator, flag tool-boundary) */
+  toolBoundary: number;
   /** meta-profile-scalar items in the gate (flagged: batch vs standalone) and their verdict differences */
   scalar: number;
   scalarVerdictDiff: number;
@@ -140,7 +156,7 @@ const buckets = new Map<string, Bucket>();
 const st = (ig: string): IgStats => {
   let s = stats.get(ig);
   if (!s) {
-    s = { ig, items: 0, compared: 0, officialCrash: 0, rawUnparseable: 0, rawUnparseableOfficialInvalid: 0, crash: 0, offInvalidOursValid: 0, offInvalidOursValidCheckedFully: 0, offValidOursInvalid: 0, notCheckedFully: 0, network: 0, networkVerdictDiff: 0, ocTotal: 0, ocPass: 0, ocFailValid: 0, ocFailThrow: 0, ocNotReceivable: 0, scalar: 0, scalarVerdictDiff: 0, officialKeys: 0, missing: 0, missingItems: 0, extra: 0, extraItems: 0, strict: 0, lenient: 0, classAgree: 0 };
+    s = { ig, items: 0, compared: 0, officialCrash: 0, rawUnparseable: 0, rawUnparseableOfficialInvalid: 0, crash: 0, offInvalidOursValid: 0, offInvalidOursValidCheckedFully: 0, offValidOursInvalid: 0, notCheckedFully: 0, network: 0, networkVerdictDiff: 0, ocTotal: 0, ocPass: 0, ocFailValid: 0, ocFailThrow: 0, ocNotReceivable: 0, toolBoundary: 0, scalar: 0, scalarVerdictDiff: 0, officialKeys: 0, missing: 0, missingItems: 0, extra: 0, extraItems: 0, strict: 0, lenient: 0, classAgree: 0 };
     stats.set(ig, s);
   }
   return s;
@@ -189,6 +205,7 @@ for (const it of items) {
     s.crash++;
     continue;
   }
+  if ((it.flags ?? []).includes("tool-boundary")) s.toolBoundary++;
   if (isNetwork(it)) {
     s.network++;
     if (!off.length !== !ours.length) {
@@ -227,12 +244,12 @@ lines.push("# Differential corpus — TS validator vs validator_cli 7.0.1 (evalu
 if (cmd) lines.push("Re-run:", "", "```bash", cmd, "```", "");
 lines.push(`Generated ${new Date().toISOString()} from ${files.length} result file(s), ${items.length} items.`, "");
 lines.push("## Per-IG acceptance metrics", "");
-lines.push("| IG | items | gate items | verdict diff (miss + extra) | verdict miss: official invalid, ours valid | true miss (… and checked_fully) | verdict extra: official valid, ours invalid | official error keys | missing keys (items) | extra keys (items) | extra rate | official-crash bucket: PASS / total (FAIL valid, FAIL throw, not receivable) | network-dependent: items (verdict diff) | meta-profile-scalar flagged (verdict diff) | raw unparseable (official invalid) | harness crash | ours checked_fully=false | strict agree | lenient agree | class agree |");
-lines.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+lines.push("| IG | items | gate items | verdict diff (miss + extra) | verdict miss: official invalid, ours valid | true miss (… and checked_fully) | verdict extra: official valid, ours invalid | official error keys | missing keys (items) | extra keys (items) | extra rate | official-crash bucket: PASS / total (FAIL valid, FAIL throw, not receivable) | network-dependent: items (verdict diff) | meta-profile-scalar flagged (verdict diff) | raw unparseable (official invalid) | harness crash | tool-boundary | ours checked_fully=false | strict agree | lenient agree | class agree |");
+lines.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
 const all = [...stats.values()].sort((a, b) => a.ig.localeCompare(b.ig));
 const sum = (f: (s: IgStats) => number): number => all.reduce((a, s) => a + f(s), 0);
 const row = (s: IgStats): string =>
-  `| ${s.ig} | ${s.items} | ${s.compared} | ${s.offInvalidOursValid + s.offValidOursInvalid} | ${s.offInvalidOursValid} | ${s.offInvalidOursValidCheckedFully} | ${s.offValidOursInvalid} | ${s.officialKeys} | ${s.missing} (${s.missingItems}) | ${s.extra} (${s.extraItems}) | ${pct(s.extra, s.officialKeys)} | ${s.ocPass} / ${s.ocTotal} (${s.ocFailValid}, ${s.ocFailThrow}, ${s.ocNotReceivable}) | ${s.network} (${s.networkVerdictDiff}) | ${s.scalar} (${s.scalarVerdictDiff}) | ${s.rawUnparseable} (${s.rawUnparseableOfficialInvalid}) | ${s.crash} | ${s.notCheckedFully} | ${s.strict}/${s.compared} (${pct(s.strict, s.compared)}) | ${s.lenient}/${s.compared} (${pct(s.lenient, s.compared)}) | ${s.classAgree}/${s.compared} (${pct(s.classAgree, s.compared)}) |`;
+  `| ${s.ig} | ${s.items} | ${s.compared} | ${s.offInvalidOursValid + s.offValidOursInvalid} | ${s.offInvalidOursValid} | ${s.offInvalidOursValidCheckedFully} | ${s.offValidOursInvalid} | ${s.officialKeys} | ${s.missing} (${s.missingItems}) | ${s.extra} (${s.extraItems}) | ${pct(s.extra, s.officialKeys)} | ${s.ocPass} / ${s.ocTotal} (${s.ocFailValid}, ${s.ocFailThrow}, ${s.ocNotReceivable}) | ${s.network} (${s.networkVerdictDiff}) | ${s.scalar} (${s.scalarVerdictDiff}) | ${s.rawUnparseable} (${s.rawUnparseableOfficialInvalid}) | ${s.crash} | ${s.toolBoundary} | ${s.notCheckedFully} | ${s.strict}/${s.compared} (${pct(s.strict, s.compared)}) | ${s.lenient}/${s.compared} (${pct(s.lenient, s.compared)}) | ${s.classAgree}/${s.compared} (${pct(s.classAgree, s.compared)}) |`;
 for (const s of all) lines.push(row(s));
 if (all.length > 1) {
   const t = Object.fromEntries(Object.keys(all[0]).map((key) => [key, key === "ig" ? "**all**" : sum((s) => (s as any)[key])])) as unknown as IgStats;

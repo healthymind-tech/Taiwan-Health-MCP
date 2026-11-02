@@ -11,7 +11,11 @@
  *    package = the item's IG), over the installed packages in Postgres (DATABASE_URL, read-only queries). The official
  *    validator bridge is switched off (OFFICIAL_VALIDATOR_URLS cleared) so the built-in engine is the judge. A Bundle
  *    root goes to fhir_validate_bundle, any other root to fhir_validate_resource; a tool-level rejection
- *    (INVALID_ARGUMENT …) counts as one error issue at the root ("tool-rejected" flag).
+ *    (INVALID_ARGUMENT …) counts as one error issue at the root ("tool-rejected" flag). The item's file text is read
+ *    as mcp.ts reads the request text (JSON.parse + parseLossless + registerLosslessLiterals: number spellings,
+ *    repeated names). With --raw-text, what no tool call can carry (text only the Java JSON reader accepts, a root
+ *    without a resourceType) goes to InstanceValidator.validateText over the same DbValidatorResolver instead of
+ *    being rejected ("tool-boundary" flag): the tool's rejection is the service's answer, this measures the validator.
  *  - `file` (default for the other layouts): InstanceValidator over FileValidatorResolver (base layer R4 core + the
  *    package closure from the local package cache, no DB, no tx server).
  *
@@ -25,7 +29,7 @@
  *       [--format evaluator|repro|dirs|jsonl] [--engine db|file] [--only id[,id]] [--json out.json] [--start n] [--count n] [--shard k/n]
  *       [--repro <dir>] [--repro-plan plan.json] [--max-steps n (minimizer budget, default 250)]
  *       [--timeout-ms n (per item, default 180000)] [--exclude-from done.json[,…]] [--crash-only] [--limit n] [-v] [--package id#ver[,id#ver]] [--profile url]
- *       [--raw-text]   (file engine: raw items validated from their text with InstanceValidator.validateText)
+ *       [--raw-text]   (file engine: raw items validated from their text with InstanceValidator.validateText; db engine: see above)
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -37,6 +41,8 @@ import { compareIssues, isError, lenientMessage, normMessage, normPath, type Com
 import { FileValidatorResolver, ResourceStore } from "../lib/fileResolver.js";
 import { minimize, type Target } from "../lib/minimize.js";
 import { findPackage, packageClosure, type Res } from "../lib/packages.js";
+import { registerLosslessLiterals } from "../../../src/fhirJsonLiterals.js";
+import { parseLossless } from "../../../src/losslessJson.js";
 import { pickLoader, type CorpusItem } from "./loaders.js";
 import { ResultWriter, readResults } from "./results.js";
 
@@ -111,14 +117,34 @@ async function dbEngine(): Promise<{ validate: Validate; close: () => Promise<vo
   process.env.OFFICIAL_VALIDATOR_URLS = ""; // the built-in validator is the judge (no validator_cli bridge)
   const { initPool, closePool } = await import("../../../src/db.js");
   const { FHIRIGService } = await import("../../../src/fhirIgService.js");
+  const { DbValidatorResolver } = await import("../../../src/fhirValidationResolver.js");
   initPool({ maxSize: 2 });
   const svc = new FHIRIGService(null);
+  /** The same package resolution and profile lookup as FHIRIGService.validateCore (private there), then validateText. */
+  const viaText = async (item: CorpusItem, text: string, pid: string, ver: string): Promise<{ issues: SimpleIssue[]; flags: string[] }> => {
+    const s = svc as unknown as { resolve(p: string, v: string, o: Res): Promise<Res>; resolveProfileCanonical(p: Res, id: string): Promise<[string | null, string]> };
+    const pkg = await s.resolve(pid, ver, { canonicals: [item.profile], metaProfiles: [] });
+    const canonical = item.profile ? (await s.resolveProfileCanonical(pkg, item.profile))[0] : null;
+    const issues = await new InstanceValidator(new DbValidatorResolver(pkg as never)).validateText(text, { profiles: canonical ? [canonical] : [] });
+    return { issues: issues.map((i) => ({ severity: i.severity, path: i.path, message: i.message, code: i.code })), flags: ["tool-boundary"] };
+  };
   const validate: Validate = async (item, instance) => {
     const [pid, ver] = (item.packages[0] ?? "").split("#");
-    const isBundle = instance && typeof instance === "object" && instance.resourceType === "Bundle";
+    // the request as mcp.ts sees it: a fresh tree of the text with its number spellings / repeated names registered;
+    // the minimiser's reduced trees have no text
+    const pristine = instance === item.instance && item.text !== undefined;
+    let target: Res = instance;
+    if (pristine && instance) {
+      const t = item.text!.charCodeAt(0) === 0xfeff ? item.text!.slice(1) : item.text!;
+      target = JSON.parse(t) as Res;
+      registerLosslessLiterals(target, parseLossless(t));
+    }
+    const usable = target && typeof target === "object" && !Array.isArray(target) && target.resourceType;
+    if (!usable && rawText && pristine) return viaText(item, item.text!, pid, ver);
+    const isBundle = target && typeof target === "object" && target.resourceType === "Bundle";
     const text = isBundle
-      ? await svc.validateBundle(instance, pid || null, ver || null, false, undefined, "ids", null, item.profile)
-      : await svc.validateResource(instance, item.profile, pid || null, ver || null);
+      ? await svc.validateBundle(target, pid || null, ver || null, false, undefined, "ids", null, item.profile)
+      : await svc.validateResource(target, item.profile, pid || null, ver || null);
     const env = JSON.parse(text) as Res;
     if (!env.ok) return { issues: [{ severity: "error", path: String(instance?.resourceType ?? ""), message: `tool error ${env.error?.code}: ${env.error?.message}` }], flags: ["tool-rejected"] };
     const d = env.data ?? {};
