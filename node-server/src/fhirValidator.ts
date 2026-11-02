@@ -6586,6 +6586,9 @@ export class InstanceValidator {
       const message = `Coding has no code for system ${system} and cannot be validated`;
       issues.push({ severity: "error", path: item.path, code: "code-invalid", message });
       issues.push({ severity: "warning", path: item.path.replace(/\.coding\[\d+\]$/, ""), code: "code-invalid", message });
+    } else if ((await this.systemResolvable(system)) && serverPrefers(system) === true) {
+      // the other systems the server answers: a warning on the coding (jar alone, LOINC and SNOMED CT)
+      issues.push({ severity: "warning", path: item.path, code: "code-invalid", message: `Coding has no code for system ${system} and cannot be validated` });
     }
   }
 
@@ -6598,21 +6601,14 @@ export class InstanceValidator {
     if (typeof code === "string" && code && (system === undefined || system === null) && (!inCC || (el && isObject(el.binding)))) {
       issues.push({ severity: "warning", path: item.path, code: "code-invalid", message: "A code with no system has no defined meaning, and it cannot be validated. A system should be provided" });
     }
-    // isSystemReferenceValid; a value with whitespace only gets the URI rule (official corpus), a number is read as its text
+    // isSystemReferenceValid (http:, https:, urn:), a number read as its text; checkCodedElement l. 2447-2448 asks only when no
+    // binding check ran on this Coding. A Coding on its own reports it on itself (jar alone: ImagingStudy…sopClass), one of a
+    // CodeableConcept on .system (jar alone: 11 items). An empty system of a coding has no such report.
     const written = typeof system === "number" || typeof system === "boolean" ? String(system) : system;
-    // checkCodedElement l. 2447-2448, only when no binding check ran: a Coding on its own reports it on itself, whatever the
-    // value (jar alone: ImagingStudy…sopClass, its value set is not found; official corpus: Encounter.class, bound, has none)
     const bindingRan = !!el && isObject(el.binding) && !!el.binding.valueSet && el.binding.strength !== "example" && !!(await this.vsHeader(String(el.binding.valueSet)));
-    if (!inCC && typeof written === "string" && !bindingRan) {
-      if (!/^(?:https?|urn):/.test(written)) {
-        issues.push({ severity: "error", path: item.path, code: "code-invalid", message: "Coding.system must be an absolute reference, not a local reference" });
-        return;
-      }
-    } else if (typeof written === "string" && written && !/\s/.test(written)) {
-      if (!/^[a-z][a-z0-9+.-]*:/i.test(written)) {
-        issues.push({ severity: "error", path: `${item.path}.system`, code: "code-invalid", message: "Coding.system must be an absolute reference, not a local reference" });
-        return;
-      }
+    if (typeof written === "string" && (written || !inCC) && !bindingRan && !/^(?:https?|urn):/.test(written)) {
+      issues.push({ severity: "error", path: inCC ? `${item.path}.system` : item.path, code: "code-invalid", message: "Coding.system must be an absolute reference, not a local reference" });
+      return;
     }
     if (inCC && typeof system === "string" && system && !/\s/.test(system) && (typeof code !== "string" || !code)) await this.codelessCoding(v, system, item, issues);
     if (typeof system !== "string" || typeof code !== "string" || !code) return;
