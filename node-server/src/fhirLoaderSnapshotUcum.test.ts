@@ -390,3 +390,30 @@ test("JsonParser.java:683-685: a non-repeating primitive holding an object is no
   assert.equal(issues.filter((i) => /^This property must be a simple value, not an Object \(system at Patient\.identifier\[0\]\.system\)$/.test(i.message)).length, 1, JSON.stringify(issues));
   assert.ok(issues.some((i) => /Patient\.identifier\.system: minimum required = 1, but only found 0/.test(i.message)), JSON.stringify(issues));
 });
+
+test("a resource the parser left with an empty element (ele-1) does not match a target profile", async () => {
+  const LOOSE = "http://ex.org/StructureDefinition/patient-loose2";
+  const OBS_P = "http://ex.org/StructureDefinition/obs-ref2";
+  const loose = { ...SDS[CORE + "Patient"], url: LOOSE, derivation: "constraint" };
+  const obsP = sd(OBS_P, "Observation", "resource", [
+    ...(SDS[CORE + "Observation"].snapshot.element as Json[]).filter((x) => x.path !== "Observation.subject"),
+    el("Observation.subject", 0, "1", [], { type: [{ code: "Reference", targetProfile: [LOOSE] }] }),
+  ]);
+  class R extends FakeResolver {
+    async fetchStructureDefinition(url: string): Promise<Json | null> {
+      const u = url.split("|")[0];
+      if (u === CORE + "Meta") return sd(u, "Meta", "complex-type", [el("Meta", 0, "*"), el("Meta.profile", 0, "*", ["canonical"])]);
+      return u === LOOSE ? loose : u === OBS_P ? obsP : super.fetchStructureDefinition(url);
+    }
+  }
+  const b = {
+    resourceType: "Bundle",
+    type: "collection",
+    entry: [
+      { fullUrl: "http://ex.org/fhir/Observation/o1", resource: { resourceType: "Observation", id: "o1", meta: { profile: [OBS_P] }, status: "final", code: { text: "x" }, subject: { reference: "Patient/p1" } } },
+      { fullUrl: "http://ex.org/fhir/Patient/p1", resource: { resourceType: "Patient", id: "p1", meta: { profile: LOOSE } } },
+    ],
+  };
+  const issues = errors(await new InstanceValidator(new R()).validate(b));
+  assert.ok(issues.some((i) => /^Unable to find a profile match for Patient\/p1/.test(i.message)), JSON.stringify(issues));
+});

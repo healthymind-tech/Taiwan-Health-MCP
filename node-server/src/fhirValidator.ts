@@ -1434,6 +1434,7 @@ export class InstanceValidator {
    */
   private unparsed = new Set<object>();
   private strippedCache = new WeakMap<object, any>();
+  private emptiedCache = new WeakMap<object, Promise<boolean>>();
 
   /** The FHIRPath view of a value: unparsed embedded resources removed (they have no content in the element model). */
   private fhirPathView(v: any): any {
@@ -1541,6 +1542,7 @@ export class InstanceValidator {
     this.referencePolicy = opts.validateReference ?? null;
     this.unparsed = unparsedResources(resource);
     this.strippedCache = new WeakMap();
+    this.emptiedCache = new WeakMap();
     await this.validateResource(rctx, resource.resourceType, extra, issues, 0);
     if (bundle) await this.validateBundleRules(bundle, resource.resourceType, issues);
     await this.structuralPass(resource, resource.resourceType, issues, 0);
@@ -4145,6 +4147,7 @@ export class InstanceValidator {
   private async resourceConforms(ctx: ResourceCtx, url: string, path: string, depth: number): Promise<boolean> {
     const res = await this.conformance(ctx, url, path, depth);
     if (!isValid(res.filter((i) => !isParseIssue(i)))) return false;
+    if (await this.emptiedByParser(ctx.resource)) return false;
     const meta = isObject(ctx.resource.meta) && Array.isArray(ctx.resource.meta.profile) ? ctx.resource.meta.profile : [];
     for (const mp of meta) {
       if (typeof mp !== "string" || !mp || mp === url) continue;
@@ -4153,6 +4156,24 @@ export class InstanceValidator {
       if (!isValid(r2.filter((i) => !isParseIssue(i)))) return false;
     }
     return true;
+  }
+
+  /**
+   * ele-1 on an element the parser emptied (only dropped content inside, e.g. `meta` with a scalar `profile`) is an
+   * error of every profile pass in Java — validation runs on the element model; ours comes from the structural pass,
+   * which runs once at the end, so a sub-validation asks for it here. Memoised per resource for this validation.
+   */
+  private async emptiedByParser(resource: Record<string, any>): Promise<boolean> {
+    let p = this.emptiedCache.get(resource);
+    if (p === undefined) {
+      p = (async () => {
+        const found: Issue[] = [];
+        await this.structuralPass(resource, resource.resourceType, found, 0);
+        return found.some((i) => i.message === ELE1_MESSAGE);
+      })();
+      this.emptiedCache.set(resource, p);
+    }
+    return p;
   }
 
   /** `<path>.conformsTo(p1) or …`: the value at the path validates against one of the profiles without errors. */
