@@ -28,7 +28,7 @@
  * what terminology this install holds), the all-corpus figures with the network bucket, and the items no tool call can
  * carry (flag tool-boundary: outside the gate, measured through validateText, with what rejects them in the service).
  *
- * --corrections file (JSONL, assumed format of the evaluator's list: {ig, id, issues}, `issues` in the shape of a
+ * --corrections file (the evaluator's corrections_v2.jsonl: one {ig, id, issues} per line, `issues` in the shape of a
  * <id>.official.json, one validator_cli JVM per item): the batch run of validator_cli reuses cached code validations,
  * so listed items are scored against that standalone result instead; the official files are not touched.
  *
