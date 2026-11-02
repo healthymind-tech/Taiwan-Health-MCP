@@ -267,8 +267,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.86.0: the literal path in slicing messages as NodeStack (choice elements on the way; no pathComment when the pass began as a sub-validation).
   // 1.87.0 (parity v3 tx-validator-wiring, round 11): Coding has no code only for what the server answers that way (urn:ietf / urn:iso, a version not held).
   // 1.88.0 (parity v3 tx-validator-wiring, round 11, on the jar alone): Coding.system as isSystemReferenceValid when no binding check ran; Coding has no code as a warning for LOINC / SNOMED CT.
-  fhir_validate_bundle: "1.90.0",
+  fhir_validate_bundle: "1.91.0",
   // 1.87.0: JSON array findings of the parser do not fail a sub-validation; a complex list written as an object is its one child.
+  // 1.88.0: hasValue() of a number element; a number for Reference.reference is checked as its text; `{}` on a type slice of a choice fails ele-1, parser path on [x].
   // 1.80.0 (parity v3 tx-validator-wiring, ROUND 9): a system neither held nor preferred by the server is fully checked: the validator's warning, no-local-data in extended_findings.
   // 1.81.0 (parity v3 tx-validator-wiring, ROUND 10, each checked on the jar alone): No code provided on a value of another type and on an empty bound primitive; Coding.system of a Coding on its own and of a Quantity.
   // 1.80.0: FHIRPath exception texts as validator_cli 7.0.1 (date and number parsing, @char positions, ExpressionNode.toString); StructureDefinitionHacker (vs-1 of vitalsigns and its children).
@@ -350,7 +351,7 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.83.0: validation as fhir_validate_bundle 1.86.0.
   // 1.84.0: validation as fhir_validate_bundle 1.87.0.
   // 1.85.0: validation as fhir_validate_bundle 1.88.0.
-  fhir_validate_resource: "1.87.0",
+  fhir_validate_resource: "1.88.0",
   // 1.77.0: validation as fhir_validate_bundle 1.80.0.
   // 1.78.0: validation as fhir_validate_bundle 1.81.0.
   // 1.77.0: validation as fhir_validate_bundle 1.80.0.

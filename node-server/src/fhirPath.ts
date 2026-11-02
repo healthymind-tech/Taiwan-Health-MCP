@@ -1656,7 +1656,8 @@ const USER_FUNCTIONS: Record<string, any> = {
     fn: function (coll: any[]): any[] {
       if (!coll || coll.length !== 1) return [false];
       const v = fpUtil.valData(coll[0]);
-      return [v !== null && v !== undefined && typeof v !== "object" && String(v) !== ""];
+      const primitive = typeof v !== "object" || (v instanceof fpTypes.FP_Type && !(v instanceof fpTypes.FP_Quantity)); // a number element's data is an FP_Decimal
+      return [v !== null && v !== undefined && primitive && String(v) !== ""];
     },
   },
   htmlChecks2: {

@@ -3647,8 +3647,10 @@ export class InstanceValidator {
       // validator_cli 7.0.1, no `value[x]` / `dose[x]` / `effective[x]` `{}` does.
       // An object the parser emptied (dropBadPrimitivesIn) had content in the source: checkObject stays quiet, the
       // element is the same empty element for ele-1.
-      if (!this.xmlSource && !this.parserEmptied.has(v)) issues.push({ severity: "error", path: item.path, code: "invalid", message: "Object must have some content" });
-      if (this.xmlSource || !/\[x\]$/u.test(String(el.path ?? ""))) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
+      const choice = /\[x\]$/u.test(String(el.path ?? ""));
+      if (!this.xmlSource && !this.parserEmptied.has(v)) issues.push({ severity: "error", path: choice ? (item.jpath ?? item.path) : item.path, code: "invalid", message: "Object must have some content" });
+      // a type slice of the choice (dose[x]:doseQuantity) names the type, so there is no such reading (jar, single run)
+      if (this.xmlSource || !choice || el.sliceName) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
     }
 
     // Port of InstanceValidator.checkChildByDefinition (7.0.1), several profiles on the element's one type: the
@@ -6899,7 +6901,8 @@ export class InstanceValidator {
     issues: Issue[],
     depth: number,
   ): Promise<void> {
-    const ref = v.reference;
+    // JsonParser keeps a number / boolean written for a string (after "the primitive value must be a string") as its text
+    const ref = typeof v.reference === "number" || typeof v.reference === "boolean" ? String(v.reference) : v.reference;
     if (typeof ref !== "string" || !ref) {
       // InstanceValidator.checkReference: REFERENCE_REF_NODISPLAY (not for patterns)
       const ident = isObject(v.identifier) ? v.identifier : {};

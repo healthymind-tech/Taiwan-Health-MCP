@@ -637,3 +637,10 @@ test("parser findings do not fail a sub-validation; a complex list written as an
   assert.ok(issues.some((i) => /The property coding must be a JSON Array, not an Object/.test(i.message)));
   assert.ok(!issues.some((i) => /ele-1/.test(i.message)), "JsonParser.parseChildComplex parses the object: code is not empty");
 });
+
+test("hasValue() of a number written for a date: the text is there, new DateTimeType fails on it", () => {
+  const v = { start: "2026-08-24", end: 1672531200 };
+  const r = { resourceType: "MedicationRequest", dispenseRequest: { validityPeriod: v } };
+  const expr = "start.hasValue().not() or end.hasValue().not() or (start <= end)";
+  assert.deepEqual(evaluateConstraint(v, "Period", expr, { resource: r, rootResource: r }), { status: "fail", error: "Invalid date/time format: \"1672531200\": Expected character '-' at index 4 but found 5" });
+});
