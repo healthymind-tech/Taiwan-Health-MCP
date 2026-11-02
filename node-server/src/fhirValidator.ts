@@ -1468,6 +1468,23 @@ function isRealPath(lp: string, name: string): boolean {
   return true;
 }
 
+/**
+ * ExpressionNode.toString of the parsed `true and <expr>` minus its prefix (InstanceValidator l. 6520): the parser groups
+ * what binds tighter than the operator beside it, so `x is T` next to the `and` and each `a = b` of an `and` get brackets.
+ */
+function groupedExpression(expr: string): string {
+  if (/^\S+ is \S+$/u.test(expr)) return `(${expr})`;
+  return expr.replace(/where\(([^()]*)\)/gu, (whole, inner: string) => {
+    const parts = inner.split(/(?<=') and /u);
+    return parts.length > 1 ? `where(${parts.map((x) => `(${x})`).join(" and ")})` : whole;
+  });
+}
+
+/** A profile narrows a choice; only a base definition tells what the parser accepts. */
+function isConstraintDefinition(s: SdIndex): boolean {
+  return s.sd?.derivation === "constraint";
+}
+
 function stripIndexes(path: string): string {
   return path.replace(/\[[^\]]*\]/g, "");
 }
@@ -3067,6 +3084,12 @@ export class InstanceValidator {
       const d = g.base || g.slices[0];
       const max = String((d?.base && d.base.max) ?? d?.max ?? "*");
       if (Array.isArray(v) && (max === "1" || max === "0")) return false;
+      // JsonParser.parseChildItem l. 384-400: a choice is read through the base element's types, anything else is unknown
+      if (g.name.endsWith("[x]") && !isConstraintDefinition(base)) {
+        const suffix = n.slice(g.name.length - 3);
+        const allowed: string[] = (d?.type || []).map(typeCodeOf);
+        if (allowed.length && !allowed.includes("*") && !allowed.some((a) => a[0].toUpperCase() + a.slice(1) === suffix)) return false;
+      }
       if (k.startsWith("_")) return true;
       const choiceType = g.name.endsWith("[x]") ? KNOWN_TYPE_SUFFIX.get(n.slice(g.name.length - 3)) : undefined;
       const types: string[] = choiceType ? [choiceType] : (d?.type || []).map(typeCodeOf);
@@ -4415,7 +4438,7 @@ export class InstanceValidator {
           // NodeStack literal path: a choice element is `<stem>.ofType(<type>)`
           const literal = (x: string): string => (x.startsWith(ROOT_TOKEN) ? LITERAL_ROOT_TOKEN + x.slice(ROOT_TOKEN.length) : x);
           const lit = literal(String(base.path).endsWith("[x]") && it.path.endsWith(`.${it.key}`) ? `${it.path.slice(0, -it.key.length - 1)}.${String(base.path).split(".").pop()!.slice(0, -3)}.ofType(${it.actualType ?? type})` : it.path);
-          sliceInfo.push(`${lit}: Does not match slice '${sliceNameOf(s)}' (discriminator: ${r.expression})`);
+          sliceInfo.push(`${lit}: Does not match slice '${sliceNameOf(s)}' (discriminator: ${groupedExpression(r.expression)})`);
           // IV:6518-6527: a DETAILS_FOR__MATCHING_AGAINST_PROFILE_ hint per failed conformsTo() profile (HashMap order)
           for (const u of javaHashOrder(r.notes ?? [])) {
             const sdt = await this.sdx(u);

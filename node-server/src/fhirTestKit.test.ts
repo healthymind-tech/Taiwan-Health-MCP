@@ -48,7 +48,7 @@ put(
     idEl("Extension"),
     extEl("Extension"),
     el("Extension.url", 1, "1", ["uri"]),
-    el("Extension.value[x]", 0, "1", ["string", "boolean", "Address", "CodeableConcept", "Reference", "Quantity", "integer", "code"]),
+    el("Extension.value[x]", 0, "1", ["string", "boolean", "Address", "CodeableConcept", "Reference", "Quantity", "integer", "code", "Expression"]),
   ]),
 );
 put(
