@@ -4966,6 +4966,13 @@ export class InstanceValidator {
    * includes by their concept list, whole-system includes by the CodeSystem. null when undecidable here (imports,
    * filters, an unknown CodeSystem: the HL7 validator reports other messages for those, which are not reproduced).
    */
+  /** "; <code system message>" for a Coding its CodeSystem rejects (the {1} of Terminology_TX_NoValid_12). */
+  private async codeProblem(c: any): Promise<string> {
+    if (!isObject(c) || typeof c.system !== "string" || typeof c.code !== "string") return "";
+    const r = await this.codeCheck(c.system, c.code, null, typeof c.version === "string" ? c.version : null);
+    return r.status === "invalid-code" ? `; ${r.message}` : "";
+  }
+
   /** Every include of the value set is a CodeSystem the validator checks locally (BaseWorkerContext: no server call). */
   private async valueSetIsLocal(vs: Record<string, any>): Promise<boolean> {
     const includes: any[] = isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
@@ -5057,7 +5064,7 @@ export class InstanceValidator {
     codings = codings.filter(([, c]) => c !== null && c !== "");
     if (!codings.length) {
       if (typeCode === "CodeableConcept" && strength === "required") {
-        issues.push({ severity: "error", path: item.path, code: "code-invalid", message: `No code provided, and a code is required from the value set ${label}` });
+        issues.push({ severity: "error", path: item.path, code: "code-invalid", message: `No code provided, and a code is required from the value set '${vs.title || vs.name || url}' (${vs.url}${vs.version ? `|${vs.version}` : ""})` });
       }
       return;
     }
@@ -5112,9 +5119,26 @@ export class InstanceValidator {
           }
         }
         anyMember = true;
-      } else if (m === undefined) anyUnknown = true;
+      } else if (m === undefined) {
+        // a code its CodeSystem rejects is in no value set, whatever the (undecidable) filters say
+        const r = system && (typeCode === "Coding" || typeCode === "CodeableConcept") ? await this.codeCheck(system, code!, null, null) : null;
+        if (!(r && r.status === "invalid-code" && r.severity === "error")) anyUnknown = true;
+      }
     }
-    if (anyMember) return;
+    // ValueSetValidator.validateCode(CodeableConcept) (standalone tag 7.0.1:458 `info.hasErrors()`): any coding with an
+    // error (unknown code, wrong display) fails the CodeableConcept even when another coding is in the value set
+    let codingError: string | null = null;
+    if (typeCode === "CodeableConcept") {
+      for (const c of list) {
+        if (!isObject(c) || typeof c.system !== "string" || typeof c.code !== "string" || !c.code) continue;
+        const r = await this.codeCheck(c.system, c.code, typeof c.display === "string" ? c.display : null, typeof c.version === "string" ? c.version : null);
+        if ((r.status === "invalid-code" || r.status === "invalid-display") && r.severity === "error") {
+          codingError = r.message;
+          break;
+        }
+      }
+    }
+    if (anyMember && codingError === null) return;
     if (wrongDisplay && strength === "required") {
       const vsDesc = `'${vs.title || vs.name || url}' (${vs.url}${vs.version ? `|${vs.version}` : ""})`;
       issues.push(
@@ -5131,7 +5155,7 @@ export class InstanceValidator {
       .filter((c: any) => isObject(c))
       .map((c: any) => `${typeof c.system === "string" ? c.system : "null"}#${typeof c.code === "string" ? c.code : "null"}`)
       .join(", ");
-    if (anyUnknown) {
+    if (anyUnknown && codingError === null) {
       issues.push({
         severity: strength === "required" ? "warning" : "information",
         path: item.path,
@@ -5169,7 +5193,10 @@ export class InstanceValidator {
           typeCode === "CodeableConcept"
             ? // Terminology_TX_NoValid_1_CC: describeReference (versioned url) + ccSummary (every coding as system#code)
               `None of the codings provided are in the value set ${vsRef}, and a coding from this value set is required) (codes = ${ccSummary})`
-            : `The value provided ('${shown}') was not found in the value set ${label}, and a code is required from this value set`,
+            : typeCode === "Coding"
+              ? // Terminology_TX_NoValid_12 with the server's messages (official corpus text)
+                `The Coding provided (${shown}) was not found in the value set ${vsRef}, and a code is required from this value set.  (error message = The provided code '${shown}' was not found in the value set '${vs.url}${vs.version ? `|${vs.version}` : ""}'${await this.codeProblem(list[0])})`
+              : `The value provided ('${shown}') was not found in the value set ${label}, and a code is required from this value set`,
       });
     } else {
       const maxExt = Array.isArray(b.extension) ? b.extension.find((e: any) => isObject(e) && e.url === MAX_VALUESET_EXT) : null;

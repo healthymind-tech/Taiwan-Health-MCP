@@ -33,7 +33,7 @@ const RE_NO_DEFINITION = /^No definition could be found for URL value '([^']+)'$
 const RE_CS_NOT_FOUND = /^A definition for CodeSystem '([^']+)' could not be found/;
 const RE_VS_AS_SYSTEM = /^The Coding references a value set, not a code system \('([^']+)'\)$/;
 const RE_WRONG_DISPLAY = /^Wrong (whitespace in )?Display Name /;
-const RE_BINDING = /^(None of the codings provided are in the value set|The value provided \(.*\) was not found in the value set)/s;
+const RE_BINDING = /^(None of the codings provided are in the value set|The (?:value|Coding) provided \(.*\) was not found in the value set)/s;
 const RE_PROFILE_MATCH = /^Unable to find a profile match for /;
 const RE_TYPE_NOT_ALLOWED = /^The type '[^']+' is not allowed for \S+ \(allowed: /;
 

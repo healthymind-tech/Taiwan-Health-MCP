@@ -109,3 +109,18 @@ test("F9 memberOf discriminator: a member coding with a wrong display does not m
   // operator form: any value that is ok matches (not size == 1)
   assert.equal(await v.bindingClause(VSC, [{ system: "http://x/cs", code: "b" }, { system: "http://x/cs", code: "a" }]), true);
 });
+
+test("a CodeableConcept with a coding in the value set still fails when another coding has an error (ValueSetValidator info.hasErrors, tag 7.0.1:458)", async () => {
+  const P2 = "http://x/StructureDefinition/cond-cc";
+  class R extends FakeResolver {
+    async fetchStructureDefinition(url: string): Promise<Json | null> {
+      return super.fetchStructureDefinition(url.split("|")[0] === P2 ? "http://example.tw/fhir/StructureDefinition/cond" : url);
+    }
+  }
+  const CL = "http://terminology.hl7.org/CodeSystem/condition-clinical";
+  const base = { resourceType: "Condition", id: "c1", meta: { profile: [P2] }, category: [{ text: "x" }], subject: { reference: "Patient/p1" } };
+  const ok = await new InstanceValidator(new R()).validate({ ...base, clinicalStatus: { coding: [{ system: CL, code: "active" }, { system: "http://unknown/cs", code: "x" }] } });
+  assert.ok(!errors(ok).some((i) => /None of the codings/.test(i.message)), JSON.stringify(errors(ok)));
+  const bad = await new InstanceValidator(new R()).validate({ ...base, clinicalStatus: { coding: [{ system: CL, code: "active" }, { system: CL, code: "nope" }] } });
+  assert.ok(errors(bad).some((i) => i.path === "Condition.clinicalStatus" && /None of the codings provided/.test(i.message)), JSON.stringify(errors(bad)));
+});
