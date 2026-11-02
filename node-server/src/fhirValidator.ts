@@ -52,6 +52,8 @@ import { validateValueSetResource } from "./fhirValueSetResource.js";
 import { languageXhtmlIssues, narrativeControlIssues, parseXhtml, textLinkIssues, validateXhtml, xhtmlHrefIssues } from "./fhirXhtml.js";
 import { copyLiterals, duplicateKeys, numberText } from "./fhirJsonLiterals.js";
 import { dropUnprocessed, JsonSyntaxError, jsonSyntaxIssues, parseFhirJsonText, toPlain, type JObject } from "./fhirJsonParser.js";
+import { withValidationSnapshot } from "./fhirValidationSnapshot.js";
+import { LookupSession, sessionResolver } from "./fhirValidatorSession.js";
 
 export const SOURCE = "builtin";
 
@@ -70,11 +72,18 @@ export interface Issue {
    * (profile / required-binding ValueSet not resolvable, e.g. a `|version`
    * that is not installed). Feeds `completenessOf()`; never changes severity.
    * `code`: a code / binding membership local terminology cannot decide (canonical = ValueSet or system);
-   * `slice`: slice membership / cardinality that could not be decided (canonical = profile#element id).
+   * `slice`: slice membership / cardinality that could not be decided (canonical = profile#element id);
+   * `limit`: a validator limit stopped a check (canonical = the limit's name, see VALIDATOR_LIMITS);
+   * `invariant`: an invariant that could not be evaluated (canonical = profile#key);
+   * `lookup`: definition / terminology lookups failed, some checks are unverified (canonical = the first failed lookup);
+   * `run`: a definition could not be loaded, so the run has no verdict at all.
    */
   /** `causes`: what could not be decided, as `system|valueSet` (a slicing or a binding names the terminology behind it). */
-  unchecked?: { kind: "profile" | "valueSet" | "code" | "slice" | "invariant"; canonical: string; causes?: string[] };
+  unchecked?: { kind: "profile" | "valueSet" | "code" | "slice" | "limit" | "invariant" | "lookup" | "run"; canonical: string; causes?: string[] };
 }
+
+/** The validator's checking limits (`unchecked.kind: "limit"`): exceeding one reports it and `checked_fully: false`. */
+export const VALIDATOR_LIMITS = { elementDepth: "element-depth", regex: "element-regex" } as const;
 
 export function issue(severity: string, path: string, code: string, message: string, extra: Partial<Issue> = {}): Record<string, any> {
   return { severity, path, code, message, ...extra };
@@ -95,7 +104,7 @@ export interface Completeness {
   /**
    * Number of definition / terminology lookups that failed while validating
    * (database trouble; v8). Present only when > 0: the run then also carries
-   * an error issue with code `exception` and `checked_fully` is false.
+   * a warning issue with code `exception` and `checked_fully` is false.
    */
   lookups_failed?: number;
   /**
@@ -105,7 +114,9 @@ export interface Completeness {
   codes_unchecked?: string[];
   /** (parity v3, REVIEW F5) Slicings (profile#element) whose membership / cardinality could not be decided. */
   slices_unchecked?: string[];
-  /** (parity v3, REVIEW F5) Invariants (profile#key) that could not be evaluated locally. */
+  /** (parity v3) Validator limits that stopped a check (VALIDATOR_LIMITS). Present only when non-empty. */
+  limits_exceeded?: string[];
+  /** (parity v3) Invariants (profile#key) that could not be evaluated. Present only when non-empty. */
   invariants_unchecked?: string[];
   /** What the undecided codes and slices depended on: `system|valueSet` (an empty system: a bare code). */
   undecided_causes?: string[];
@@ -115,25 +126,33 @@ export interface Completeness {
 export const LOOKUP_FAILURE_CODE = "exception";
 
 /**
- * The error issue reported when definition / terminology lookups failed during
- * a validation (v8). HL7 validator_cli reports an internal failure as a fatal
- * `exception` issue rather than passing the resource; a verdict reached while
- * lookups were failing is likewise never a clean pass: the issue makes `valid`
- * false and `checked_fully` false, and names the first failures.
+ * The issue reported when definition / terminology lookups failed during a validation. A transient failure says nothing
+ * about the resource, so it is not an error (InstanceValidator.java:1796-1798, tag 7.0.1: an infrastructure failure of the
+ * terminology service is a txWarning, TERMINOLOGY_TX_CONFIRM_*, never a binding error); it is never a clean pass either:
+ * `checked_fully` is false, `lookups_failed` counts the failures and the checks are unverified. `noVerdict`: a definition
+ * could not be loaded, so nothing else in the run counts (see hasNoVerdict).
  */
-export function lookupFailureIssue(total: number, samples: Array<{ code: string | null; message: string }>): Issue {
+export function lookupFailureIssue(total: number, samples: Array<{ code: string | null; message: string }>, noVerdict = false): Issue {
   const detail = samples
     .slice(0, 3)
     .map((f) => `${f.code ? `[${f.code}] ` : ""}${f.message}`)
     .join("; ");
   return {
-    severity: "error",
+    severity: "warning",
     path: "",
     code: LOOKUP_FAILURE_CODE,
     message:
       `Validation incomplete: ${total} definition / terminology lookup${total === 1 ? "" : "s"} failed during validation (${detail}); ` +
-      "profiles, code systems or references could not be checked, so this verdict is not reliable — retry the call once the database is reachable",
+      (noVerdict
+        ? "a definition could not be loaded, so the resource was not judged — validate again once the database is reachable"
+        : "the checks that needed them are unverified — validate again once the database is reachable"),
+    unchecked: { kind: noVerdict ? "run" : "lookup", canonical: samples[0]?.message ?? "lookup" },
   };
+}
+
+/** The run ended without a verdict (a definition could not be loaded): `valid` is then null, neither pass nor fail. */
+export function hasNoVerdict(issues: Array<Record<string, any>>): boolean {
+  return issues.some((i) => i && i.unchecked?.kind === "run");
 }
 
 /**
@@ -149,6 +168,7 @@ export function completenessOf(issues: Array<Record<string, any>>, depsMissing: 
   const valueSets = new Set<string>();
   const codes = new Set<string>();
   const slices = new Set<string>();
+  const limits = new Set<string>();
   const invariants = new Set<string>();
   const causes = new Set<string>();
   let lookupsFailed = 0;
@@ -158,17 +178,18 @@ export function completenessOf(issues: Array<Record<string, any>>, depsMissing: 
       lookupsFailed += m ? Number(m[1]) : 1;
     }
     const u = i && i.unchecked;
-    if (!u || typeof u.canonical !== "string") continue;
+    if (!u || typeof u.canonical !== "string" || u.kind === "lookup" || u.kind === "run") continue;
     for (const c of Array.isArray(u.causes) ? u.causes : []) causes.add(String(c));
-    (u.kind === "valueSet" ? valueSets : u.kind === "code" ? codes : u.kind === "slice" ? slices : u.kind === "invariant" ? invariants : profiles).add(u.canonical);
+    (u.kind === "valueSet" ? valueSets : u.kind === "code" ? codes : u.kind === "slice" ? slices : u.kind === "limit" ? limits : u.kind === "invariant" ? invariants : profiles).add(u.canonical);
   }
   return {
-    checked_fully: profiles.size === 0 && valueSets.size === 0 && codes.size === 0 && slices.size === 0 && invariants.size === 0 && lookupsFailed === 0 && !(Array.isArray(depsMissing) && depsMissing.length),
+    checked_fully: profiles.size === 0 && valueSets.size === 0 && codes.size === 0 && slices.size === 0 && limits.size === 0 && invariants.size === 0 && lookupsFailed === 0 && !(Array.isArray(depsMissing) && depsMissing.length),
     profiles_unchecked: [...profiles],
     valuesets_unchecked: [...valueSets],
     ...(lookupsFailed > 0 ? { lookups_failed: lookupsFailed } : {}),
     ...(codes.size ? { codes_unchecked: [...codes] } : {}),
     ...(slices.size ? { slices_unchecked: [...slices] } : {}),
+    ...(limits.size ? { limits_exceeded: [...limits] } : {}),
     ...(invariants.size ? { invariants_unchecked: [...invariants] } : {}),
     ...(causes.size ? { undecided_causes: [...causes].sort() } : {}),
   };
@@ -234,6 +255,10 @@ export type CodeCheck = (
 ) &
   CodeCheckExtra;
 
+/**
+ * Contract for every lookup: a rejected promise means "no answer" (database / network / timeout trouble), a real "not
+ * found" is the method's null / undefined / false. A rejection is never a finding (fhirValidatorSession.ts).
+ */
 export interface ValidatorResolver {
   /**
    * StructureDefinition by canonical URL. The URL may carry `|version`: the
@@ -1059,6 +1084,8 @@ interface BundleCtx {
   /** BaseValidator.resolveInBundle maps: fullUrl (null for none; `/_history/v` added for meta.versionId) → entries, Type/id → entries. */
   map: Map<string | null, RawBundleEntry[]>;
   relMap: Map<string, RawBundleEntry[]>;
+  /** First entry per `Type/id` as the template literal spells it (an id-less resource is `Type/undefined`). */
+  typeId: Map<string, RawBundleEntry>;
   /** Path of the Bundle (the root, or a nested Bundle inside an entry / contained). */
   path: string;
 }
@@ -1402,6 +1429,17 @@ function appliesToR4(node: Record<string, any>): boolean {
 const MAX_DEPTH = 60;
 const ROOT_TOKEN = "\u0001";
 
+/** Nesting past MAX_DEPTH is not walked: reported as not checked, never a pass. */
+function tooDeep(path: string): Issue {
+  return {
+    severity: "warning",
+    path,
+    code: "too-deep",
+    message: `Validation depth limit reached (${MAX_DEPTH} levels): the content below this element was not checked`,
+    unchecked: { kind: "limit", canonical: VALIDATOR_LIMITS.elementDepth },
+  };
+}
+
 /** HL7 core / THO ValueSets: tx.fhir.org knows them server-side, so they are a ValueSet as system in any context. */
 /** Marker on a pending IG-ValueSet-as-system issue (removed by settleVsSystems before validate() returns). */
 const VS_SYSTEM = "__vsSystem";
@@ -1503,7 +1541,8 @@ export class InstanceValidator {
     const p = String(el.path || "");
     if (/(^|\.)entry\.resource$/.test(p) && rctx.resource.resourceType === "Bundle") {
       const entries: any[] = Array.isArray(rctx.resource.entry) ? rctx.resource.entry : [];
-      const ep = entries.find((e) => isObject(e) && e.resource === v);
+      const known = rctx.bundle?.bundle === rctx.resource ? rctx.bundle.entryOf.get(v) : undefined;
+      const ep = known ? entries[known.index] : entries.find((e) => isObject(e) && e.resource === v);
       if (!ep) return true;
       if (ep.response !== undefined) return false;
       const method = isObject(ep.request) ? ep.request.method : undefined;
@@ -1540,7 +1579,26 @@ export class InstanceValidator {
 
   // ------------------------------------------------------------------ public
 
-  async validate(resource0: Record<string, any>, opts: ValidateOptions = {}): Promise<Issue[]> {
+  /**
+   * One validation. Every run works on its own engine (all the fields above are per run, so concurrent validate() calls
+   * on one instance share nothing mutable) over a pinned view of the resolver, inside the request's snapshot
+   * (fhirValidationSnapshot.ts). A lookup that failed is reported apart from the findings: see fhirValidatorSession.ts.
+   */
+  async validate(resource: Record<string, any>, opts: ValidateOptions = {}): Promise<Issue[]> {
+    const session = new LookupSession();
+    const run = new InstanceValidator(sessionResolver(this.resolver, session));
+    let issues: Issue[];
+    try {
+      issues = await withValidationSnapshot(() => run.validateRun(resource, opts));
+    } catch (e) {
+      if (!session.noVerdict) throw e;
+      issues = [];
+    }
+    if (session.noVerdict) return [lookupFailureIssue(session.total, session.samples, true)];
+    return session.total ? [...issues, lookupFailureIssue(session.total, session.samples)] : issues;
+  }
+
+  private async validateRun(resource0: Record<string, any>, opts: ValidateOptions): Promise<Issue[]> {
     const issues: Issue[] = [];
     if (!isObject(resource0) || typeof resource0.resourceType !== "string") {
       return [{ severity: "fatal", path: "", code: "structure", message: "resource must be a JSON object with a resourceType" }];
@@ -1628,9 +1686,9 @@ export class InstanceValidator {
     const marked = issues.filter((i) => typeof (i as any)[VS_SYSTEM] === "string");
     if (!marked.length) return;
     const loaded = new Set<string>();
-    const visit = async (url: string, depth: number): Promise<void> => {
+    const visit = async (url: string): Promise<void> => {
       const u = stripVersion(url);
-      if (loaded.has(u) || depth > 4) return;
+      if (loaded.has(u)) return;
       loaded.add(u);
       let vs: Record<string, any> | null = null;
       try {
@@ -1639,9 +1697,9 @@ export class InstanceValidator {
         vs = null;
       }
       const incs = vs && isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
-      for (const inc of incs) if (isObject(inc) && Array.isArray(inc.valueSet)) for (const v of inc.valueSet) if (typeof v === "string" && v) await visit(v, depth + 1);
+      for (const inc of incs) if (isObject(inc) && Array.isArray(inc.valueSet)) for (const v of inc.valueSet) if (typeof v === "string" && v) await visit(v);
     };
-    for (const u of this.boundValueSets) await visit(u, 0);
+    for (const u of this.boundValueSets) await visit(u);
     for (const issue of marked) {
       const url = String((issue as any)[VS_SYSTEM]);
       delete (issue as any)[VS_SYSTEM];
@@ -1713,6 +1771,7 @@ export class InstanceValidator {
     const raw: RawBundleEntry[] = [];
     const map = new Map<string | null, RawBundleEntry[]>();
     const relMap = new Map<string, RawBundleEntry[]>();
+    const typeId = new Map<string, RawBundleEntry>();
     const add = <K,>(m: Map<K, RawBundleEntry[]>, k: K, v: RawBundleEntry): void => {
       const l = m.get(k);
       if (l) l.push(v);
@@ -1727,6 +1786,8 @@ export class InstanceValidator {
       raw.push(re);
       add(map, fu, re);
       if (res) {
+        const tid = `${res.resourceType}/${res.id}`;
+        if (!typeId.has(tid)) typeId.set(tid, re);
         const rl = typeof res.id === "string" ? `${res.resourceType}/${res.id}` : null;
         if (rl) add(relMap, rl, re);
         const vid = isObject(res.meta) && (typeof res.meta.versionId === "string" || typeof res.meta.versionId === "number") ? String(res.meta.versionId) : null;
@@ -1749,7 +1810,7 @@ export class InstanceValidator {
         byFullUrl.set(fullUrl, list);
       }
     });
-    return { bundle, type: typeof bundle.type === "string" ? bundle.type : "", entries, byFullUrl, entryOf, raw, map, relMap, path };
+    return { bundle, type: typeof bundle.type === "string" ? bundle.type : "", entries, byFullUrl, entryOf, raw, map, relMap, typeId, path };
   }
 
   private anchorCache = new WeakMap<object, Set<string>>();
@@ -1764,7 +1825,7 @@ export class InstanceValidator {
     if (hit) return hit;
     const out = new Set<string>();
     const walk = (n: unknown, d: number): void => {
-      if (d > 30 || !n || typeof n !== "object") return;
+      if (d > 2 * MAX_DEPTH + 2 || !n || typeof n !== "object") return; // past the element depth limit, which is reported
       if (Array.isArray(n)) return void n.forEach((x) => walk(x, d + 1));
       const o = n as Record<string, any>;
       if (typeof o.div === "string") for (const m of o.div.matchAll(/\s(?:id|name)\s*=\s*["']([^"']+)["']/gu)) out.add(m[1]);
@@ -1961,7 +2022,8 @@ export class InstanceValidator {
       }
     }
     let match: RawBundleEntry | null = null;
-    for (const we of b.raw) {
+    // the entries with this fullUrl, in order (the map also holds `/_history/` keys)
+    for (const we of b.map.get(targetUrl) ?? []) {
       if (targetUrl !== we.fullUrl) continue;
       const r = we.resource;
       if (version === "") {
@@ -1987,7 +2049,7 @@ export class InstanceValidator {
         const p = javaSplit(ref, "/");
         const ml: RawBundleEntry[] = [];
         if (p.length >= 2 && R4_RESOURCE_NAMES.has(p[0]) && isValidIdJava(p[1])) {
-          for (const we of b.raw) if (we.resource && we.resource.resourceType === p[0] && we.resource.id === p[1]) ml.push(we);
+          for (const we of b.relMap.get(`${p[0]}/${p[1]}`) ?? []) if (we.resource && we.resource.resourceType === p[0] && we.resource.id === p[1]) ml.push(we);
         }
         if (ml.length > 1) {
           push("warning", "required", `The bundle contains no match for ${targetUrl} by the rules of Bundle reference resolution, but it has multiple resources that match ${ref} by resource type and id`);
@@ -2047,19 +2109,28 @@ export class InstanceValidator {
     if (hit || ref.startsWith("#")) return hit;
     const scan = (bundle: any): Record<string, any> | null => {
       if (!isObject(bundle) || bundle.resourceType !== "Bundle" || !Array.isArray(bundle.entry)) return null;
-      for (const be of bundle.entry) {
-        const res = isObject(be) && isObject(be.resource) ? be.resource : null;
-        if (!res) continue;
-        if (ref === be.fullUrl || ref === `${res.resourceType}/${res.id}`) return res;
-      }
-      return null;
+      return this.entryIndex(bundle).get(ref) ?? null;
     };
-    return scan(rctx.resource) ?? (rctx.bundle ? this.resolveInBundleByTypeId(ref, rctx.bundle) : null);
+    return scan(rctx.resource) ?? (rctx.bundle ? this.entryIndex(rctx.bundle.bundle).get(ref) ?? null : null);
   }
 
-  private resolveInBundleByTypeId(ref: string, b: BundleCtx): Record<string, any> | null {
-    for (const e of b.entries) if (ref === e.fullUrl || ref === `${e.resource.resourceType}/${e.resource.id}`) return e.resource;
-    return null;
+  private entryIndexes = new WeakMap<object, Map<string, Record<string, any>>>();
+
+  /** First entry resource by fullUrl or `Type/id`, whichever comes first in entry order. */
+  private entryIndex(bundle: Record<string, any>): Map<string, Record<string, any>> {
+    let idx = this.entryIndexes.get(bundle);
+    if (!idx) {
+      idx = new Map();
+      for (const be of Array.isArray(bundle.entry) ? bundle.entry : []) {
+        const res = isObject(be) && isObject(be.resource) ? be.resource : null;
+        if (!res) continue;
+        if (typeof be.fullUrl === "string" && !idx.has(be.fullUrl)) idx.set(be.fullUrl, res);
+        const tid = `${res.resourceType}/${res.id}`;
+        if (!idx.has(tid)) idx.set(tid, res);
+      }
+      this.entryIndexes.set(bundle, idx);
+    }
+    return idx;
   }
 
   /**
@@ -2194,7 +2265,7 @@ export class InstanceValidator {
             issues.push({ severity: "warning", path: upath, code: "business-rule", message: "The stylesheet reference is not a resolvable link" });
           }
         }
-      } else if (!b.raw.some((e) => e.resource && `${e.resource.resourceType}/${e.resource.id}` === url)) {
+      } else if (!b.typeId.has(url)) {
         issues.push({ severity: "error", path: upath, code: "not-found", message: "The stylesheet reference could not be resolved in this bundle" });
       }
     }
@@ -2351,6 +2422,7 @@ export class InstanceValidator {
    */
   private async checkAllInterlinked(b: BundleCtx, path: string, isMessage: boolean, issues: Issue[]): Promise<void> {
     const list = b.raw.filter((e) => e.resource !== null);
+    const position = new Map(list.map((e, i) => [e, i]));
     const targets = new Map<RawBundleEntry, RawBundleEntry[]>();
     for (const e of list) {
       const refs: Array<{ ref: string; path: string; source: object; nl: boolean }> = [];
@@ -2370,42 +2442,34 @@ export class InstanceValidator {
         const name = r.path.replace(/\.([a-z][A-Za-z]*?)Reference(?=$|[.[])/gu, ".$1[x]");
         const res = e.resource!;
         const tgt = await this.resolveInBundle(b, r.ref, e.fullUrl, this.typeOfResource(res), typeof res.id === "string" && !this.unparsed.has(res) ? res.id : null, path, issues, name, r.source, true, r.nl);
-        if (tgt && tgt.resource && tgt !== e && list.includes(tgt)) out.push(tgt);
+        if (tgt && tgt.resource && tgt !== e && position.has(tgt)) out.push(tgt);
       }
       targets.set(e, out);
     }
-    const visited = new Set<RawBundleEntry>();
-    const visit = (t: RawBundleEntry): void => {
-      if (visited.has(t)) return;
-      visited.add(t);
-      for (const x of targets.get(t) || []) visit(x);
-    };
-    if (list.length) visit(list[0]);
+    const edges = list.map((e) => (targets.get(e) ?? []).map((t) => position.get(t)!));
+    const seeds: number[] = [];
+    if (list.length) seeds.push(0);
+    const visited = new Set<number>();
+    forwardClosure(seeds, edges, visited);
     for (const l of Array.isArray(b.bundle.link) ? b.bundle.link : []) {
       if (!isObject(l) || l.relation !== "stylesheet" || typeof l.url !== "string") continue;
-      const hit = list.find((e) => `${e.resource!.resourceType}/${e.resource!.id}` === l.url);
-      if (hit) visited.add(hit);
+      const hit = b.typeId.get(l.url);
+      if (hit) visited.add(position.get(hit)!);
     }
     const label = (e: RawBundleEntry): string => (e.fullUrl !== null ? `'${e.fullUrl}'` : "");
     const afterScan = `${path}.entry[${b.raw.length + 1}]`; // (sic) i is the entry count here
-    let found: boolean;
-    do {
-      found = false;
-      for (const e of list) {
-        if (visited.has(e) || !(targets.get(e) || []).some((t) => visited.has(t))) continue;
-        if (e.resource!.resourceType !== "Provenance") {
-          if (isMessage) {
-            issues.push({ severity: "information", path: afterScan, code: "informational", message: `Entry ${label(e)} isn't reachable by traversing forwards from the MessageHeader. Check that this is meant to be included (needed to process the message)` });
-          } else {
-            issues.push({ severity: "warning", path: afterScan, code: "invalid", message: `Entry ${label(e)} isn't reachable by traversing forwards from the Composition. Only Provenance is approved to be used this way (R4 section 3.3.1)` });
-          }
+    for (const at of backwardScan(edges, visited)) {
+      const e = list[at];
+      if (e.resource!.resourceType !== "Provenance") {
+        if (isMessage) {
+          issues.push({ severity: "information", path: afterScan, code: "informational", message: `Entry ${label(e)} isn't reachable by traversing forwards from the MessageHeader. Check that this is meant to be included (needed to process the message)` });
+        } else {
+          issues.push({ severity: "warning", path: afterScan, code: "invalid", message: `Entry ${label(e)} isn't reachable by traversing forwards from the Composition. Only Provenance is approved to be used this way (R4 section 3.3.1)` });
         }
-        found = true;
-        visit(e);
       }
-    } while (found);
+    }
     list.forEach((e, i) => {
-      if (visited.has(e)) return;
+      if (visited.has(i)) return;
       const p = `${path}.entry[${i + 1}]`; // (sic)
       if (isMessage) {
         issues.push({ severity: "warning", path: p, code: "informational", message: `Entry ${label(e)} isn't reachable by traversing links (forward or backward) from the MessageHeader, so its presence should be reviewed (is it needed to process the message?)` });
@@ -2792,7 +2856,7 @@ export class InstanceValidator {
     isResourceRoot = false,
   ): Promise<void> {
     if (depth > MAX_DEPTH) {
-      issues.push({ severity: "warning", path: item.path, code: "too-deep", message: "Validation depth limit reached" });
+      issues.push(tooDeep(item.path));
       return;
     }
     const v = item.value;
@@ -4768,6 +4832,7 @@ export class InstanceValidator {
       }
       const re = javaFullRegex(regex);
       if (re) ok = rule(re.test(s), `Element value '${s}' does not meet regex '${regex}'`) && ok; // TYPE_SPECIFIC_CHECKS_DT_PRIMITIVE_REGEX
+      else issues.push({ severity: "information", path, code: "informational", message: `The regex '${regex}' of this element could not be compiled, so it was not checked`, unchecked: { kind: "limit", canonical: VALIDATOR_LIMITS.regex } });
     }
 
     if (typeCode === "boolean") ok = rule(s === "true" || s === "false", "Boolean values must be 'true' or 'false'") && ok;
@@ -6180,7 +6245,14 @@ export class InstanceValidator {
           };
           if (res.some(isHost)) ok = true;
         } catch {
-          ok = true; // not evaluable locally: not judged
+          ok = true; // not evaluable locally: not judged, and said so
+          issues.push({
+            severity: "information",
+            path: host.path,
+            code: "invariant-unevaluated",
+            message: `Extension context '${expr}' of ${ext.url} could not be evaluated locally; not a conformance failure`,
+            unchecked: { kind: "invariant", canonical: `${ext.url}#context` },
+          });
         }
       } else {
         ok = true; // unknown context type
@@ -6429,7 +6501,11 @@ export class InstanceValidator {
   }
 
   private async structuralPass(resource: Record<string, any>, path: string, issues: Issue[], depth: number): Promise<void> {
-    if (depth > MAX_DEPTH || typeof resource.resourceType !== "string") return;
+    if (depth > MAX_DEPTH) {
+      issues.push(tooDeep(path));
+      return;
+    }
+    if (typeof resource.resourceType !== "string") return;
     const sdx = await this.sdx(CORE + resource.resourceType);
     if (!sdx) return;
     await this.structObject(sdx, sdx.root, resource, path, issues, depth, true);
@@ -6444,7 +6520,10 @@ export class InstanceValidator {
     depth: number,
     isRoot: boolean,
   ): Promise<void> {
-    if (depth > MAX_DEPTH) return;
+    if (depth > MAX_DEPTH) {
+      issues.push(tooDeep(path));
+      return;
+    }
     const groups = sdx.children(el);
     if (!groups || groups.size === 0) return;
     const unknown = (key: string): void => {
@@ -6644,6 +6723,90 @@ export class InstanceValidator {
         profile: sdx.url,
       });
     }
+  }
+}
+
+/** `seeds` and everything reachable from them along `edges`, added to `visited` (iterative: a chain can be long). */
+export function forwardClosure(seeds: number[], edges: number[][], visited: Set<number>, onVisit?: (at: number) => void): void {
+  const stack = [...seeds];
+  while (stack.length) {
+    const at = stack.pop()!;
+    if (visited.has(at)) continue;
+    visited.add(at);
+    onVisit?.(at);
+    for (const t of edges[at]) if (!visited.has(t)) stack.push(t);
+  }
+}
+
+/** Smallest-first queue of positions. */
+class MinHeap {
+  private readonly a: number[] = [];
+  get size(): number {
+    return this.a.length;
+  }
+  push(v: number): void {
+    const a = this.a;
+    let i = a.length;
+    a.push(v);
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (a[p] <= a[i]) break;
+      [a[p], a[i]] = [a[i], a[p]];
+      i = p;
+    }
+  }
+  pop(): number {
+    const a = this.a;
+    const top = a[0];
+    const last = a.pop()!;
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1;
+        const r = l + 1;
+        let m = i;
+        if (l < a.length && a[l] < a[m]) m = l;
+        if (r < a.length && a[r] < a[m]) m = r;
+        if (m === i) break;
+        [a[m], a[i]] = [a[i], a[m]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+/**
+ * BundleValidator.checkAllInterlinked's backwards pass (7.0.1): "repeat: scan the entries in order; an unvisited entry with
+ * a visited target is reported and its forward closure visited; until a scan finds nothing". The same order of reports
+ * in O((n + e) log n) instead of one scan per report (a chain listed backwards took n scans): positions that become
+ * eligible ahead of the scan belong to this scan, the others to the next. Adds to `visited`; returns the reported positions.
+ */
+export function backwardScan(edges: number[][], visited: Set<number>): number[] {
+  const sources: number[][] = edges.map(() => []);
+  edges.forEach((ts, from) => {
+    for (const t of ts) sources[t].push(from);
+  });
+  let scan = new MinHeap();
+  let later = new MinHeap();
+  let cursor = -1;
+  const reached = (t: number): void => {
+    for (const s of sources[t]) if (!visited.has(s)) (s > cursor ? scan : later).push(s);
+  };
+  for (const t of visited) reached(t);
+  const out: number[] = [];
+  for (;;) {
+    if (scan.size === 0) {
+      if (later.size === 0) return out;
+      [scan, later] = [later, scan];
+      cursor = -1;
+    }
+    const at = scan.pop();
+    if (visited.has(at)) continue;
+    cursor = at;
+    out.push(at);
+    forwardClosure([at], edges, visited, reached);
   }
 }
 

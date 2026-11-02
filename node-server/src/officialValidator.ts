@@ -286,19 +286,40 @@ export function relocateBundleIssues(bundle: unknown, issues: Array<JsonObj>): v
   const b = bundle as JsonObj;
   if (!b || b.resourceType !== "Bundle" || !Array.isArray(b.entry)) return;
   const entries: JsonObj[] = b.entry;
+  // first entry by fullUrl and first Reference by value, built on first use (one scan per issue is quadratic in a large Bundle)
+  let byFullUrl: Map<unknown, number> | null = null;
+  const entryAt = (u: string): number => {
+    if (!byFullUrl) {
+      byFullUrl = new Map();
+      entries.forEach((e, j) => {
+        if (e && !byFullUrl!.has(e.fullUrl)) byFullUrl!.set(e.fullUrl, j);
+      });
+    }
+    return byFullUrl.get(u) ?? -1;
+  };
+  let firstRef: Map<string, string> | null = null;
+  const refLocation = (ref: string): string | null => {
+    if (!firstRef) {
+      firstRef = new Map();
+      entries.forEach((e, j) => {
+        for (const r of allRefs(e?.resource)) if (!firstRef!.has(r.ref)) firstRef!.set(r.ref, `Bundle.entry[${j}].resource${r.path}`);
+      });
+    }
+    return firstRef.get(ref) ?? null;
+  };
   for (const i of issues) {
     const msg = String(i.message ?? "");
     // BundleValidator's fullUrl rules are all reported at `Bundle.entry[0]` (stack.addToLiteralPath(ENTRY, PATH_ARG))
     const fu = /^The (?:fullUrl '([^']+)' looks like a RESTful server URL|fullUrl must be an absolute URL \(not '([^']*)'\))|^The canonical URL \([^)]*\) cannot match the fullUrl \(([^)]*)\)/u.exec(msg);
     if (fu && /^Bundle\.entry\[0\]$/u.test(String(i.path ?? ""))) {
       const u = fu[1] ?? fu[2] ?? fu[3];
-      const j = entries.findIndex((e) => e && e.fullUrl === u);
+      const j = entryAt(u);
       if (j >= 0) i.location_path = `Bundle.entry[${j}]`;
       continue;
     }
     const reach = /^Entry '([^']+)' isn't reachable by traversing (?:links|forwards)/u.exec(msg);
     if (reach) {
-      const j = entries.findIndex((e) => e && e.fullUrl === reach[1]);
+      const j = entryAt(reach[1]);
       if (j >= 0) i.location_path = `Bundle.entry[${j}]`;
       continue;
     }
@@ -323,13 +344,8 @@ export function relocateBundleIssues(bundle: unknown, issues: Array<JsonObj>): v
       }
       if (found) break;
     }
-    if (!found) {
-      // anywhere in the Bundle: the first Reference with this value
-      for (let j = 0; j < entries.length && !found; j++) {
-        const hit = allRefs(entries[j]?.resource).find((r) => r.ref === ref);
-        if (hit) found = `Bundle.entry[${j}].resource${hit.path}`;
-      }
-    }
+    // anywhere in the Bundle: the first Reference with this value
+    found ??= refLocation(ref);
     if (found) i.location_path = found;
   }
 }

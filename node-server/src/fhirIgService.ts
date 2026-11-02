@@ -27,6 +27,7 @@ import * as terminology from "./fhirTerminology.js";
 import * as validator from "./fhirValidator.js";
 import { OFFICIAL_SOURCE, officialValidator, relocateBundleIssues } from "./officialValidator.js";
 import { DbValidatorResolver, icd10cmStrict } from "./fhirValidationResolver.js";
+import { withValidationSnapshot } from "./fhirValidationSnapshot.js";
 import { composeContains } from "./fhirCodeSystem.js";
 import * as reference from "./fhirReference.js";
 import * as authoring from "./fhirAuthoring.js";
@@ -2025,7 +2026,11 @@ export class FHIRIGService {
     return out;
   }
 
-  private async validateCore(pkg: PackageRow, resource: Record<string, any>, profile: string | null): Promise<Record<string, any>> {
+  private validateCore(pkg: PackageRow, resource: Record<string, any>, profile: string | null): Promise<Record<string, any>> {
+    return withValidationSnapshot(() => this.validateCorePinned(pkg, resource, profile));
+  }
+
+  private async validateCorePinned(pkg: PackageRow, resource: Record<string, any>, profile: string | null): Promise<Record<string, any>> {
     const profiles: string[] = [];
     let profileId: string | null = null;
     const issues: Record<string, any>[] = [];
@@ -2058,10 +2063,9 @@ export class FHIRIGService {
     mark("resolve_profile");
     const resolver = new DbValidatorResolver(pkg);
     const engine = new validator.InstanceValidator(resolver);
-    // v8: the resolver degrades gracefully on database trouble (a definition that
-    // cannot be fetched counts as absent, a code system as unknown …), which must
-    // not read as a clean pass: every failed lookup is tracked and reported as an
-    // error issue (`exception`) that makes the verdict invalid and incomplete.
+    // v8: a failed lookup must not read as a clean pass; parity v3: nor as a finding. The engine reports the checks
+    // that needed it as unverified (or the whole run, when a definition is missing), with `checked_fully: false`;
+    // failures it did not see (around the resolver) are tracked here.
     // v18 R1 / parity v2: the official HL7 validator (resident validator_cli per IG, officialValidator.ts) is the
     // judge when one serves this package; the built-in TS validator is only the fallback (mode `prefer`).
     let engineSource: string = validator.SOURCE;
@@ -2097,8 +2101,10 @@ export class FHIRIGService {
       pushAll(issues, tracked.result as Record<string, any>[]);
       if (tracked.total > 0) {
         logError("fhir validation: definition / terminology lookups failed", { failed: tracked.total, first: tracked.failures[0]?.message });
-        issues.push(validator.lookupFailureIssue(tracked.total, tracked.failures));
+        if (!issues.some((i) => i.code === validator.LOOKUP_FAILURE_CODE)) issues.push(validator.lookupFailureIssue(tracked.total, tracked.failures));
       }
+      const lookup = issues.find((i) => i.code === validator.LOOKUP_FAILURE_CODE);
+      if (lookup) unverified = [{ path: "", message: lookup.message, reason: "definition / terminology lookup failed — not verified; validate again later" }];
     }
     mark("validate");
     // Additive `suggestions` / `caused_by` on issues (fhirSuggestions/); never changes the verdict.
@@ -2137,7 +2143,8 @@ export class FHIRIGService {
       });
     }
     return {
-      valid: validator.isValid(issues),
+      // null: no verdict (a definition could not be loaded); neither a pass nor a finding
+      valid: validator.hasNoVerdict(issues) ? null : validator.isValid(issues),
       profile: profileId,
       source: engineSource,
       // only when an official validator serves the package: "hl7-official" or "mcp-fallback"
@@ -2241,17 +2248,42 @@ export class FHIRIGService {
       pkg = await this.resolve(packageId, version, { canonicals: [profile], metaProfiles: metaProfilesOf(resource) });
     } catch (e) {
       if (this.isIGNotFound(e)) return await this.igErr(e);
-      // Database trouble before validation even started (v8): a well-formed
-      // invalid result with a fatal issue, never a failed call.
-      return this.ok(this.validationCrash(e, "fhir_validate_resource"), null);
+      // Database trouble before validation even started (v8): a well-formed result without a verdict, never a failed call.
+      return this.ok(this.validationUnavailable(e, "fhir_validate_resource"), null);
     }
-    let data: Record<string, any>;
-    try {
-      data = await this.validateCore(pkg, resource, profile);
-    } catch (e) {
-      data = this.validationCrash(e, "fhir_validate_resource");
-    }
+    const data = await this.coreOrFailure("fhir_validate_resource", () => this.validateCore(pkg, resource, profile));
     return this.ok(this.withDeps(data, pkg), pkg);
+  }
+
+  /** validateCore's result; if it throws, a failure with failed queries behind it has no verdict, anything else is a crash. */
+  private async coreOrFailure(tool: string, run: () => Promise<Record<string, any>>): Promise<Record<string, any>> {
+    const t = await trackQueryFailures(async (): Promise<{ core?: Record<string, any>; thrown?: unknown }> => {
+      try {
+        return { core: await run() };
+      } catch (e) {
+        return { thrown: e };
+      }
+    });
+    if (t.result.core) return t.result.core;
+    return t.total > 0 ? this.validationUnavailable(t.result.thrown, tool) : this.validationCrash(t.result.thrown, tool);
+  }
+
+  /**
+   * parity v3: the database failed before the validator could judge anything. A transient failure is not a finding: no
+   * verdict (`valid: null`), `checked_fully: false`, reported as unverified; the next call starts afresh.
+   */
+  private validationUnavailable(e: unknown, tool: string): Record<string, any> {
+    const err = e as { code?: unknown; message?: unknown } | null;
+    logError(`${tool}: lookups failed before validation`, { error: String(err?.message ?? e) });
+    const issues = [validator.lookupFailureIssue(1, [{ code: typeof err?.code === "string" ? err.code : null, message: String(err?.message ?? e).slice(0, 300) }], true)];
+    return {
+      valid: null,
+      profile: null,
+      source: validator.SOURCE,
+      issues,
+      ...validator.completenessOf(issues),
+      unverified: [{ path: "", message: issues[0].message, reason: "definition / terminology lookup failed — not verified; validate again later" }],
+    };
   }
 
   /**
@@ -2360,8 +2392,8 @@ export class FHIRIGService {
       pkg = await this.resolve(packageId, version, { canonicals: [bundleProfile], metaProfiles: metaProfilesOf(bundle) });
     } catch (e) {
       if (this.isIGNotFound(e)) return await this.igErr(e);
-      const crash = this.validationCrash(e, "fhir_validate_bundle");
-      return this.ok({ ...crash, entries: [], referenceIssues: [] }, null);
+      const failure = this.validationUnavailable(e, "fhir_validate_bundle");
+      return this.ok({ ...failure, entries: [], referenceIssues: [] }, null);
     }
     // normalize_ids (1.7.0): finalize first (fullUrl / reference / id, fhirBundleFinalize.ts), validate the
     // normalised Bundle, and report what was fixed as information issues + normalized_bundle / id_changes.
@@ -2378,12 +2410,7 @@ export class FHIRIGService {
         fin = null;
       }
     }
-    let core: Record<string, any>;
-    try {
-      core = await this.validateCore(pkg, target, bundleProfile && bundleProfile.trim() ? bundleProfile.trim() : null);
-    } catch (e) {
-      core = this.validationCrash(e, "fhir_validate_bundle");
-    }
+    const core = await this.coreOrFailure("fhir_validate_bundle", () => this.validateCore(pkg, target, bundleProfile && bundleProfile.trim() ? bundleProfile.trim() : null));
     const idBlock: Record<string, any> = {};
     if (fin) {
       pushAll(core.issues as Record<string, any>[], normalizationIssues(fin.changes));
@@ -2481,6 +2508,7 @@ export class FHIRIGService {
       // the reasons checked_fully is false, as fhir_validate_resource reports them
       ...(core.codes_unchecked ? { codes_unchecked: core.codes_unchecked } : {}),
       ...(core.slices_unchecked ? { slices_unchecked: core.slices_unchecked } : {}),
+      ...(core.limits_exceeded ? { limits_exceeded: core.limits_exceeded } : {}),
       ...(core.invariants_unchecked ? { invariants_unchecked: core.invariants_unchecked } : {}),
       ...(core.lookups_failed ? { lookups_failed: core.lookups_failed } : {}),
       ...(core.undecided_causes ? { undecided_causes: core.undecided_causes } : {}),
@@ -2512,7 +2540,7 @@ export class FHIRIGService {
       }
       const engine = new validator.InstanceValidator(new DbValidatorResolver(pkg));
       const tracked = await trackQueryFailures(() => engine.validate(toPlain(bundle) as Record<string, any>, { profiles }));
-      if (tracked.total > 0) return null;
+      if (tracked.total > 0 || tracked.result.some((i) => i.code === validator.LOOKUP_FAILURE_CODE)) return null;
       return tracked.result as Record<string, any>[];
     } catch (e) {
       logError("v19 finalize guard: validation failed", { error: String((e as Error).message) });

@@ -46,6 +46,7 @@ import {
 } from "./fhirExternalTerminology.js";
 import { probeQueryFailures, query } from "./db.js";
 import { TtlMemo } from "./ttlMemo.js";
+import { TransientLookupError, currentSnapshot } from "./fhirValidationSnapshot.js";
 import { generateSnapshotAsync } from "./fhirSnapshotGenerator.js";
 import { fixPackageResource } from "./fhirPackageHacker.js";
 import { logWarning } from "./logger.js";
@@ -54,10 +55,8 @@ import { enumeratedCodes } from "./codeAcceptance.js";
 
 const SD_TTL_MS = 30 * 60 * 1000;
 const SD_CACHE_MAX = 1500;
-const sdCache = new Map<string, { at: number; sd: Record<string, any> | null }>();
-/** SD cache keys whose snapshot is being generated (a base cycle must not recurse). */
-const snapshotInFlight = new Set<string>();
-const defCache = new Map<string, { at: number; ok: boolean }>();
+const sdCache = new terminology.TtlCache<Record<string, any> | null>(Infinity, SD_CACHE_MAX);
+const defCache = new terminology.TtlCache<boolean>(Infinity, SD_CACHE_MAX);
 
 /**
  * Systems the HL7 validator knows natively that we cannot check offline (or
@@ -470,6 +469,24 @@ async function memoised<V>(memo: TtlMemo<V>, key: string, compute: () => Promise
   if (hit) return hit;
   const { result, failed } = await probeQueryFailures(compute);
   if (failed === 0) memo.set(key, result);
+  else throwInSnapshot(failed);
+  return result;
+}
+
+/**
+ * Inside a validation snapshot a lookup that failed has no answer: its fail-open result ("not found", "no such code")
+ * must not become a finding, so the failure reaches InstanceValidator, which reports the check as unverified. Outside
+ * one (the suggestion / repair / tool callers) the resolver keeps degrading gracefully.
+ */
+function throwInSnapshot(failed: number): void {
+  if (failed > 0 && currentSnapshot()) throw new TransientLookupError(`${failed} database lookup${failed === 1 ? "" : "s"} failed`);
+}
+
+/** Runs a fail-open lookup; see throwInSnapshot. */
+async function guarded<V>(compute: () => Promise<V>): Promise<V> {
+  if (!currentSnapshot()) return compute();
+  const { result, failed } = await probeQueryFailures(compute);
+  throwInSnapshot(failed);
   return result;
 }
 
@@ -518,11 +535,19 @@ export class DbValidatorResolver implements ValidatorResolver {
     });
   }
 
-  async fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
+  fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
+    return this.loadStructureDefinition(url, []);
+  }
+
+  /**
+   * `chain`: the definitions whose snapshot this call is generating. A base cycle stops there and is per call chain:
+   * a process-wide "in flight" mark made a concurrent validation of the same differential see it without a snapshot.
+   */
+  private async loadStructureDefinition(url: string, chain: readonly string[]): Promise<Record<string, any> | null> {
     const { url: canonical, version } = splitCanonicalVersion(url);
     const key = this.closure + "|" + canonical + (version !== null ? "|" + version : "");
     const hit = sdCache.get(key);
-    if (hit && Date.now() - hit.at < SD_TTL_MS) return hit.sd;
+    if (hit !== undefined) return hit;
     let sd =
       version !== null
         ? await this.loadVersioned("StructureDefinition", canonical, version)
@@ -531,28 +556,37 @@ export class DbValidatorResolver implements ValidatorResolver {
           await terminology.loadArtifactByCanonical("StructureDefinition", canonical, this.pkg, { hl7Current: true, packageFix: fixPackageResource });
     // A differential-only definition gets its snapshot generated, as the HL7 context does when it loads one
     // (ContextUtilities.generateSnapshot → ProfileUtilities); a cycle or a failure leaves it as stored.
-    if (sd && !(Array.isArray(sd.snapshot?.element) && sd.snapshot.element.length) && !snapshotInFlight.has(key)) {
-      snapshotInFlight.add(key);
-      try {
-        sd = (await generateSnapshotAsync(sd, (u) => this.fetchStructureDefinition(u))) ?? sd;
-      } catch (e) {
-        logWarning("snapshot generation failed", { url: canonical, error: (e as Error).message });
-      } finally {
-        snapshotInFlight.delete(key);
+    if (sd && !(Array.isArray(sd.snapshot?.element) && sd.snapshot.element.length)) {
+      if (chain.includes(key)) return sd; // a cycle: as stored, and not remembered (the outer call stores the result)
+      const generating = sd;
+      let lookupFailed = false;
+      const { result, failed } = await probeQueryFailures(async () => {
+        try {
+          const fetchBase = (u: string): Promise<Record<string, any> | null> =>
+            this.loadStructureDefinition(u, [...chain, key]).catch((e) => {
+              lookupFailed = true; // also a failure of another request's in-flight lookup, which no probe here counts
+              throw e;
+            });
+          return (await generateSnapshotAsync(generating, fetchBase)) ?? generating;
+        } catch (e) {
+          logWarning("snapshot generation failed", { url: canonical, error: (e as Error).message });
+          return generating;
+        }
+      });
+      // A generation that hit a transient failure says nothing about the definition: not remembered as snapshot-less.
+      if (failed > 0 || lookupFailed) {
+        throwInSnapshot(Math.max(failed, 1));
+        return result;
       }
+      sd = result;
     }
-    if (sdCache.size >= SD_CACHE_MAX) {
-      const first = sdCache.keys().next().value;
-      if (first !== undefined) sdCache.delete(first);
-    }
-    sdCache.set(key, { at: Date.now(), sd });
+    sdCache.set(key, sd);
     return sd;
   }
 
   fetchValueSet(url: string): Promise<Record<string, any> | null> {
     const { url: canonical, version } = splitCanonicalVersion(url);
-    if (version === null) return terminology.loadValueSet(url, this.pkg);
-    return this.loadVersioned("ValueSet", canonical, version);
+    return guarded(() => (version === null ? terminology.loadValueSet(url, this.pkg) : this.loadVersioned("ValueSet", canonical, version)));
   }
 
   valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
@@ -576,20 +610,24 @@ export class DbValidatorResolver implements ValidatorResolver {
 
   async codeSystemResolvable(system: string): Promise<boolean> {
     if (txKnownSystem(system)) return true;
-    try {
-      return await terminology.codeSystemInClosure(system, this.pkg);
-    } catch {
-      return true; // never invent a verdict on DB trouble
-    }
+    return guarded(async () => {
+      try {
+        return await terminology.codeSystemInClosure(system, this.pkg);
+      } catch {
+        return true; // never invent a verdict on DB trouble
+      }
+    });
   }
 
   /** Versions of the CodeSystem in the closure (G3 determineVersion); [] on DB trouble (no version issue invented). */
   async codeSystemVersions(system: string): Promise<string[]> {
-    try {
-      return await terminology.codeSystemVersionsInClosure(system, this.pkg);
-    } catch {
-      return [];
-    }
+    return guarded(async () => {
+      try {
+        return await terminology.codeSystemVersionsInClosure(system, this.pkg);
+      } catch {
+        return [];
+      }
+    });
   }
 
   /** The CodeSystem resource of a canonical (closure; `|version` honoured); null on DB trouble. */
@@ -604,51 +642,55 @@ export class DbValidatorResolver implements ValidatorResolver {
 
   /** A CodeSystem with this canonical in the closure (binding → CodeSystem URL); false on DB trouble (no invented error). */
   async codeSystemExists(url: string): Promise<boolean> {
-    try {
-      return await terminology.codeSystemInClosure(url.split("|")[0], this.pkg);
-    } catch {
-      return false;
-    }
+    return guarded(async () => {
+      try {
+        return await terminology.codeSystemInClosure(url.split("|")[0], this.pkg);
+      } catch {
+        return false;
+      }
+    });
   }
 
   async codeSystemLocal(system: string): Promise<boolean> {
     if (txKnownSystem(system)) return false; // validated server-side by the HL7 validator
-    try {
-      const cs = await terminology.loadArtifactByCanonical("CodeSystem", system, this.pkg);
-      return !!cs && (cs.content === "complete" || cs.content === "fragment");
-    } catch {
-      return false; // DB trouble: keep the "no match" verdict
-    }
+    return guarded(async () => {
+      try {
+        const cs = await terminology.loadArtifactByCanonical("CodeSystem", system, this.pkg);
+        return !!cs && (cs.content === "complete" || cs.content === "fragment");
+      } catch {
+        return false; // DB trouble: keep the "no match" verdict
+      }
+    });
   }
 
   /** Does any loaded package (any version) define a conformance resource with this canonical URL? */
   /** (v17.5) A definition of `url` with exactly `version` installed (any package); fail-open on DB trouble. */
   async definitionVersionExists(url: string, version: string): Promise<boolean> {
-    try {
-      return (await query("SELECT 1 FROM fhir.artifacts WHERE canonical_url = $1 AND raw_json->>'version' = $2 LIMIT 1", [url, version])).rows.length > 0;
-    } catch {
-      return true;
-    }
+    return guarded(async () => {
+      try {
+        return (await query("SELECT 1 FROM fhir.artifacts WHERE canonical_url = $1 AND raw_json->>'version' = $2 LIMIT 1", [url, version])).rows.length > 0;
+      } catch {
+        return true;
+      }
+    });
   }
 
   async definitionExists(url: string): Promise<boolean> {
     const canonical = url.split("|")[0];
     const hit = defCache.get(canonical);
-    if (hit && Date.now() - hit.at < SD_TTL_MS) return hit.ok;
-    let ok = true; // fail-open on DB trouble: never invent a resolution error
-    try {
-      ok = (await query("SELECT 1 FROM fhir.artifacts WHERE canonical_url = $1 LIMIT 1", [canonical])).rows.length > 0;
-    } catch {
-      // Not cached: a transient DB error must not suppress the check for the next
-      // 30 minutes (the "reported in some rounds only" nondeterminism).
-      return true;
-    }
-    if (defCache.size >= SD_CACHE_MAX) {
-      const first = defCache.keys().next().value;
-      if (first !== undefined) defCache.delete(first);
-    }
-    defCache.set(canonical, { at: Date.now(), ok });
-    return ok;
+    if (hit !== undefined) return hit;
+    return guarded(async () => {
+      let ok = true; // fail-open on DB trouble: never invent a resolution error
+      try {
+        ok = (await query("SELECT 1 FROM fhir.artifacts WHERE canonical_url = $1 LIMIT 1", [canonical])).rows.length > 0;
+      } catch {
+        // Not cached: a transient DB error must not suppress the check for the next
+        // 30 minutes (the "reported in some rounds only" nondeterminism).
+        return true;
+      }
+      defCache.set(canonical, ok);
+      return ok;
+    });
   }
 
   checkCode(system: string, code: string, display: string | null, version: string | null = null, langs?: string[]): Promise<CodeCheck> {

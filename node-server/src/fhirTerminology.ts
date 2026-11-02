@@ -27,6 +27,8 @@ import {
 export type { Coding, ExpandResult } from "./fhirCodeSystem.js";
 import type { Icd10WhoRow, LoincOtherRow, SnomedConceptRow, SnomedDescriptionRow, SnomedEditionInfo } from "./fhirExternalTerminology.js";
 import { CVX_CODES } from "./fhirCvx.js";
+import { cacheLimits, currentSnapshot } from "./fhirValidationSnapshot.js";
+import { TtlMemo } from "./ttlMemo.js";
 
 export const SNOMED_SYSTEM = "http://snomed.info/sct";
 export const LOINC_SYSTEM = "http://loinc.org";
@@ -85,21 +87,33 @@ export class TtlCache<V> {
    * `maxWeight` bounds the summed weight of the held values (e.g. the concepts of the CodeSystem indexes): a few
    * large CodeSystems (tens of thousands of codes, hundreds of MB once indexed) must not pin the heap — release v1,
    * the staging OOM of 2026-11-01. Eviction is FIFO, by count (CACHE_MAX) and by weight.
+   * Inside a validation snapshot (fhirValidationSnapshot.ts) reads and writes are pinned: the request keeps the value it
+   * saw first, also one evicted or too heavy to be held here. Expiry and eviction only affect the next request.
    */
-  constructor(private readonly maxWeight = Infinity) {}
+  constructor(
+    private readonly maxWeight = Infinity,
+    private readonly maxEntries = CACHE_MAX,
+  ) {}
   get(key: string): V | undefined {
+    const snap = currentSnapshot();
+    if (snap?.has(this, key)) return snap.get(this, key) as V;
     const hit = this.map.get(key);
     if (!hit) return undefined;
-    if (Date.now() - hit.at > CACHE_TTL_MS) {
+    if (Date.now() - hit.at > (cacheLimits().ttlMs ?? CACHE_TTL_MS)) {
       this.drop(key);
       return undefined;
     }
+    snap?.pin(this, key, hit.value);
     return hit.value;
   }
   set(key: string, value: V, weight = 1): void {
+    currentSnapshot()?.pin(this, key, value);
     this.drop(key);
-    if (weight > this.maxWeight) return; // larger than the whole budget: not held
-    while (this.map.size && (this.map.size >= CACHE_MAX || this.total + weight > this.maxWeight)) {
+    const limit = cacheLimits();
+    const maxWeight = limit.maxWeight ?? this.maxWeight;
+    const maxEntries = limit.maxEntries ?? this.maxEntries;
+    if (weight > maxWeight || maxEntries <= 0) return; // larger than the whole budget: not held
+    while (this.map.size && (this.map.size >= maxEntries || this.total + weight > maxWeight)) {
       const first = this.map.keys().next().value;
       if (first === undefined) break;
       this.drop(first);
@@ -407,6 +421,12 @@ export async function loadValueSet(url: string, pkg: PackageRow): Promise<Record
   return vs;
 }
 
+/** A permanent "this table / column is not on this database" (a migration not applied), as opposed to a transient failure. */
+function schemaMissing(e: unknown): boolean {
+  const code = (e as { code?: string } | null)?.code;
+  return code === "42P01" || code === "42703" || code === "3F000";
+}
+
 async function tableHasRows(table: string): Promise<boolean> {
   const cached = heldCache.get(table);
   if (cached !== undefined) return cached;
@@ -464,21 +484,16 @@ const LOINC_FILTER_COLUMNS: Record<string, string> = {
 const LOINC_CLASSTYPES: Record<string, number> = { "laboratory class": 1, "clinical class": 2, "claims attachments": 3, surveys: 4 };
 
 type LoincFilterRow = Record<string, string | number | null>;
-const loincFilterRows = new Map<string, Promise<LoincFilterRow | null>>();
+const loincFilterRows = new TtlMemo<LoincFilterRow | null>(CACHE_TTL_MS, 5000);
 
-async function loincFilterRow(code: string): Promise<LoincFilterRow | null> {
-  let p = loincFilterRows.get(code);
-  if (!p) {
-    p = query<LoincFilterRow>(
+/** DB errors are not cached (TtlMemo drops a rejected lookup): a transient failure must not decide later checks. */
+function loincFilterRow(code: string): Promise<LoincFilterRow | null> {
+  return loincFilterRows.get(code, () =>
+    query<LoincFilterRow>(
       "SELECT status, class, classtype, component, property, time_aspect, system, scale_type, method_type FROM loinc.concepts WHERE loinc_num = $1",
       [code],
-    ).then((r) => r.rows[0] ?? null);
-    // DB errors are not cached (a transient failure must not decide later checks).
-    p.catch(() => loincFilterRows.delete(code));
-    if (loincFilterRows.size >= 5000) loincFilterRows.clear();
-    loincFilterRows.set(code, p);
-  }
-  return p;
+    ).then((r) => r.rows[0] ?? null),
+  );
 }
 
 /** One `=` / `in` value against a LOINC column value: true / false, undefined when only the case differs. */
@@ -694,8 +709,10 @@ export async function icd10cmEdition(): Promise<Icd10cmEditionInfo | null> {
     if (row) {
       info = { edition: row.edition, sourceFormat: row.source_format, complete: row.complete === true, codeCount: Number(row.code_count) };
     }
-  } catch {
-    info = null; // table missing (migration 20261017 not applied) → treated as incomplete
+  } catch (e) {
+    // table missing (migration 20261017 not applied) → treated as incomplete; a transient failure is not remembered
+    if (!schemaMissing(e)) return null;
+    info = null;
   }
   editionCache.set("icd-10-cm", info);
   return info;
@@ -739,7 +756,8 @@ export async function loincEdition(): Promise<{ version: string } | null> {
   try {
     const row = (await query<{ version: string }>("SELECT version FROM loinc.editions WHERE code_system = 'loinc'")).rows[0];
     info = row ? { version: row.version } : null;
-  } catch {
+  } catch (e) {
+    if (!schemaMissing(e)) return null; // transient: answered as unknown, not remembered
     info = null;
   }
   loincEditionCache.set("loinc", info);
@@ -758,7 +776,8 @@ export async function snomedEdition(): Promise<SnomedEditionInfo | null> {
       )
     ).rows[0];
     info = row ? { moduleId: String(row.module_id), versionDate: row.version_date, includesInactive: row.includes_inactive === true } : null;
-  } catch {
+  } catch (e) {
+    if (!schemaMissing(e)) return null; // transient: answered as unknown, not remembered
     info = null;
   }
   snomedEditionCache.set("snomed", info);
@@ -847,7 +866,8 @@ export async function icd10WhoEdition(): Promise<{ edition: string; complete: bo
       await query<{ edition: string; complete: boolean }>("SELECT edition, complete FROM icd.editions WHERE code_system = 'icd-10'")
     ).rows[0];
     info = row ? { edition: row.edition, complete: row.complete === true } : null;
-  } catch {
+  } catch (e) {
+    if (!schemaMissing(e)) return null; // transient: answered as unknown, not remembered
     info = null;
   }
   whoEditionCache.set("icd-10", info);
@@ -907,7 +927,8 @@ export async function rxnormEdition(): Promise<{ version: string; releaseDate: s
       )
     ).rows[0];
     info = row ? { version: row.version, releaseDate: row.release_date } : null;
-  } catch {
+  } catch (e) {
+    if (!schemaMissing(e)) return null; // transient: answered as unknown, not remembered
     info = null;
   }
   rxnormEditionCache.set("rxnorm", info);

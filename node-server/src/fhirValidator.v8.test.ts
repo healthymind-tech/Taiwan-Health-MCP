@@ -144,7 +144,10 @@ test("judgeRxnorm: a display naming another drug is an error even with only the 
 // 4. Lookup failures are never a clean pass
 // --------------------------------------------------------------------------- //
 
-test("trackQueryFailures counts failed queries (no pool here) and lookupFailureIssue makes the run invalid and incomplete", async () => {
+// parity v3: a transient failure is not a finding (InstanceValidator.java:1796-1798, tag 7.0.1: an infrastructure failure of
+// the terminology service is a txWarning, TERMINOLOGY_TX_CONFIRM_*), so the issue is a warning; it stays "never a clean pass"
+// through checked_fully / lookups_failed.
+test("trackQueryFailures counts failed queries (no pool here) and lookupFailureIssue makes the run incomplete, not invalid", async () => {
   const t = await trackQueryFailures(async () => {
     try {
       await query("SELECT 1");
@@ -158,11 +161,11 @@ test("trackQueryFailures counts failed queries (no pool here) and lookupFailureI
   assert.equal(t.failures.length, 1);
   assert.equal(t.failures[0].code, null);
   const issue = lookupFailureIssue(t.total, t.failures);
-  assert.equal(issue.severity, "error");
+  assert.equal(issue.severity, "warning");
   assert.equal(issue.code, LOOKUP_FAILURE_CODE);
   assert.match(issue.message, /^Validation incomplete: 1 definition \/ terminology lookup failed/);
   const issues: Array<Record<string, any>> = [{ severity: "warning", path: "", code: "x", message: "w" }, issue];
-  assert.equal(isValid(issues), false);
+  assert.equal(isValid(issues), true);
   const c = completenessOf(issues);
   assert.equal(c.checked_fully, false);
   assert.equal(c.lookups_failed, 1);

@@ -181,11 +181,11 @@ export function primeKnownDefects(packages: ReadonlyArray<{ package_id: string; 
   memo.set(packages.map((p) => `${p.package_id}#${p.version}`).sort().join(","), defects);
 }
 
-/** Known defects of the profiles of packages (memoised 5 min; fail-open: [] on any DB trouble). */
+/** Known defects of the profiles of packages (memoised 5 min; fail-open: [] on any DB trouble, which is not memoised). */
 export function knownDefects(packages: ReadonlyArray<{ package_id: string; version: string }>): Promise<KnownDefect[]> {
   const key = packages.map((p) => `${p.package_id}#${p.version}`).sort().join(",");
-  return memo.get(key, async () => {
-    try {
+  return memo
+    .get(key, async () => {
       await ensureKnownDefectsSchema();
       const out: KnownDefect[] = [];
       for (const p of packages) {
@@ -207,10 +207,8 @@ export function knownDefects(packages: ReadonlyArray<{ package_id: string; versi
         }
       }
       return out;
-    } catch {
-      return [];
-    }
-  });
+    })
+    .catch(() => []);
 }
 
 // ------------------------------------------------------------------------------------------------- self-check run
