@@ -263,7 +263,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.79.0 (parity v3 tx-validator-wiring, round 9): SERVER_SIDE_LIST before the capability list, a value of another type on a bound primitive, coding as an object, an empty system, a unit without a code.
   // 1.79.0: a whitespace-only display is ignored only where the terminology server answers; a CodeSystem held complete judges it (jar, one item per JVM).
   // 1.81.0 (parity v3 wrong choice, jar): parser shape by the written type, children of a value of another type against the profile's type, slices on the written type, core Extension pass.
-  fhir_validate_bundle: "1.81.0",
+  fhir_validate_bundle: "1.82.0",
+  // 1.80.0 (parity v3 tx-validator-wiring, ROUND 9): a system neither held nor preferred by the server is fully checked: the validator's warning, no-local-data in extended_findings.
   // 1.75.0 (parity v3 tx-validator-wiring, round 9): a coding without a code is a coding (NoValid_*_CC, NO_CODE_PROVIDED_VERSION, the server's Coding has no code); Coding.system of a number or with whitespace as the validator.
   // 1.68.0 (parity v3 tx-validator-wiring, round 7): answers locally what the terminology server would: membership from local tables (concept in / not-in, ICD-10-CM is-a, RxNorm TTY, SNOMED is-not-a and ECL, ISO 3166, UCUM, CVX), urn:oid systems nobody holds are UNKNOWN_CODESYSTEM, a CodeableConcept of a system nobody holds has no binding issue, inactive SNOMED concepts are in no hierarchy, R4 core v2 tables with the version in the url, ATC displays against any installed ValueSet.
   // 1.69.0 (parity v3 tx-validator-wiring, round 9): systems the server answers but nobody holds here (EDQM, ICD-O-3, ICD-11, HCPCS …) are undecided, not UNKNOWN_CODESYSTEM; a Coding.system spelled url|version is checked as that version.
@@ -338,7 +339,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.66.0: validation as fhir_validate_bundle 1.69.0 (parity v3 review-structure, checked on the jar).
   // 1.76.0: validation as fhir_validate_bundle 1.79.0.
   // 1.78.0: validation as fhir_validate_bundle 1.81.0.
-  fhir_validate_resource: "1.78.0",
+  fhir_validate_resource: "1.79.0",
+  // 1.77.0: validation as fhir_validate_bundle 1.80.0.
   // 1.72.0: validation as fhir_validate_bundle 1.75.0.
   // 1.65.0: validation as fhir_validate_bundle 1.68.0.
   // 1.66.0: validation as fhir_validate_bundle 1.69.0.

@@ -45,7 +45,7 @@ import { XVER_SOURCE, xverDefinition, xverElementId, xverMatchingUrl, xverStatus
 import { CANONICAL_RESOURCES, hl7UrlMustResolve, uriResolutionExempt, urlResolveMessage, urnSyntaxIssue } from "./fhirUriRules.js";
 import { codingVersionIssue } from "./fhirExternalTerminology.js";
 import { codingVersionIssues } from "./fhirCsVersion.js";
-import { isAbsoluteUrl } from "./fhirSpecialSystems.js";
+import { isAbsoluteUrl, serverPrefers } from "./fhirSpecialSystems.js";
 import { validateCodeSystemResource } from "./fhirCodeSystemResource.js";
 import { validateConceptMapResource } from "./fhirConceptMapResource.js";
 import { validateValueSetResource } from "./fhirValueSetResource.js";
@@ -298,8 +298,6 @@ export interface ValidatorResolver {
    * Optional; without it every system counts as resolvable.
    */
   codeSystemResolvable?(system: string): Promise<boolean>;
-  /** The system lies under the canonical of a package of the closure (http / https alike). */
-  systemInIgNamespace?(system: string): Promise<boolean>;
   /**
    * Does the package closure hold this code system as a CodeSystem resource with
    * content complete / fragment that the HL7 validator checks locally (i.e. not a
@@ -6575,15 +6573,14 @@ export class InstanceValidator {
       // hl7.org/fhir space: validator_cli 7.0.1 + tx.fhir.org answers
       // http://hl7.org/fhir/sid/icd-10-pcs with this warning plus the URL-resolution
       // error from checkUri (v8 probes P-*), not Terminology_TX_System_Unknown.
-      // Nothing here says the terminology server does not hold it (ICD-11: it does, and a wrong display is its error):
-      // not a checked code, unless the system lies in an installed IG's own namespace, which no server serves.
-      const igOwn = !this.resolver.systemInIgNamespace || (await this.resolver.systemInIgNamespace(system));
+      // ROUND 9: the server does not list it and nothing holds it, so the warning is all the validator does: fully checked.
+      // extended_findings counts it (no-local-data). A resolver saying this of a system the server lists has not checked it.
       issues.push({
         severity: "warning",
         path: `${item.path}.system`,
         code: "not-found",
         message: `A definition for CodeSystem '${system}' could not be found, so the code cannot be validated`,
-        ...(igOwn ? {} : { unchecked: { kind: "code" as const, canonical: system } }),
+        ...(serverPrefers(system) === true ? { unchecked: { kind: "code" as const, canonical: system } } : {}),
       });
     } else if (r.status === "invalid-code") {
       issues.push(this.invalidCodeIssue(r, `${item.path}.${r.at ?? "code"}`, system));

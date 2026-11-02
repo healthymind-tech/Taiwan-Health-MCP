@@ -614,21 +614,6 @@ export class DbValidatorResolver implements ValidatorResolver {
     });
   }
 
-  private igCanonicals: Promise<string[]> | null = null;
-
-  async systemInIgNamespace(system: string): Promise<boolean> {
-    const bare = (u: string): string => u.replace(/^https?:\/\//u, "").replace(/\/$/u, "");
-    this.igCanonicals ??= query<{ canonical: string | null }>("SELECT DISTINCT canonical FROM fhir.ig_packages WHERE (package_id, version) IN (SELECT * FROM unnest($1::text[], $2::text[]))", terminology.closureArrays(this.pkg)).then((r) =>
-      r.rows.map((x) => bare(String(x.canonical ?? ""))).filter((c) => c !== ""),
-    );
-    try {
-      const sys = bare(system);
-      return (await this.igCanonicals).some((c) => sys === c || sys.startsWith(`${c}/`));
-    } catch {
-      return true; // never invent "not checked" on DB trouble
-    }
-  }
-
   async codeSystemResolvable(system: string): Promise<boolean> {
     if (txKnownSystem(system)) return true;
     return guarded(async () => {

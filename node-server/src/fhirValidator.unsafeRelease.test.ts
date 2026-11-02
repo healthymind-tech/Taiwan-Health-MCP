@@ -25,17 +25,10 @@ test("example URLs: only absolute ones (validator_cli 7.0.1, evaluator corpus)",
   assert.ok(!(await errs(id("www.example.org"))).some(([, m]) => m.startsWith("Example URLs are not allowed")));
 });
 
-test("a code system nothing here holds: the jar's warning, and not fully checked unless an installed IG owns the namespace", async () => {
-  class Ns extends FakeResolver {
-    constructor(private readonly own: boolean) {
-      super();
-    }
-    async systemInIgNamespace(): Promise<boolean> {
-      return this.own;
-    }
-  }
+// ROUND 9 (evaluator): the jar only warns, so checked_fully stays true; extended_findings counts it as no-local-data.
+test("a code system neither held nor on the server's list: the jar's warning, fully checked", async () => {
   const r = obs({ code: { coding: [{ system: "http://other.org/cs", code: "x", display: "y" }] } });
-  const run = async (own: boolean): Promise<string[] | undefined> => completenessOf((await new InstanceValidator(new Ns(own)).validate(r, { profiles: [] })) as unknown as Array<Record<string, any>>).codes_unchecked;
-  assert.deepEqual(await run(false), ["http://other.org/cs"]);
-  assert.equal(await run(true), undefined);
+  const issues = (await new InstanceValidator(new FakeResolver()).validate(r, { profiles: [] })) as unknown as Array<Record<string, any>>;
+  assert.ok(issues.some((i) => i.severity === "warning" && i.message === "A definition for CodeSystem 'http://other.org/cs' could not be found, so the code cannot be validated"));
+  assert.equal(completenessOf(issues).codes_unchecked, undefined);
 });
