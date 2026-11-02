@@ -253,7 +253,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.47.0 (parity v3 json-xhtml): Narrative.div read with the XhtmlParser port (Error parsing XHTML, entities) and checked with the XhtmlValidator port (namespace, root, names, paragraph / table structure, URLs, href schemes) and narrative controls; txt-1 / txt-2 on the parsed tree; number spellings (1.0 as integer) and repeated JSON names from the request text; DUPLICATE_ID / contained ids; meta.security duplicates; example URLs only when unresolved; fhir_comments unrecognised.
   // 1.48.0 (parity v3 round 5 corpus): ele-1 on JSON "" and non-choice {} and on a value-less primitive whose shadow holds only an id (message with its "(defined in …)" source); meta.profile example URLs reported; a 'Type/' reference under a urn fullUrl is an error.
   // 1.49.0 (parity v3 profile matching): reference / conformsTo() sub-validations = validateResource (own meta.profile profiles, parser-emptied elements), bad primitives dropped as JsonParser does (_x not an object, object / array for a single primitive), CantMatchChoice lists every target profile sorted, NotSlice details.
-  fhir_validate_bundle: "1.49.0",
+  // 1.49.0 (parity v3 tx-validator-wiring, round 2; REVIEW_port_2 G1 G3 G19-G21 G24-G28, REVIEW_port_1 F5 F9 F20): Coding.version against the CodeSystem of that version (determineVersion: VALUESET_VALUE_MISMATCH*, UNKNOWN_CODESYSTEM_VERSION), versioned includes, maxValueSet, several inferred systems, enumerated codes need the CodeSystem, membership filters as codeInFilter, hierarchy only from the concept-properties#parent property, expansion before compose, alternateCode, deprecated designations, Terminology_TX_NoValid_1_CC wording; a Coding without a system is not bound; unevaluated invariants → checked_fully false (invariants_unchecked).
+  fhir_validate_bundle: "1.50.0",
   // 1.40.0 (parity v3 snapshot): a differential-only StructureDefinition gets its snapshot generated (fhirSnapshotGenerator.ts, ProfileUtilities port) instead of being ignored.
   // 1.37.0 (parity v3 fhirpath-2): an invariant whose evaluation raises an exception the Java engine raises too fails (message + log); unknown functions → Problem processing expression; dom-3 enforced in code (CONTAINED_ORPHAN_DOM3); Java boolean / comparison / date-arithmetic semantics.
   // 1.36.1 (parity v3 xml): base64Binary checked linearly — a multi-MB attachment no longer overflows the regex stack (was a validator crash / fatal exception issue).
@@ -301,7 +302,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.44.0: validation as fhir_validate_bundle 1.47.0 (parity v3 json-xhtml).
   // 1.45.0: validation as fhir_validate_bundle 1.48.0 (parity v3 round 5 corpus).
   // 1.46.0: validation as fhir_validate_bundle 1.49.0 (parity v3 profile matching).
-  fhir_validate_resource: "1.46.0",
+  // 1.46.0: terminology as fhir_validate_bundle 1.49.0 (parity v3 tx-validator-wiring, round 2).
+  fhir_validate_resource: "1.47.0",
   // 1.37.0 (parity v3 snapshot): differential-only profiles validated through a generated snapshot, as fhir_validate_bundle 1.40.0.
   // 1.34.0 (parity v3 fhirpath-2): invariant evaluation as fhir_validate_bundle 1.37.0.
   // 1.33.1 (parity v3 xml): base64Binary as fhir_validate_bundle 1.36.1.
@@ -324,7 +326,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.2.2 (ISSUES_v16.2 R1): a short artifact id that is not in the IG itself resolves in its dependency packages (one distinct canonical; otherwise not found / AMBIGUOUS_ARTIFACT with the candidates) — previously ARTIFACT_NOT_FOUND.
   fhir_get_valueset: "1.2.2",
   // 1.2.2 (ISSUES_v16.2 R1): a short artifact id that is not in the IG itself resolves in its dependency packages (one distinct canonical; otherwise not found / AMBIGUOUS_ARTIFACT with the candidates) — previously ARTIFACT_NOT_FOUND.
-  fhir_expand_valueset: "1.2.2",
+  // 1.3.0 (parity v3, REVIEW_port_2 G25 / G28): enumerated codes the complete CodeSystem lacks are left out, an unknown is-a root or an exclude that cannot be expanded is reported as unresolved, hierarchy only from the concept-properties#parent property.
+  fhir_expand_valueset: "1.3.0",
   // 1.3.0: found:false adds `hint` (use fhir_normalize_code with the system) and `near_codes` (IG CodeSystems).
   // 1.3.2: RxNorm codes (http://www.nlm.nih.gov/research/umls/rxnorm) are looked up in rxnorm.concepts (was: not found).
   // 1.4.0 (ISSUES_v15.2 R1 / R3): `accepted_by_validator` (+ `reason`); a code missing from the package's excerpt but defined in a

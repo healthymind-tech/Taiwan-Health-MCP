@@ -64,7 +64,9 @@ function checkIssue(r: CodeCheck, path: string, lenient: boolean): TxIssue[] {
     const id = /\(the CodeSystem is a fragment\)/u.test(r.message) ? "UNKNOWN_CODE_IN_FRAGMENT" : / version '/u.test(r.message) ? "Unknown_Code_in_Version" : "Unknown_Code_in";
     out.push({ severity: r.severity, type: "invalid-code", id, path: at("code"), message: r.message });
   } else if (r.status === "invalid-display") {
-    const id = /^Wrong whitespace/u.test(r.message)
+    const id = /is no longer considered a correct display/u.test(r.message)
+      ? "INACTIVE_DISPLAY_FOUND"
+      : /^Wrong whitespace/u.test(r.message)
       ? "Display_Name_WS_for__should_be_one_of__instead_of"
       : /Default display is/u.test(r.message)
         ? "NO_VALID_DISPLAY_FOUND_NONE_FOR_LANG_ERR"
@@ -106,9 +108,13 @@ export function withSupplementDesignations(cs: CodeSystemIndex, supplements: Arr
       if (!c || c.code === undefined) continue;
       const base = concepts.get(String(c.code));
       if (base) {
-        const add: Array<{ language: string | null; value: string }> = [];
+        const add: Array<{ language: string | null; value: string; status?: string }> = [];
         if (typeof c.display === "string" && c.display) add.push({ language: lang, value: c.display });
-        for (const d of c.designation ?? []) if (d && typeof d.value === "string") add.push({ language: typeof d.language === "string" ? d.language : lang, value: d.value });
+        for (const d of c.designation ?? []) {
+          if (!d || typeof d.value !== "string") continue;
+          const st = Array.isArray(d.extension) ? d.extension.find((e: any) => e && e.url === "http://hl7.org/fhir/StructureDefinition/structuredefinition-standards-status") : null;
+          add.push({ language: typeof d.language === "string" ? d.language : lang, value: d.value, ...(st && typeof st.valueCode === "string" ? { status: st.valueCode } : {}) });
+        }
         if (add.length) concepts.set(base.code, { ...base, designationList: [...base.designationList, ...add], designations: [...base.designations, ...add.map((a) => a.value)] });
       }
       if (Array.isArray(c.concept)) visit(c.concept, lang);
@@ -124,7 +130,10 @@ export async function txValidateCode(
 ): Promise<TxValidateResult> {
   const issues: TxIssue[] = [];
   const lenient = req.params["lenient-display-validation"] === true;
-  const langs = typeof req.params.displayLanguage === "string" && req.params.displayLanguage ? String(req.params.displayLanguage).split(",").map((s) => s.trim().split(";")[0]) : ["en"]; // (G30 "no languages → all ok" not applied: the runner does not pass the request's Accept-Language / ValueSet language, and accepting all made 3 bad-language cases pass)
+  const parseLangs = (v: unknown): string[] => (typeof v === "string" && v ? v.split(",").map((x) => x.trim().split(";")[0]).filter(Boolean) : []);
+  // displayLanguage parameter, then the Accept-Language header; checkValueSetOptions below adds the value set's own
+  let langs = parseLangs(req.params.displayLanguage);
+  if (!langs.length) langs = parseLangs(req.params.acceptLanguage);
   const activeOnlyParam = req.params.activeOnly === true;
   const rules = req.systemVersions ?? [];
   let codings: Array<{ c: Record<string, any>; path: string }>;
@@ -133,7 +142,7 @@ export async function txValidateCode(
   else if (req.code !== undefined) {
     if (req.mode === "valueset" && !req.system && req.params.inferSystem !== true) return { result: undefined, outcome: "error", issues };
     if (req.mode === "codesystem" && !req.system && !req.url) return { result: undefined, outcome: "error", issues };
-    codings = [{ c: { system: req.system ?? req.url, code: req.code, version: req.version, display: req.display }, path: "" }];
+    codings = [{ c: { system: req.system ?? (req.mode === "codesystem" ? req.url : undefined), code: req.code, version: req.version, display: req.display }, path: "" }];
   } else return { result: undefined, outcome: "error", issues };
   let vs: Record<string, any> | null = null;
   let vsUrl: string | null = null;
@@ -176,6 +185,17 @@ export async function txValidateCode(
     vdeps = { ...inner, loadValueSet: (u: string) => inner.loadValueSet(u === du ? `${du}|${dv}` : u) };
   }
   const includes: any[] = Array.isArray(vs?.compose?.include) ? vs!.compose.include : [];
+  // ValueSetValidator.checkValueSetOptions (VSV:1105-1116): the compose's displayLanguage expansion parameter, else
+  // ValueSet.language; with no language at all every display language is acceptable (isOkLanguage, VSV:1485; G30)
+  for (const ext of (vs?.compose?.extension ?? []) as any[]) {
+    if (ext?.url !== "http://hl7.org/fhir/StructureDefinition/valueset-expansion-parameter" && ext?.url !== "http://hl7.org/fhir/tools/StructureDefinition/valueset-expansion-parameter") continue;
+    const sub: any[] = Array.isArray(ext.extension) ? ext.extension : [];
+    if (sub.find((e) => e?.url === "name")?.valueString !== "displayLanguage") continue;
+    const val = sub.find((e) => e?.url === "value");
+    const parsed = parseLangs(val ? (Object.entries(val).find(([k]) => k.startsWith("value"))?.[1] as unknown) : null);
+    if (parsed.length) langs = parsed;
+  }
+  if (!langs.length && typeof vs?.language === "string" && vs.language) langs = [vs.language];
 
   /** getCodeSystemVersionFromValueSet (7.0.1). */
   const versionFromVs = async (system: string, cv: string | null, code: string, display: string | null): Promise<string | null> => {
@@ -283,7 +303,16 @@ export async function txValidateCode(
       issues.push({ severity: "warning", type: "invalid-data", id, path: p, message: "Coding has no code, cannot validate" });
       continue;
     }
-    if (!system && !path && req.mode === "valueset" && req.params.inferSystem === true) system = await inferSystem(includes, code, deps);
+    if (!system && !path && req.mode === "valueset" && req.params.inferSystem === true) {
+      // systemForCodeInValueSet (VSV:1603): exactly one include must define the code
+      const found = await inferSystem(includes, code, deps);
+      if (found.length > 1) {
+        const vsv = `${vs?.url ?? vsUrl}${vs?.version ? `|${vs.version}` : ""}`;
+        issues.push({ severity: "error", type: "cannot-infer", id: "Unable_to_resolve_system__value_set_has_multiple_matches", path: "code", message: `The System URI could not be determined for the code '${code}' in the ValueSet '${vsv}': value set expansion has multiple matches: ${found.sort().join(",")}` });
+        return { result: false, issues };
+      }
+      system = found[0] ?? null;
+    }
     if (!system) {
       // ValueSetValidator: Coding_has_no_system__cannot_validate (warning); the code cannot be in the value set
       issues.push({ severity: "warning", type: "invalid-data", id: "Coding_has_no_system__cannot_validate", path: p, message: "Coding has no system. A code with no system has no defined meaning, and it cannot be validated. A system should be provided" });
@@ -429,7 +458,7 @@ async function membership(vsUrl: string, system: string, code: string, wv: strin
 }
 
 /** systemForCodeInValueSet (simplified): the single include system whose CodeSystem defines the code. */
-async function inferSystem(includes: any[], code: string, deps: TerminologyDeps): Promise<string | null> {
+async function inferSystem(includes: any[], code: string, deps: TerminologyDeps): Promise<string[]> {
   const found = new Set<string>();
   for (const inc of includes) {
     if (!inc || typeof inc.system !== "string") continue;
@@ -440,7 +469,7 @@ async function inferSystem(includes: any[], code: string, deps: TerminologyDeps)
     const cs = await deps.loadCodeSystem(inc.system);
     if (cs && findConcept(cs, code)) found.add(inc.system);
   }
-  return found.size === 1 ? [...found][0] : null;
+  return [...found];
 }
 
 export interface TxExpandRequest {

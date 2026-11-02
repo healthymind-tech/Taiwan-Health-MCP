@@ -67,7 +67,7 @@ export interface Issue {
    * `code`: a code / binding membership local terminology cannot decide (canonical = ValueSet or system);
    * `slice`: slice membership / cardinality that could not be decided (canonical = profile#element id).
    */
-  unchecked?: { kind: "profile" | "valueSet" | "code" | "slice"; canonical: string };
+  unchecked?: { kind: "profile" | "valueSet" | "code" | "slice" | "invariant"; canonical: string };
 }
 
 export function issue(severity: string, path: string, code: string, message: string, extra: Partial<Issue> = {}): Record<string, any> {
@@ -99,6 +99,8 @@ export interface Completeness {
   codes_unchecked?: string[];
   /** (parity v3, REVIEW F5) Slicings (profile#element) whose membership / cardinality could not be decided. */
   slices_unchecked?: string[];
+  /** (parity v3, REVIEW F5) Invariants (profile#key) that could not be evaluated locally. */
+  invariants_unchecked?: string[];
 }
 
 /** Issue code of the "validation incomplete: lookups failed" error (v8). */
@@ -139,6 +141,7 @@ export function completenessOf(issues: Array<Record<string, any>>, depsMissing: 
   const valueSets = new Set<string>();
   const codes = new Set<string>();
   const slices = new Set<string>();
+  const invariants = new Set<string>();
   let lookupsFailed = 0;
   for (const i of issues) {
     if (i && i.code === LOOKUP_FAILURE_CODE) {
@@ -147,15 +150,16 @@ export function completenessOf(issues: Array<Record<string, any>>, depsMissing: 
     }
     const u = i && i.unchecked;
     if (!u || typeof u.canonical !== "string") continue;
-    (u.kind === "valueSet" ? valueSets : u.kind === "code" ? codes : u.kind === "slice" ? slices : profiles).add(u.canonical);
+    (u.kind === "valueSet" ? valueSets : u.kind === "code" ? codes : u.kind === "slice" ? slices : u.kind === "invariant" ? invariants : profiles).add(u.canonical);
   }
   return {
-    checked_fully: profiles.size === 0 && valueSets.size === 0 && codes.size === 0 && slices.size === 0 && lookupsFailed === 0 && !(Array.isArray(depsMissing) && depsMissing.length),
+    checked_fully: profiles.size === 0 && valueSets.size === 0 && codes.size === 0 && slices.size === 0 && invariants.size === 0 && lookupsFailed === 0 && !(Array.isArray(depsMissing) && depsMissing.length),
     profiles_unchecked: [...profiles],
     valuesets_unchecked: [...valueSets],
     ...(lookupsFailed > 0 ? { lookups_failed: lookupsFailed } : {}),
     ...(codes.size ? { codes_unchecked: [...codes] } : {}),
     ...(slices.size ? { slices_unchecked: [...slices] } : {}),
+    ...(invariants.size ? { invariants_unchecked: [...invariants] } : {}),
   };
 }
 
@@ -6240,6 +6244,8 @@ export class InstanceValidator {
           message: `Invariant ${c.key} could not be evaluated locally (${outcome.reason}); not a conformance failure`,
           element: el.id,
           profile: sdx.url,
+          // REVIEW_port_1 F5: an invariant that was not evaluated is not a pass
+          unchecked: { kind: "invariant", canonical: `${sdx.url}#${c.key}` },
         });
         continue;
       }

@@ -21,6 +21,8 @@ export interface CsConcept {
   parents: Set<string>;
   children: Set<string>;
   properties: Map<string, any[]>;
+  /** structuredefinition-standards-status = withdrawn on the concept. */
+  withdrawn?: boolean;
 }
 
 export interface CodeSystemIndex {
@@ -65,6 +67,7 @@ export function indexCodeSystem(cs: Record<string, any>): CodeSystemIndex {
       if (!raw || typeof raw !== "object" || raw.code === undefined || raw.code === null) continue;
       const code = String(raw.code);
       const c = ensure(code);
+      if (Array.isArray(raw.extension) && raw.extension.some((e: any) => e && e.url === STANDARDS_STATUS_EXT && e.valueCode === "withdrawn")) c.withdrawn = true;
       if (raw.display !== undefined && raw.display !== null) {
         c.display = String(raw.display);
         c.designations.push(String(raw.display));
@@ -168,6 +171,7 @@ const altCodeIndex = new WeakMap<CodeSystemIndex, Map<string, CsConcept>>();
  * `inactive` property (boolean, or code 'true') decides.
  */
 export function conceptInactive(c: CsConcept): boolean {
+  if (c.withdrawn) return true; // ExtensionUtilities.getStandardsStatus(def) == WITHDRAWN (CodeSystemUtilities:393)
   for (const [k, vals] of c.properties) {
     if (k === "status" && typeof vals[0] === "string") return vals[0] === "inactive" || vals[0] === "retired";
     if (k === "inactive" && (typeof vals[0] === "boolean" || typeof vals[0] === "string")) return vals[0] === true || vals[0] === "true";

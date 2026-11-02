@@ -4,7 +4,8 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyFilter, codeInFilter, composeContains, expandComposeWith, findConcept, indexCodeSystem, type TerminologyDeps } from "./fhirCodeSystem.js";
+import { applyFilter, codeInFilter, composeContains, conceptInactive, expandComposeWith, findConcept, indexCodeSystem, type TerminologyDeps } from "./fhirCodeSystem.js";
+import { txValidateCode } from "./fhirTxValidate.js";
 import { judgeHeldCodeSystem } from "./fhirValidationResolver.js";
 
 type Json = Record<string, any>;
@@ -102,4 +103,22 @@ test("G24: membership filters as ValueSetValidator.codeInFilter (VSV:2235-2438),
   // a code regex, and is-a with an unknown root (false, VSV:2433)
   assert.equal(codeInFilter(cs, { property: "code", op: "regex", value: "[AB]" }, a), true);
   assert.equal(codeInFilter(cs, { property: "concept", op: "is-a", value: "NOPE" }, a), false);
+});
+
+test("G27: a withdrawn concept is inactive (CodeSystemUtilities.isInactive, standards-status)", () => {
+  const cs = indexCodeSystem({ ...CS, concept: [{ code: "W", extension: [{ url: "http://hl7.org/fhir/StructureDefinition/structuredefinition-standards-status", valueCode: "withdrawn" }] }, { code: "A" }] });
+  assert.equal(conceptInactive(findConcept(cs, "W")!), true);
+  assert.equal(conceptInactive(findConcept(cs, "A")!), false);
+});
+
+test("G30: tx adapter — no language accepts any display language; ValueSet.language and inferSystem", async () => {
+  const cs = { resourceType: "CodeSystem", url: "http://x/l", content: "complete", concept: [{ code: "a", display: "Alpha", designation: [{ language: "nl", value: "Alfa" }] }] };
+  const deps = depsWith(cs);
+  const vs = { resourceType: "ValueSet", url: "http://x/vs", compose: { include: [{ system: "http://x/l" }] } };
+  const coding = { system: "http://x/l", code: "a", display: "Alfa" };
+  assert.equal((await txValidateCode({ mode: "valueset", valueSet: vs, coding, params: {} }, deps)).result, true);
+  assert.equal((await txValidateCode({ mode: "valueset", valueSet: { ...vs, language: "en" }, coding, params: {} }, deps)).result, false);
+  assert.equal((await txValidateCode({ mode: "valueset", valueSet: vs, coding, params: { acceptLanguage: "en, en-AU; q=0.4" } }, deps)).result, false);
+  const inferred = await txValidateCode({ mode: "valueset", valueSet: vs, code: "a", params: { inferSystem: true } }, deps);
+  assert.equal(inferred.result, true);
 });

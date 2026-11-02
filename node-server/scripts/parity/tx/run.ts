@@ -232,7 +232,11 @@ async function main(): Promise<void> {
           rows.push(await runExpand(suite.name, t, req, resp, deps));
           continue;
         }
-        const ours = await txValidateCode(paramsToRequest(req, op), deps);
+        const vreq = paramsToRequest(req, op);
+        // test-level request settings: the Accept-Language header, lenient-display-validation
+        if (typeof t["Accept-Language"] === "string") vreq.params.acceptLanguage = t["Accept-Language"];
+        if (t["lenient-display"] === true) vreq.params["lenient-display-validation"] = true;
+        const ours = await txValidateCode(vreq, deps);
         const expOutcome = resp.resourceType === "OperationOutcome";
         const expResult = expOutcome ? null : ((resp.parameter ?? []).find((p: Json) => p.name === "result")?.valueBoolean ?? null);
         const exp = expectedIssues(resp);
