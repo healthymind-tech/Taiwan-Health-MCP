@@ -197,6 +197,19 @@ test("Unrecognized property is reported once (profile walk + structural pass ded
 
 // ---- HL7 current version of a canonical ------------------------------------------------
 
+test("rankHl7Current: a core CodeSystem / ValueSet / specialization is the master definition (CanonicalResourceManager.see l. 290-296)", () => {
+  const url = "http://hl7.org/fhir/encounter-status";
+  const core = { packageId: "hl7.fhir.r4.core", packageVersion: "4.0.1", fhirVersion: "4.0.1", ord: 1, version: "4.0.1", res: { resourceType: "CodeSystem" } };
+  const later = { packageId: "some.ig", packageVersion: "0.1.0", fhirVersion: "4.0.1", ord: 2, version: "5.0.0", res: { resourceType: "CodeSystem" } };
+  assert.equal(rankHl7Current(url, [core, later], (r) => r.res)[0], core);
+  const sd = (o: object) => ({ ...core, res: { resourceType: "StructureDefinition", ...o } });
+  const nsd = { ...later, res: { resourceType: "StructureDefinition", derivation: "constraint" } };
+  const constraint = sd({ derivation: "constraint" });
+  assert.equal(rankHl7Current(url, [constraint, nsd], (r) => r.res)[0], nsd);
+  const spec = sd({ derivation: "specialization" });
+  assert.equal(rankHl7Current(url, [spec, nsd], (r) => r.res)[0], spec);
+});
+
 test("rankHl7Current: highest major.minor wins (extensions pack over R4 core), ties keep closure order", () => {
   const row = (packageId: string, version: string | null, ord: number, fhirVersion = "4.0.1") => ({ packageId, packageVersion: "x", fhirVersion, ord, version });
   const url = "http://hl7.org/fhir/StructureDefinition/variable";
