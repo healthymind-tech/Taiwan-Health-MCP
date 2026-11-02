@@ -28,10 +28,15 @@
  * what terminology this install holds), the all-corpus figures with the network bucket, and the items no tool call can
  * carry (flag tool-boundary: outside the gate, measured through validateText, with what rejects them in the service).
  *
- *   node --import tsx scripts/parity/corpus/report.ts <results.json>... [--md out.md] [--plan plan.json] [--top 30] [--cmd "<re-run command>"] [--held held.json] [--commit <hash>]
+ * --corrections file (JSONL, assumed format of the evaluator's list: {ig, id, issues}, `issues` in the shape of a
+ * <id>.official.json, one validator_cli JVM per item): the batch run of validator_cli reuses cached code validations,
+ * so listed items are scored against that standalone result instead; the official files are not touched.
+ *
+ *   node --import tsx scripts/parity/corpus/report.ts <results.json>... [--md out.md] [--plan plan.json] [--top 30] [--cmd "<re-run command>"] [--held held.json] [--commit <hash>] [--corrections list.jsonl]
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { lenientMessage } from "../lib/compare.js";
+import { errorClass, isContentCheck } from "../classify.js";
+import { compareIssues, isError, lenientMessage, normMessage, normPath, type SimpleIssue } from "../lib/compare.js";
 import { readResults } from "./results.js";
 
 type Res = Record<string, any>;
@@ -44,7 +49,7 @@ interface ErrKey {
 
 const args = process.argv.slice(2);
 const opt = (k: string): string | null => (args.includes(k) ? args[args.indexOf(k) + 1] ?? null : null);
-const valued = new Set(["--md", "--plan", "--top", "--cmd", "--held", "--commit"]);
+const valued = new Set(["--md", "--plan", "--top", "--cmd", "--held", "--commit", "--corrections"]);
 const files = args.filter((a, i) => !a.startsWith("-") && !valued.has(args[i - 1] ?? ""));
 const top = Number(opt("--top") ?? 30);
 
@@ -52,6 +57,32 @@ const byId = new Map<string, Res>();
 // the same id can exist in several IGs (corpus ids are per IG): key by ig + id
 for (const f of files) readResults(f, (r) => byId.set(`${r.ig ?? ""}/${r.id}`, r));
 const items: Res[] = [...byId.values()];
+const correctionsFile = opt("--corrections");
+let corrected = 0;
+const correctionsUnmatched: string[] = [];
+if (correctionsFile) {
+  for (const line of readFileSync(correctionsFile, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    const c = JSON.parse(line) as Res;
+    const it = byId.get(`${c.ig}/${c.id}`);
+    if (!it) {
+      correctionsUnmatched.push(`${c.ig}/${c.id}`);
+      continue;
+    }
+    const official: SimpleIssue[] = (c.issues as Res[])
+      .map((i) => ({ severity: String(i.severity ?? "").toLowerCase(), path: String((Array.isArray(i.expression) && i.expression[0]) || (Array.isArray(i.location) && i.location[0]) || ""), message: String(i.text ?? ""), code: i.code, messageId: i.message_id ?? null }))
+      .filter((i) => !isContentCheck(i));
+    it.officialErrors = official.filter(isError).map((i): ErrKey => ({ path: normPath(i.path), cls: errorClass(normMessage(i.message)), msg: normMessage(i.message), msgid: i.messageId }));
+    if (it.comparison) {
+      // our side as the run stored it; the comparison flags follow the corrected official side
+      it.comparison = compareIssues(official, ((it.ourErrors ?? []) as ErrKey[]).map((e) => ({ severity: "error", path: e.path, message: e.msg })));
+      it.status = it.comparison.strict ? "pass" : "fail";
+    }
+    delete it.officialCrash;
+    if (it.skip === "official-crash") delete it.skip;
+    corrected++;
+  }
+}
 /** profile-typo, also inside a combo mutation ("profile-typo/…+…"): validator_cli fetched the typo'd profile online */
 const isNetwork = (it: Res): boolean => it.family === "profile-typo" || /(?:^|\+)profile-typo\//u.test(String(it.mutation ?? ""));
 const isScalar = (it: Res): boolean => /meta-profile-scalar/u.test(String(it.mutation ?? ""));
@@ -410,6 +441,7 @@ lines.push("# Differential corpus — TS validator vs validator_cli 7.0.1 (evalu
 if (cmd) lines.push("Re-run:", "", "```bash", cmd, "```", "");
 const commit = opt("--commit");
 lines.push(`Generated ${new Date().toISOString()} from ${files.length} result file(s), ${items.length} items${commit ? `, code ${commit}` : ""}.`, "");
+if (correctionsFile) lines.push(`Official side: ${corrected} item(s) scored against the standalone validator_cli result (${correctionsFile})${correctionsUnmatched.length ? `; ${correctionsUnmatched.length} listed item(s) not in these results` : ""}.`, "");
 lines.push("## Per-IG acceptance metrics", "");
 lines.push("| IG | items | gate items | verdict diff (miss + extra) | verdict miss: official invalid, ours valid | true miss (… and checked_fully) | verdict extra: official valid, ours invalid | official error keys | missing keys (items) | extra keys (items) | extra rate | official-crash bucket: PASS / total (FAIL valid, FAIL throw, not receivable) | network-dependent: items (verdict diff) | meta-profile-scalar flagged (verdict diff) | raw unparseable (official invalid) | harness crash | tool-boundary | ours checked_fully=false | strict agree | lenient agree | class agree |");
 lines.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
