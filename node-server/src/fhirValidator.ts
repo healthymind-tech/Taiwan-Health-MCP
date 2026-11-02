@@ -288,7 +288,7 @@ export interface ValidatorResolver {
    * `url` seen from the package of `source`: that package, then its dependencies breadth-first. Null when none of them holds
    * it, or `source` comes from no package, or from a core one (ProfileUtilities.findProfile "switch the extension pack in").
    */
-  scopedDefinitionVersion?(url: string, source: Record<string, any>): Promise<string | null>;
+  scopedDefinitionVersion?(url: string, source: Record<string, any>, resourceType?: string): Promise<string | null>;
   /** ValueSet header (url/title) or null when the ValueSet is not held (`|version` honoured as above). */
   fetchValueSet(url: string): Promise<Record<string, any> | null>;
   /** Membership; system null for bare `code` values. undefined = cannot decide locally. `|version` honoured. */
@@ -2001,6 +2001,15 @@ export class InstanceValidator {
     return p;
   }
 
+  /** A binding's unversioned ValueSet, pinned when the profile's package closure holds another version than the global pick. */
+  private async scopedBinding(b: Record<string, any>, source: SdIndex | null): Promise<Record<string, any>> {
+    const url = String(b.valueSet);
+    if (!source || url.includes("|") || !this.resolver.scopedDefinitionVersion) return b;
+    const version = await this.resolver.scopedDefinitionVersion(url, source.sd, "ValueSet");
+    if (!version || (await this.vsHeader(url))?.version === version) return b;
+    return (await this.vsHeader(`${url}|${version}`)) ? { ...b, valueSet: `${url}|${version}` } : b;
+  }
+
   /** ProfileUtilities.findProfile(url, source): an unversioned reference made by a profile resolves in its package first. */
   private async scopedSdx(url: string, from: SdIndex): Promise<SdIndex | null> {
     if (url.includes("|") || !this.resolver.scopedDefinitionVersion) return this.sdx(url);
@@ -3458,7 +3467,9 @@ export class InstanceValidator {
         await this.checkUri(v, item, typeCode, el, issues);
       }
       this.checkFixedPattern(el, v, item, sdx, issues, true);
-      await this.checkBinding(el, v, typeCode, item, issues, null);
+      const beforeBinding = issues.filter((i) => i.severity === "error").length;
+      await this.checkBinding(el, v, typeCode, item, issues, sdx);
+      if (item.afterBinding && issues.filter((i) => i.severity === "error").length === beforeBinding) issues.push({ severity: "error", path: item.path, code: "invalid", message: item.afterBinding });
       await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
       return;
     }
@@ -3625,7 +3636,7 @@ export class InstanceValidator {
       // a value the parser accepted as its own (base) type, validated as the profile's type: no JSON shape error here, and
       // to that type it has no content (jar alone: No code provided on a valueInteger bound as a CodeableConcept)
       if (item.profileType) {
-        await this.checkBinding(el, {}, typeCode, item, issues, null);
+        await this.checkBinding(el, {}, typeCode, item, issues, sdx);
         return;
       }
       issues.push({
@@ -3811,7 +3822,7 @@ export class InstanceValidator {
     }
 
     if (!isResourceRoot) this.checkFixedPattern(el, v, item, sdx, issues);
-    await this.checkBinding(el, v, typeCode, item, issues, null);
+    await this.checkBinding(el, v, typeCode, item, issues, sdx);
     await this.checkLanguageDisplay(el, v, typeCode, item, rctx, issues);
     if (typeCode === "Coding") await this.checkCoding(v, item, issues, el);
     if (QUANTITY_TYPES.includes(typeCode)) await this.checkQuantity(v, item, issues, el, sdx);
@@ -6073,10 +6084,13 @@ export class InstanceValidator {
     typeCode: string,
     item: Item,
     issues: Issue[],
-    _unused: null,
+    source: SdIndex | null,
   ): Promise<void> {
-    const b = el.binding;
-    if (!b || !b.valueSet) return;
+    const b0 = el.binding;
+    if (!b0 || !b0.valueSet) return;
+    // resolveBindingReference (BaseValidator l. 1019): findTxResource with the profile as sourceForReference
+    const b = await this.scopedBinding(b0, source);
+    if (b !== b0) el = { ...el, binding: b };
     // a value of another type validated as a primitive of the profile (Extension_EXT_Type): checkPrimitive's blank value
     // (IV:3250 Terminology_TX_Code_ValueSet_MISSING), its children are not in that type (Validation_VAL_Profile_NotAllowed)
     if (item.profileType && ["code", "string", "uri", "url", "canonical"].includes(typeCode) && isObject(v)) {

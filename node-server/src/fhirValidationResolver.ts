@@ -548,9 +548,9 @@ export class DbValidatorResolver implements ValidatorResolver {
     return this.loadStructureDefinition(url, []);
   }
 
-  scopedDefinitionVersion(url: string, source: Record<string, any>): Promise<string | null> {
-    return memoised(scopedVersionMemo, `${this.closure}\0${url}\0${source.url}|${source.version}`, () =>
-      guarded(() => terminology.packageScopedVersion("StructureDefinition", url, source, this.pkg, packageClosure)),
+  scopedDefinitionVersion(url: string, source: Record<string, any>, resourceType = "StructureDefinition"): Promise<string | null> {
+    return memoised(scopedVersionMemo, `${this.closure}\0${resourceType}\0${url}\0${source.url}|${source.version}`, () =>
+      guarded(() => terminology.packageScopedVersion(resourceType, url, source, this.pkg, packageClosure)),
     );
   }
 

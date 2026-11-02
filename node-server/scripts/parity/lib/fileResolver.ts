@@ -56,10 +56,11 @@ export class ResourceStore {
   }
 
   /** populatePVList: the package of the entry for `url|version`, then its dependencies breadth-first; the version `target` has there. */
-  scopedVersion(target: string, source: Res): string | null {
+  scopedVersion(target: string, source: Res, resourceType = "StructureDefinition"): string | null {
     const own = this.candidates(String(source.url), source.resourceType).find((e) => e.version === (source.version ?? null));
     if (!own || own.loose || isCorePackage(own.packageId)) return null;
-    const cands = this.candidates(target, "StructureDefinition");
+    const all = this.candidates(target, resourceType);
+    const cands = all.some((e) => e.packageId.startsWith("hl7.terminology")) ? all.filter((e) => !isCorePackage(e.packageId)) : all;
     const seen = [`${own.packageId}#${own.packageVersion}`];
     for (let i = 0; i < seen.length; i++) {
       const hit = cands.find((e) => `${e.packageId}#${e.packageVersion}` === seen[i]);
@@ -143,8 +144,8 @@ export class FileValidatorResolver implements ValidatorResolver {
 
   constructor(readonly store: ResourceStore) {}
 
-  async scopedDefinitionVersion(url: string, source: Res): Promise<string | null> {
-    return this.store.scopedVersion(url, source);
+  async scopedDefinitionVersion(url: string, source: Res, resourceType?: string): Promise<string | null> {
+    return this.store.scopedVersion(url, source, resourceType);
   }
 
   private codeSystem(url: string): CodeSystemIndex | null {

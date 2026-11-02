@@ -283,16 +283,18 @@ export async function packageScopedVersion(
 ): Promise<string | null> {
   if (typeof source.url !== "string") return null;
   const [pids, pvers] = closureArrays(pkg);
-  const holders = (canonical: string) =>
+  const holders = (type: string, canonical: string) =>
     query<{ package_id: string; package_version: string; version: string | null; ord: number }>(
       "SELECT a.package_id, a.package_version, a.raw_json->>'version' AS version, dep.ord FROM fhir.artifacts a " +
         "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) ON a.package_id = dep.pid AND a.package_version = dep.pver " +
         "WHERE a.resource_type = $3 AND a.canonical_url = $4 ORDER BY dep.ord",
-      [pids, pvers, resourceType, canonical],
+      [pids, pvers, type, canonical],
     ).then((r) => r.rows);
-  const own = (await holders(source.url)).find((r) => (r.version ?? null) === (source.version ?? null));
+  const own = (await holders(String(source.resourceType), source.url)).find((r) => (r.version ?? null) === (source.version ?? null));
   if (!own || isCorePackage(own.package_id)) return null;
-  const rows = await holders(url);
+  // CanonicalResourceManager.see l. 262-274: loading a hl7.terminology package drops the core copies of its canonicals
+  const all = await holders(resourceType, url);
+  const rows = all.some((r) => r.package_id.startsWith("hl7.terminology")) ? all.filter((r) => !isCorePackage(r.package_id)) : all;
   if (!rows.length) return null;
   for (const [pid, pver] of await closureOf(own.package_id, own.package_version)) {
     const hit = rows.find((r) => r.package_id === pid && r.package_version === pver);
