@@ -123,8 +123,8 @@ test("judgeRxnorm: a display naming another drug is an error even with only the 
   assert.equal((wrong as { severity: string }).severity, "error");
   const msg = (wrong as { message: string }).message;
   assert.ok(msg.startsWith("Wrong Display Name 'Clopidogrel 75 MG Oral Tablet' for " + RXNORM + "#313375. Valid display is 'thyroglobulin 100 MG Oral Tablet'"), msg);
-  assert.match(msg, /denotes a different concept/);
-  assert.ok(!/'[^']*'$/.test(msg.split("; ")[1]), "the reason carries no quoted strings (suggestion-layer display parsing)");
+  // Display_Name_for__should_be_one_of__instead_of: the official text, no reason of our own appended
+  assert.ok(msg.endsWith(" (for the language(s) 'en')"), msg);
   // Same drug, other wording: cannot rule out a PSN / SY atom → warning.
   const syn = judgeRxnorm("313375", "Thyroglobulin 100 mg tablet", preferredOnly, false, "06032024");
   assert.equal((syn as { severity: string }).severity, "warning");
