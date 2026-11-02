@@ -160,6 +160,7 @@ export async function executeRun(run: TestRun, base: { store: ResourceStore; ids
     profiles.push(sd.url);
   }
   const resolver = new FileValidatorResolver(store);
+  resolver.testFetcher = run.raw.fetcher !== "standalone";
   // ValidationTests' fetcher for `validateReference` cases: `Type/id` → the suite file <id>.json / <id>.xml of that type
   // (one object per reference, so reference cycles are recognised)
   const fetched = new Map<string, Promise<Res | null>>();

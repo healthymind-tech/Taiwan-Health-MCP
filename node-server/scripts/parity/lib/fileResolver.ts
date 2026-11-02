@@ -233,7 +233,15 @@ export class FileValidatorResolver implements ValidatorResolver {
     return !!cs && (cs.content === "complete" || cs.content === "fragment");
   }
 
+  /**
+   * ValidationTests is its own fetcher unless the case says "fetcher": "standalone" (ValidationTests.java:311-315), and its
+   * resolveURL answers true except for example.org and http://hl7.org/fhir/invalid (l. 1079-1081). validator_cli runs
+   * StandAloneValidatorFetcher, which DbValidatorResolver models.
+   */
+  testFetcher = false;
+
   async definitionExists(url: string): Promise<boolean> {
+    if (this.testFetcher && !url.includes("example.org") && !url.startsWith("http://hl7.org/fhir/invalid")) return true;
     return this.store.has(url.split("|")[0]);
   }
 

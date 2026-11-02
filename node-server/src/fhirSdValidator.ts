@@ -180,18 +180,12 @@ async function elementRules(
         out.push({ severity: "error", path: `${at}.binding`, code: "business-rule", message: `The element ${path} has a binding, but no bindable types are present ${shown}` });
       }
     }
-    // l. 740-756: a fixed value must keep the one the base fixes
+    // l. 740-756: a fixed value must keep the one the base fixes (checkFixedValue, IV:3049; {2} is the reason text)
     if (!snapshot) {
       const k = fixedKey(ed);
       const bed = k ? (base.snapshot?.element || []).find((b: Json) => b.id === ed.id || b.path === path) : null;
       const bk = bed ? fixedKey(bed) : undefined;
       if (k && bk && typeof ed[k] !== "object" && typeof bed[bk] !== "object" && String(ed[k]) !== String(bed[bk])) {
-        out.push({
-          severity: "error",
-          path: name,
-          code: "invalid",
-          message: `The fixed value at ${path} (${ed[k]}) is not consistent with the fixed value inherited from the base profile (${bed[bk]}), so instances that meet this profile would not meet the base profile`,
-        });
         out.push({
           severity: "error",
           path,

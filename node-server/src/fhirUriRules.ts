@@ -102,8 +102,6 @@ export function isKnownSid(url: string): boolean {
 
 /** Port of InstanceValidator.isDefinitionURL / isKnownMappingUri + SpecialExtensions.KNOWN_EXTENSIONS (7.0.1). */
 const KNOWN_URLS = new Set([
-  // the obligation-profile flag is read by StructureDefinitionValidator; validator_cli does not report it unresolved (profile-patient-op2)
-  "http://hl7.org/fhir/StructureDefinition/obligation-profile",
   "http://hl7.org/fhirpath/System.Boolean", "http://hl7.org/fhirpath/System.String", "http://hl7.org/fhirpath/System.Integer",
   "http://hl7.org/fhirpath/System.Decimal", "http://hl7.org/fhirpath/System.Date", "http://hl7.org/fhirpath/System.Time",
   "http://hl7.org/fhirpath/System.DateTime", "http://hl7.org/fhirpath/System.Quantity", "urn:ietf:bcp:13",
