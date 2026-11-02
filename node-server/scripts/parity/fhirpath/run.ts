@@ -32,6 +32,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { evaluateExpression, fhirPathBase, resultTypes, type FhirPathEnv } from "../../../src/fhirPath.js";
+import { copyLiterals } from "../../../src/fhirJsonLiterals.js";
 import { parseFhirXml, parseXmlDocument, type XElement } from "../../../src/fhirXml.js";
 import { FileValidatorResolver, ResourceStore } from "../lib/fileResolver.js";
 import { findPackage } from "../lib/packages.js";
@@ -77,15 +78,29 @@ function xmlEl(el: XElement): XmlEl {
   };
 }
 
-const inputs = new Map<string, string>();
+const inputs = new Map<string, Json>();
 async function preloadInput(name: string): Promise<void> {
   if (inputs.has(name)) return;
   const src = readFileSync(join(R4, name), "utf8");
   const res = name.endsWith(".xml") ? (await parseFhirXml(src, xmlResolver)).resource : JSON.parse(src);
-  inputs.set(name, JSON.stringify(res));
+  inputs.set(name, res);
+}
+/** A fresh copy per test (fhirpath.js annotates its input) that keeps the number spellings of the parsed file. */
+function freshCopy<T>(v: T): T {
+  if (v === null || typeof v !== "object") return v;
+  const out: any = Array.isArray(v) ? v.map(freshCopy) : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, freshCopy(x)]));
+  copyLiterals(v as object, out);
+  return out;
 }
 function loadInput(name: string): Json {
-  return JSON.parse(inputs.get(name)!); // fresh copy per test (fhirpath.js annotates its input)
+  return freshCopy(inputs.get(name)!) as Json;
+}
+
+/** FHIRPathTests.FHIRPathTestEvaluationServices.conformsToProfile (the suite's own host, l. 88-95). */
+function testHostConformsTo(_item: unknown, url: string): boolean | null {
+  if (url === "http://hl7.org/fhir/StructureDefinition/Patient") return true;
+  if (url === "http://hl7.org/fhir/StructureDefinition/Person") return false;
+  return null;
 }
 
 /** Simple offline reference resolution (contained + Bundle entries), like the validator's resolver. */
@@ -178,7 +193,7 @@ for (const g of suite.children.filter((c) => c.name === "group")) {
     try {
       const resource = t.attrs.inputfile ? loadInput(t.attrs.inputfile) : null;
       const env: FhirPathEnv = resource
-        ? { resource, rootResource: resource, resolveReference: resolverFor(resource) }
+        ? { resource, rootResource: resource, resolveReference: resolverFor(resource), conformsTo: testHostConformsTo }
         : { resource: {}, rootResource: {} };
       const base = resource?.resourceType ?? "";
       let result: any[];

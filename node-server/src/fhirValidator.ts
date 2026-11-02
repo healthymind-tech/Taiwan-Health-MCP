@@ -1551,6 +1551,7 @@ export class InstanceValidator {
         if (y !== x) changed = true;
         o[k] = y;
       }
+      if (changed) copyLiterals(v, o);
       out = changed ? o : v;
     }
     this.strippedCache.set(v, out);

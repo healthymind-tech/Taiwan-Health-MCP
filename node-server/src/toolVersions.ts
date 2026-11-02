@@ -257,7 +257,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.60.0 (parity v3 determinism): per-request pin of definitions / terminology; a failed lookup is unverified (warning, `unverified`, checked_fully false; a definition that cannot be loaded: `valid: null`), never an error; every limit and unevaluated invariant reported (limits_exceeded, invariants_unchecked); codes_unchecked / slices_unchecked / lookups_failed in the Bundle result; indexed reference resolution and reachability.
   // 1.63.0 (parity v3 review-structure round 3): root type rules (cannot be parsed, Validation_VAL_Profile_WrongType), FHIRPath over the element model, simple extension checks, fixed primitives with extensions, memberOf() / conformsTo() in invariants, profile#element, forReference rules, version-specific target profiles.
   // 1.64.0 (parity v3 json-xhtml round 7): "" fullUrl is a value, "" url opens an extension scope, fixed on a blank primitive skipped, TEXT_LINK_SELECTOR_INVALID.
-  fhir_validate_bundle: "1.64.0",
+  // 1.65.0: FHIRPath boundaries on the number source text, conformsTo() of a non-singleton is false, sort errors with the expression (parity v3 round 7).
+  fhir_validate_bundle: "1.65.0",
   // 1.59.0: FHIRPath sort keys, the decimal type of `/` and the `id` type of Resource.id as FHIRPathEngine (parity v3 round 7).
   // 1.59.0 (parity v3 json-xhtml): an object emptied by the parser on a choice element gets no ele-1, as a source `{}` there.
   // 1.53.0: data carries codes_unchecked / slices_unchecked / invariants_unchecked / lookups_failed (the reasons for checked_fully=false, as fhir_validate_resource; they were dropped), and undecided_causes (`system|valueSet` behind undecided codes and slices).
@@ -320,7 +321,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.57.0: validation as fhir_validate_bundle 1.60.0 (parity v3 determinism).
   // 1.60.0: validation as fhir_validate_bundle 1.63.0 (parity v3 review-structure round 3).
   // 1.61.0: validation as fhir_validate_bundle 1.64.0.
-  fhir_validate_resource: "1.61.0",
+  // 1.62.0: validation as fhir_validate_bundle 1.65.0.
+  fhir_validate_resource: "1.62.0",
   // 1.56.0: validation as fhir_validate_bundle 1.59.0.
   // 1.56.0: validation as fhir_validate_bundle 1.59.0.
   // 1.50.0: undecided_causes as fhir_validate_bundle 1.53.0.

@@ -23,6 +23,7 @@
 
 import { readFileSync } from "node:fs";
 import { htmlChecks1, htmlChecks2 } from "./fhirXhtml.js";
+import { numberText } from "./fhirJsonLiterals.js";
 import { ucumCanonicalForm } from "./fhirUcum.js";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
@@ -337,8 +338,18 @@ function boundaryApplyPrecision(v: string, p: number, down: boolean): string {
 }
 
 /** new DecimalType(text) (DecimalType.java:133-135, 218-226): BigDecimal rejects it, else the text is kept as written (`09.50`). */
+/** primitiveValue() of a number element: its source spelling, which JSON.parse dropped (fhirJsonLiterals). */
+function sourceNumberText(item: any): string | undefined {
+  const container = item?.parentResNode?.data;
+  if (container === null || typeof container !== "object" || typeof item.propName !== "string") return undefined;
+  const t = String(item.fhirNodeDataType ?? "");
+  const key = item.propName in container ? item.propName : `${item.propName}${t.charAt(0).toUpperCase()}${t.slice(1)}`; // value[x]
+  const v = container[key];
+  return Array.isArray(v) ? numberText(v, item.index ?? 0) : numberText(container, key);
+}
+
 function javaDecimalText(text: string): string {
-  const bad = /[^0-9.-]/.exec(text);
+  const bad = /[^0-9.-]|(?<=.)-/.exec(text);
   if (bad) throw new JavaFhirPathError(`Character ${bad[0]} is neither a decimal digit number, decimal point, nor "e" notation exponential mark.`);
   return text;
 }
@@ -355,19 +366,25 @@ function boundaryMinusOne(value: string): string {
   return c.join("");
 }
 
-/** Utilities.lowBoundaryForDecimal / highBoundaryForDecimal (l. 1688-1773), without the exponent text. */
-function decimalBoundary(value: string, precision: number, high: boolean): string {
+/**
+ * Utilities.lowBoundaryForDecimal / highBoundaryForDecimal (l. 1688-1773): an exponent is cut off the text and its digits
+ * are appended to the result, without the `e`.
+ */
+function decimalBoundary(text: string, precision: number, high: boolean): string {
+  const at = text.indexOf("e");
+  const value = at < 0 ? text : text.slice(0, at);
+  const e = at < 0 ? "" : text.slice(at + 1);
   const zero = value.replace(/[.-]/g, "").replace(/0/g, "") === "";
   const abs = value.startsWith("-") ? value.slice(1) : value;
   const frac = abs.includes(".") ? "50000000000000000000000000000" : ".50000000000000000000000000000";
   if (high) {
     if (zero) return boundaryApplyPrecision("0.50000000000000000000000000000", precision, false);
-    if (value.startsWith("-")) return `-${decimalBoundary(abs, precision, false)}`;
-    return boundaryApplyPrecision(abs + frac, precision, false);
+    if (value.startsWith("-")) return `-${decimalBoundary(abs, precision, false)}${e}`;
+    return boundaryApplyPrecision(abs + frac, precision, false) + e;
   }
   if (zero) return boundaryApplyPrecision("-0.5000000000000000000000000", precision, true);
-  if (value.startsWith("-")) return `-${decimalBoundary(abs, precision, true)}`;
-  return boundaryApplyPrecision(boundaryMinusOne(abs) + frac, precision, true);
+  if (value.startsWith("-")) return `-${decimalBoundary(abs, precision, true)}${e}`;
+  return boundaryApplyPrecision(boundaryMinusOne(abs) + frac, precision, true) + e;
 }
 
 /** DateTimeUtil.splitTimezone. */
@@ -434,7 +451,7 @@ function javaBoundary(high: boolean): (this: any, coll: any[], precision?: any) 
     }
     if (typeof v === "number" || typeof v === "bigint" || v instanceof Dec || (v && typeof v.toFixed === "function")) {
       if (p !== undefined && (p < 0 || p >= 17)) return [];
-      return [new Dec(javaDecimalText(decimalBoundary(String(v), p ?? 8, high)))];
+      return [new Dec(javaDecimalText(decimalBoundary(sourceNumberText(coll[0]) ?? String(v), p ?? 8, high)))];
     }
     throw new JavaFhirPathError(`Error evaluating FHIRPath expression: The parameter type for function sqrt is not valid for ${name}`);
   };
@@ -529,6 +546,39 @@ const SORT_DATE = ["date", "dateTime", "instant"];
 const SORT_TEXT = ["string", "code", "url", "uri", "uuid", "oid", "canonical"];
 const SORT_ALL = new Set([...SORT_INT, ...SORT_DATE, ...SORT_TEXT, "decimal", "boolean", "time"]);
 
+/** ExpressionNode.toString (ExpressionNode.java:405-480) of a fhirpath.js AST node. */
+function javaExpressionText(n: any): string {
+  const kids: any[] = n?.children ?? [];
+  const all = (sep: string): string => kids.map(javaExpressionText).join(sep);
+  switch (n?.type) {
+    case undefined:
+      return "";
+    case "InvocationExpression":
+      return all(".");
+    case "IndexerExpression":
+      return `${javaExpressionText(kids[0])}[${javaExpressionText(kids[1])}]`;
+    case "FunctionInvocation":
+      return all("");
+    case "Functn":
+      return `${n.text}(${kids.length > 1 ? javaExpressionText(kids[1]) : ""})`;
+    case "ParamList":
+      return all(", ");
+    case "ParenthesizedTerm":
+      return `(${all("")})`;
+    case "ThisInvocation":
+      return "$this";
+    case "IndexInvocation":
+      return "$index";
+    case "TotalInvocation":
+      return "$total";
+    case "MemberInvocation":
+    case "Identifier":
+      return String(n.text);
+  }
+  if (typeof n.text === "string") return kids.length === 2 ? `${javaExpressionText(kids[0])} ${n.text} ${javaExpressionText(kids[1])}` : n.text;
+  return all("");
+}
+
 /** FHIRPathBaseSorter.isComparableTypes (FHIRPathEngine.java:6634-6656). */
 function sortComparable(t1: string, t2: string): boolean {
   if (!SORT_ALL.has(t1) || !SORT_ALL.has(t2)) return false;
@@ -536,14 +586,16 @@ function sortComparable(t1: string, t2: string): boolean {
 }
 
 /** FHIRPathBaseSorter.compareNatural (FHIRPathEngine.java:6603-6631). */
-function javaCompareNatural(o1: any, o2: any, keyed: boolean): number {
+function javaCompareNatural(o1: any, o2: any, sorter: string | null): number {
   if (o1 === null && o2 === null) return 0;
   if (o1 === null) return 1;
   if (o2 === null) return -1;
   const t1 = javaFhirType(o1).type;
   const t2 = javaFhirType(o2).type;
   if (!sortComparable(t1, t2)) {
-    throw new JavaFhirPathError(keyed ? `Cannot sort the list because the sort expression return both a '${t1}' and a '${t2}'` : `Cannot sort a list that contains both a '${t1}' and a '${t2}' using natural sort order`);
+    throw new JavaFhirPathError(
+      sorter !== null ? `Cannot sort the list because the sort expression return both a '${t1}' and a '${t2}' (expression = '${sorter}')` : `Cannot sort a list that contains both a '${t1}' and a '${t2}' using natural sort order`,
+    );
   }
   const s1 = itemString(o1) ?? "";
   const s2 = itemString(o2) ?? "";
@@ -789,7 +841,9 @@ if (loaded.engine) {
     const r = sortArg.call(loaded.engine, ctx, parentData, node);
     let e = r?.expr;
     while (e?.type === "TermExpression" && e.children?.length === 1) e = e.children[0];
-    return e?.type === "PolarityExpression" ? { expr: e.children[0], direction: "desc" } : r;
+    const desc = e?.type === "PolarityExpression";
+    const key = desc ? e.children[0] : r?.expr;
+    return { expr: key, direction: { desc: desc || r?.direction === "desc", text: javaExpressionText(key) } };
   };
   loaded.engine.SortDirectionArgument = reversedSortArg;
   if (loaded.engine.evalTable) loaded.engine.evalTable.SortDirectionArgument = reversedSortArg;
@@ -805,17 +859,17 @@ if (loaded.engine) {
   // negates the result, so a descending key puts them first
   table.sort = {
     ...table.sort,
-    fn: function (this: any, data: any[], ...sortArgs: Array<{ expr: (d: any) => any[]; direction?: string }>): any[] {
-      const key = (item: any, arg: { expr: (d: any) => any[] }): any => {
+    fn: function (this: any, data: any[], ...sortArgs: Array<{ expr: (d: any) => any[]; direction: { desc: boolean; text: string } }>): any[] {
+      const key = (item: any, arg: { expr: (d: any) => any[]; direction: { text: string } }): any => {
         const r = fpUtil.arraify(arg.expr(item));
-        if (r.length > 1) throw new JavaFhirPathError("Multiple values found in return from sort expression");
+        if (r.length > 1) throw new JavaFhirPathError(`Multiple values found in return from sort expression '${arg.direction.text}'`);
         return r.length ? r[0] : null;
       };
       return data.slice().sort((a, b) => {
-        if (sortArgs.length === 0) return javaCompareNatural(a, b, false);
+        if (sortArgs.length === 0) return javaCompareNatural(a, b, null);
         for (const arg of sortArgs) {
-          const res = javaCompareNatural(key(a, arg), key(b, arg), true);
-          if (res !== 0) return arg.direction === "desc" ? -res : res;
+          const res = javaCompareNatural(key(a, arg), key(b, arg), arg.direction.text);
+          if (res !== 0) return arg.direction.desc ? -res : res;
         }
         return 0;
       });
@@ -1242,11 +1296,12 @@ const USER_FUNCTIONS: Record<string, any> = {
     fn: function (coll: any[], profile: any): any[] {
       const env = current;
       const url = Array.isArray(profile) ? fpUtil.valData(profile[0]) : profile;
-      if (!coll || coll.length !== 1 || typeof url !== "string") return [];
+      // funcConformsTo (l. 6410-6412): anything but a single item is false
+      if (!coll || coll.length !== 1 || typeof url !== "string") return [false];
       const answer = env?.conformsTo ? env.conformsTo(fpUtil.valData(coll[0]), url) : undefined;
       if (answer === undefined) throw new Unevaluable("conformsTo() not supported");
       // InstanceValidator.conformsToProfile: an unknown profile throws (UNABLE_TO_RESOLVE_), which fails the invariant
-      if (answer === null) throw new JavaFhirPathError(`Unable to resolve ${url}`);
+      if (answer === null) throw new JavaFhirPathError(`Unable to resolve the reference ${url}`);
       return [answer];
     },
   },

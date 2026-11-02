@@ -9,7 +9,8 @@ import { fixPackageResource } from "./fhirPackageHacker.js";
 import { validateStructureDefinition } from "./fhirSdValidator.js";
 import { generateSnapshotAsync, makeBaseDefinition, SnapshotGenerator } from "./fhirSnapshotGenerator.js";
 import { checkUcumCode, ucumCanonicalForm, ucumDisplayIssue, ucumDisplays } from "./fhirUcum.js";
-import { evaluateExpression, type FhirPathEnv } from "./fhirPath.js";
+import { evaluateConstraint, evaluateExpression, type FhirPathEnv } from "./fhirPath.js";
+import { setNumberText } from "./fhirJsonLiterals.js";
 import { completenessOf, InstanceValidator, type Issue } from "./fhirValidator.js";
 import { CORE, FakeResolver, SDS, el, sd } from "./fhirTestKit.test.js";
 
@@ -509,4 +510,57 @@ test("FHIRPath as FHIRPathEngine: sort keys, the type of `/` and of Resource.id"
   assert.deepEqual(run("(2/2) is Decimal"), [true], "opDivideBy");
   assert.deepEqual(run("2/2 = 1"), [true]);
   assert.deepEqual(run("Patient.id is id"), [true]);
+});
+
+test("sort errors carry the expression (FHIRPATH_MUTIPLE_VALUES_IN_SORT, FHIRPATH_MUTIPLE_SORT_TYPE_PROBLEM)", () => {
+  const p = { resourceType: "Patient", name: [{ given: ["a", "b"] }, { given: ["c"] }] };
+  const run = (e: string): unknown => evaluateConstraint(p, "Patient", e, {} as FhirPathEnv);
+  assert.deepEqual(run("Patient.name.sort(  given ).exists()"), { status: "fail", error: "Multiple values found in return from sort expression 'given'" });
+  assert.deepEqual(run("Patient.name.sort(-given.where( $this  =  'a' or  true )).exists()"), { status: "fail", error: "Multiple values found in return from sort expression 'given.where($this = 'a' or true)'" });
+  assert.deepEqual(run("(1 | 'a').sort().exists()"), { status: "fail", error: "Cannot sort a list that contains both a 'string' and a 'integer' using natural sort order" }, "TimSort's first compare is (a[1], a[0])");
+});
+
+test("lowBoundary / highBoundary read the number's source text, exponent included (Utilities.java:1688-1773)", () => {
+  const q = { resourceType: "Parameters", parameter: [{ name: "a", valueDecimal: 950 }] };
+  setNumberText(q.parameter[0], "valueDecimal", "9.5e2", 950);
+  const run = (e: string): string[] => evaluateExpression(q, "Parameters", e, {} as FhirPathEnv).map(String);
+  assert.deepEqual(run("Parameters.parameter[0].value.lowBoundary(0)"), ["92"]);
+  assert.throws(() => run("Parameters.parameter[0].value.highBoundary(0)"), /Character :/, "applyPrecision bumps the 9 to ':'");
+  assert.deepEqual(run("Parameters.parameter[0].value.lowBoundary(1)"), ["9.42"]);
+});
+
+test("conformsTo: a focus that is not a single item is false (funcConformsTo)", () => {
+  const r = { resourceType: "Patient" };
+  const env: FhirPathEnv = { resource: r, rootResource: r, conformsTo: () => true };
+  assert.deepEqual(evaluateExpression(r, "Patient", "name.conformsTo('http://x/p')", env), [false]);
+  assert.deepEqual(evaluateConstraint(r, "Patient", "conformsTo('http://x/p')", { ...env, conformsTo: () => null }), { status: "fail", error: "Unable to resolve the reference http://x/p" });
+});
+
+test("an invariant's conformsTo() is answered by validating against that profile (IV:431-472)", async () => {
+  const needsName = "http://ex.org/needs-name";
+  const asking = "http://ex.org/asking";
+  const orig = SDS[CORE + "Patient"];
+  const root = (extra: Record<string, unknown>) => ({ ...orig.snapshot.element[0], ...extra });
+  const rest = orig.snapshot.element.slice(1);
+  const profile = (url: string, rootExtra: Record<string, unknown>, tail = rest) => ({ ...orig, url, derivation: "constraint", snapshot: { element: [root(rootExtra), ...tail] } });
+  const named = profile(needsName, {}, rest.map((e: Record<string, any>) => (e.path === "Patient.active" ? { ...e, min: 1 } : e)));
+  const invariant = (expression: string) => ({ constraint: [{ key: "x-1", severity: "error", human: "must conform", expression }] });
+  class R extends FakeResolver {
+    constructor(private readonly ask: Record<string, any>) {
+      super();
+    }
+    override async fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
+      const u = url.split("|")[0];
+      return u === needsName ? named : u === asking ? this.ask : super.fetchStructureDefinition(url);
+    }
+  }
+  const run = async (expression: string, p: Record<string, unknown>): Promise<Issue[]> =>
+    new InstanceValidator(new R(profile(asking, invariant(expression)))).validate({ resourceType: "Patient", meta: { profile: [asking] }, ...p });
+  const has = (issues: Issue[], re: RegExp): boolean => issues.some((i) => re.test(i.message));
+  const expr = `conformsTo('${needsName}')`;
+  assert.ok(!has(await run(expr, { active: true }), /x-1|could not be evaluated/));
+  const failing = await run(expr, {});
+  assert.ok(has(failing, /x-1|must conform/));
+  assert.ok(!has(failing, /could not be evaluated/), "not unevaluable any more: checked_fully stays true");
+  assert.ok(has(await run("conformsTo('http://ex.org/unknown')", {}), /Unable to resolve the reference http:\/\/ex.org\/unknown/));
 });

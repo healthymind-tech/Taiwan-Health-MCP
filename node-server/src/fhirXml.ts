@@ -21,6 +21,7 @@
  *     never checked) — evaluated here against the base definitions (the type that defines the children), since the
  *     JSON handed to the validator no longer carries document order.
  */
+import { setNumberText } from "./fhirJsonLiterals.js";
 import type { Issue } from "./fhirValidator.js";
 
 type Json = Record<string, any>;
@@ -763,11 +764,23 @@ export class FhirXmlParser {
         }
         const anyVal = vals.some((v) => v !== null);
         const anyExt = exts.some((e) => e !== null);
+        // the element model keeps the @value text (`9.5e2`): the source spelling of a number, as for JSON
+        const keepText = (container: object, key: string | number, i: number): void => {
+          const v = vals[i];
+          const t = items[i].value;
+          if (typeof v === "number" && t !== undefined) setNumberText(container, key, t, v);
+        };
         if (isList) {
-          if (anyVal || !anyExt) out[name] = vals;
+          if (anyVal || !anyExt) {
+            out[name] = vals;
+            vals.forEach((_, i) => keepText(vals, i, i));
+          }
           if (anyExt) out[`_${name}`] = exts;
         } else {
-          if (anyVal || !anyExt) out[name] = vals[0];
+          if (anyVal || !anyExt) {
+            out[name] = vals[0];
+            keepText(out, name, 0);
+          }
           if (anyExt) out[`_${name}`] = exts[0];
         }
         continue;
