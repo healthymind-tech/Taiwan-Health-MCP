@@ -22,7 +22,6 @@
 
 import type { PackageRow } from "./fhirIg.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "./fhirValidator.js";
-import { terminologyServerKnows } from "./fhirSpecialSystems.js";
 import { variantsOf, type HeldVerdict } from "./extendedFindings/index.js";
 import { conceptInactive, conceptStatus, findConcept, type CodeSystemIndex, type CsConcept, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains } from "./fhirCodeSystem.js";
 import * as terminology from "./fhirTerminology.js";

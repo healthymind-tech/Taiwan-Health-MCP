@@ -20,7 +20,6 @@ import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
-import { checkUcumCode, UCUM_SYSTEM } from "./fhirUcum.js";
 import { txKnowsSystem } from "./txCodeTables.js";
 
 export const BCP47 = "urn:ietf:bcp:47";
