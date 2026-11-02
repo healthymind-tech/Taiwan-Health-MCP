@@ -373,3 +373,12 @@ test("NotSlice details: each failed conformsTo() adds 'Details for <parent> matc
   assert.ok(ns, JSON.stringify(issues));
   assert.match(ns!.message, new RegExp(`Bundle\\.entry\\[0\\]: Does not match slice 'patient' \\(discriminator: resource\\.conformsTo\\('${P.replace(/[.]/g, "\\.")}'\\)\\), Bundle\\.entry\\[0\\]: Details for Bundle matching against profile ${P.replace(/[.]/g, "\\.")}$`));
 });
+
+test("JsonParser.java:682-688: a primitive with a non-object _x is not an element (required element missing, once reported)", async () => {
+  const P = "http://example.tw/fhir/StructureDefinition/pat";
+  const res = { resourceType: "Patient", meta: { profile: [P] }, identifier: [{ system: "http://ex.org", _system: [{ id: "x" }], value: "A123456789" }] };
+  const issues = errors(await new InstanceValidator(new FakeResolver()).validate(res));
+  assert.equal(issues.filter((i) => i.message === "This property must be an object, not an Array (system at Patient.identifier[0].system)").length, 1, JSON.stringify(issues));
+  assert.ok(issues.some((i) => /Patient\.identifier\.system: minimum required = 1, but only found 0/.test(i.message)), JSON.stringify(issues));
+  assert.equal(res.identifier[0].system, "http://ex.org", "the caller's object is not changed");
+});

@@ -1127,6 +1127,44 @@ function describeJsonType(v: unknown): string {
 }
 
 /** Embedded resources (contained / Bundle entry resource and response outcome / Parameters resource) JsonParser cannot parse. */
+/**
+ * JsonParser.parseChildPrimitiveInstance (hl7-core 7.0.1, JsonParser.java:682-688): a primitive whose `_x` is not an
+ * object logs THIS_PROPERTY_MUST_BE_AN_OBJECT_NOT_ and creates no element at all — the value is gone for cardinality,
+ * slicing, invariants and every sub-validation (`identifier.system` with a bad `_system` is a missing system). Applied
+ * to the instance before validation, copy-on-write. Only a scalar `x` next to `_x`: without one the walker decides.
+ */
+function dropBadPrimitiveForks(node: any, path: string, issues: Issue[]): any {
+  if (Array.isArray(node)) {
+    let out: any[] | null = null;
+    node.forEach((v, i) => {
+      const r = dropBadPrimitiveForks(v, `${path}[${i}]`, issues);
+      if (r !== v) (out ??= [...node])[i] = r;
+    });
+    return out ?? node;
+  }
+  if (!isObject(node)) return node;
+  let out: Record<string, any> | null = null;
+  for (const k of Object.keys(node)) {
+    const v = node[k];
+    if (k.startsWith("_")) {
+      const name = k.slice(1);
+      const main = node[name];
+      if (!isObject(v) && main !== undefined && main !== null && typeof main !== "object") {
+        const at = `${path}.${name}`;
+        issues.push({ severity: "error", path: at, code: "structure", message: `This property must be an object, not ${describeJson(v)} (${name} at ${at})` });
+        out ??= { ...node };
+        delete out[k];
+        delete out[name];
+      }
+      continue;
+    }
+    if (out && !(k in out)) continue; // a primitive dropped above
+    const r = dropBadPrimitiveForks(v, `${path}.${k}`, issues);
+    if (r !== v) (out ??= { ...node })[k] = r;
+  }
+  return out ?? node;
+}
+
 function unparsedResources(root: Record<string, any>): Set<object> {
   const out = new Set<object>();
   // context.fetchResource(StructureDefinition, sdNs(name)): any core type name parses (a datatype name too — not ported,
@@ -1477,11 +1515,12 @@ export class InstanceValidator {
 
   // ------------------------------------------------------------------ public
 
-  async validate(resource: Record<string, any>, opts: ValidateOptions = {}): Promise<Issue[]> {
+  async validate(resource0: Record<string, any>, opts: ValidateOptions = {}): Promise<Issue[]> {
     const issues: Issue[] = [];
-    if (!isObject(resource) || typeof resource.resourceType !== "string") {
+    if (!isObject(resource0) || typeof resource0.resourceType !== "string") {
       return [{ severity: "fatal", path: "", code: "structure", message: "resource must be a JSON object with a resourceType" }];
     }
+    const resource = dropBadPrimitiveForks(resource0, resource0.resourceType, issues) as Record<string, any>;
     const bundle = resource.resourceType === "Bundle" ? this.bundleCtx(resource) : null;
     const rctx: ResourceCtx = { resource, container: null, root: resource, bundle, entry: null };
     // `|version` is kept: HL7 resolves a versioned canonical to that version only.
