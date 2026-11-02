@@ -40,10 +40,15 @@ export function normMessage(m: string): string {
     .replace(/\.$/, "");
 }
 
+/** The display language a Wrong Display message ends with; evaluator's rule: not part of a comparison key. */
+export function stripDisplayLanguage(m: string): string {
+  return /^Wrong Display Name /u.test(m) ? m.replace(/ \(for the language\(s\) '[^']*'\)/u, "") : m;
+}
+
 /** normMessage without definition-version / invariant-source suffixes and the " Note that" tail. */
 export function lenientMessage(m: string): string {
   return normMessage(
-    normMessage(m)
+    stripDisplayLanguage(normMessage(m))
       .split(" Note that ")[0]
       .replace(/ \(defined in [^)]*\)/g, "")
       .replace(/(\(from \S+?)\|[^)\s]+\)/g, "$1)")
@@ -111,7 +116,7 @@ export interface Comparison {
 export function compareIssues(expected: SimpleIssue[], actual: SimpleIssue[]): Comparison {
   const ee = expected.filter(isError);
   const ae = actual.filter(isError);
-  const sk = (i: SimpleIssue): string => `${normPath(i.path)} | ${normMessage(i.message)}`;
+  const sk = (i: SimpleIssue): string => `${normPath(i.path)} | ${stripDisplayLanguage(normMessage(i.message))}`;
   const ck = (i: SimpleIssue): string => `${normPath(i.path)} | ${errorClass(normMessage(i.message))}`;
   const se = multiset(ee.map(sk));
   const sa = multiset(ae.map(sk));

@@ -36,7 +36,7 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { errorClass, isContentCheck } from "../classify.js";
-import { compareIssues, isError, lenientMessage, normMessage, normPath, type SimpleIssue } from "../lib/compare.js";
+import { compareIssues, isError, lenientMessage, normMessage, normPath, stripDisplayLanguage, type SimpleIssue } from "../lib/compare.js";
 import { readResults } from "./results.js";
 
 type Res = Record<string, any>;
@@ -207,6 +207,9 @@ interface IgStats {
   ocFailValid: number;
   ocFailThrow: number;
   ocNotReceivable: number;
+  /** Gate keys that differ from ours only by the Wrong Display language suffix, and their items (absorbed, reported apart). */
+  displayLanguageKeys: number;
+  displayLanguageItems: number;
   /** gate + network: the whole corpus without crash / tool-boundary items */
   allItems: number;
   allVerdictMiss: number;
@@ -245,7 +248,7 @@ const buckets = new Map<string, Bucket>();
 const st = (ig: string): IgStats => {
   let s = stats.get(ig);
   if (!s) {
-    s = { ig, items: 0, compared: 0, officialCrash: 0, rawUnparseable: 0, rawUnparseableOfficialInvalid: 0, crash: 0, offInvalidOursValid: 0, offInvalidOursValidCheckedFully: 0, offValidOursInvalid: 0, notCheckedFully: 0, network: 0, networkVerdictDiff: 0, ocTotal: 0, ocPass: 0, ocFailValid: 0, ocFailThrow: 0, ocNotReceivable: 0, allItems: 0, allVerdictMiss: 0, allVerdictExtra: 0, allOfficialKeys: 0, allMissing: 0, allExtra: 0, toolBoundary: 0, scalar: 0, scalarVerdictDiff: 0, officialKeys: 0, missing: 0, missingItems: 0, extra: 0, extraItems: 0, strict: 0, lenient: 0, classAgree: 0 };
+    s = { ig, items: 0, compared: 0, officialCrash: 0, rawUnparseable: 0, rawUnparseableOfficialInvalid: 0, crash: 0, offInvalidOursValid: 0, offInvalidOursValidCheckedFully: 0, offValidOursInvalid: 0, notCheckedFully: 0, network: 0, networkVerdictDiff: 0, ocTotal: 0, ocPass: 0, ocFailValid: 0, ocFailThrow: 0, ocNotReceivable: 0, displayLanguageKeys: 0, displayLanguageItems: 0, allItems: 0, allVerdictMiss: 0, allVerdictExtra: 0, allOfficialKeys: 0, allMissing: 0, allExtra: 0, toolBoundary: 0, scalar: 0, scalarVerdictDiff: 0, officialKeys: 0, missing: 0, missingItems: 0, extra: 0, extraItems: 0, strict: 0, lenient: 0, classAgree: 0 };
     stats.set(ig, s);
   }
   return s;
@@ -423,6 +426,33 @@ for (const it of items) {
   if (!off.length && ours.length) s.offValidOursInvalid++;
   s.officialKeys += off.length;
   const { miss, extra } = matchErrors(off, ours);
+  {
+    // official Wrong Display errors whose exact text ours lacks but whose text without the language suffix ours has
+    const exact = new Map<string, number>();
+    for (const e of ours) exact.set(`${e.path} | ${e.msg}`, (exact.get(`${e.path} | ${e.msg}`) ?? 0) + 1);
+    const stripped = new Map<string, number>();
+    let absorbed = 0;
+    for (const e of off) {
+      const key = `${e.path} | ${e.msg}`;
+      const n = exact.get(key) ?? 0;
+      if (n > 0) {
+        exact.set(key, n - 1);
+        continue;
+      }
+      if (e.msg === stripDisplayLanguage(e.msg)) continue;
+      const k2 = `${e.path} | ${stripDisplayLanguage(e.msg)}`;
+      if (!stripped.size) for (const [q, c] of exact) if (c > 0) stripped.set(`${q.split(" | ")[0]} | ${stripDisplayLanguage(q.split(" | ").slice(1).join(" | "))}`, c);
+      const m = stripped.get(k2) ?? 0;
+      if (m > 0) {
+        stripped.set(k2, m - 1);
+        absorbed++;
+      }
+    }
+    if (absorbed) {
+      s.displayLanguageKeys += absorbed;
+      s.displayLanguageItems++;
+    }
+  }
   s.missing += miss.length;
   s.extra += extra.length;
   if (miss.length) s.missingItems++;
@@ -479,6 +509,7 @@ lines.push(rrLine("**all**", { valid: rrSum((r) => r.valid), releasable: rrSum((
 lines.push("", `Unsafe releases (${unsafeReleases.length}):`, "");
 for (const it of unsafeReleases) lines.push(`- \`${it.ig}/${it.id}\` (${it.family}, ${String(it.mutation).slice(0, 60)})${isOfficialCrash(it) ? ": jar crashed" : `: jar ${(it.officialErrors ?? []).length} errors, first: ${String(it.officialErrors?.[0]?.msg ?? "").slice(0, 110)}`}`);
 lines.push("");
+lines.push(`Wrong Display language suffix (\`(for the language(s) ...)\`) left out of the comparison: absorbs ${sum((s) => s.displayLanguageKeys)} key(s) in ${sum((s) => s.displayLanguageItems)} gate item(s) (${all.map((s) => `${s.ig} ${s.displayLanguageKeys} / ${s.displayLanguageItems}`).join(", ")}). Verdicts are unaffected: the error is present on both sides.`, "");
 lines.push("## All corpus, network bucket included (gate + network; official-crash and tool-boundary items apart)", "");
 lines.push("| IG | items | verdict miss | verdict extra | official keys | missing keys | extra keys | extra rate | gate extra rate |", "|---|---|---|---|---|---|---|---|---|");
 const allRow = (s: IgStats): string => `| ${s.ig} | ${s.allItems} | ${s.allVerdictMiss} | ${s.allVerdictExtra} | ${s.allOfficialKeys} | ${s.allMissing} | ${s.allExtra} | ${pct(s.allExtra, s.allOfficialKeys)} | ${pct(s.extra, s.officialKeys)} |`;
