@@ -58,6 +58,7 @@ export function sessionResolver(inner: ValidatorResolver, session: LookupSession
     },
   };
   const hasReject = <K extends keyof ValidatorResolver>(k: K): boolean => typeof inner[k] === "function";
+  if (inner.systemInIgNamespace) view.systemInIgNamespace = (s) => inner.systemInIgNamespace!(s);
   if (hasReject("codeSystemResolvable")) view.codeSystemResolvable = (s) => pinned("code system", [s], s, () => inner.codeSystemResolvable!(s), { answer: true });
   // a code-less Coding's slice match depends on it and there is no "undecided" boolean: no verdict
   if (hasReject("codeSystemLocal")) view.codeSystemLocal = (s) => pinned("local code system", [s], s, () => inner.codeSystemLocal!(s), null);

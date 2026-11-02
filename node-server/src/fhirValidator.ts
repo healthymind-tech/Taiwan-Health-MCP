@@ -292,6 +292,8 @@ export interface ValidatorResolver {
    * Optional; without it every system counts as resolvable.
    */
   codeSystemResolvable?(system: string): Promise<boolean>;
+  /** The system lies under the canonical of a package of the closure (http / https alike). */
+  systemInIgNamespace?(system: string): Promise<boolean>;
   /**
    * Does the package closure hold this code system as a CodeSystem resource with
    * content complete / fragment that the HL7 validator checks locally (i.e. not a
@@ -4108,7 +4110,9 @@ export class InstanceValidator {
           return;
         }
         if (raw === undefined && rawExt === undefined) return;
-        if (raw === null && rawExt === undefined) {
+        // JsonParser.parseChildPrimitiveInstance l. 712-714: a JsonNull main value is an error whether or not `_x` is
+        // there, and no element is created (only array items may be null beside their shadow)
+        if (raw === null && (rawExt === undefined || (primitiveType && !this.xmlSource))) {
           if (this.xmlSource) {
             // XML: an element without value or children (InstanceValidator.checkPrimitive + ele-1)
             issues.push({ severity: "error", path, code: "invalid", message: PRIMITIVE_VALUEEXT_MESSAGE });
@@ -5896,6 +5900,7 @@ export class InstanceValidator {
         return;
       }
     }
+    if (typeCode === "CodeableConcept" && strength && strength !== "example" && (await this.codelessCodingIssues(v, item, issues))) return;
     if (strength !== "required" && strength !== "extensible") return;
     // checkPrimitiveBinding: code, string, uri, url, canonical
     if (!["code", "Coding", "CodeableConcept", "Quantity", "string", "uri", "url", "canonical", "CodeableReference"].includes(typeCode)) return;
@@ -6113,6 +6118,27 @@ export class InstanceValidator {
    * _11 (code), errors; an unresolvable max value set is Terminology_TX_ValueSet_NotFound(_CS); undecidable membership
    * is unchecked, never a pass.
    */
+  /**
+   * validateBindingCodeableConcept (IV l. 1769-1787): under any binding but example the concept goes to the terminology
+   * server, whose issues are reported as they come (calculateSeverityForTxIssuesAndUpdateErrors). For codings without a
+   * code tx.fhir.org answers a warning on the concept and an error on the coding (the wording is the server's, not
+   * Messages.properties; evaluator corpus). A CodeSystem of the closure is validated locally by the jar and gets the
+   * ordinary binding path. Returns true when it reported.
+   */
+  private async codelessCodingIssues(v: any, item: Item, issues: Issue[]): Promise<boolean> {
+    const list: any[] = isObject(v) && Array.isArray(v.coding) ? v.coding : [];
+    if (!list.length || list.some((c) => isObject(c) && typeof c.code === "string" && c.code !== "")) return false;
+    // a `code` written as null or with a shadow is the parser's error, not this one
+    const i = list.findIndex((c) => isObject(c) && typeof c.system === "string" && c.system !== "" && c.code === undefined && c._code === undefined);
+    if (i < 0) return false;
+    const system = String(list[i].system);
+    if (!this.resolver.codeSystemLocal || (await this.resolver.codeSystemLocal(system).catch(() => true))) return false;
+    const message = `Coding has no code for system ${system} and cannot be validated`;
+    issues.push({ severity: "warning", path: item.path, code: "invalid", message });
+    issues.push({ severity: "error", path: `${item.path}.coding[${i}]`, code: "code-invalid", message });
+    return true;
+  }
+
   private async checkMaxValueSet(maxUrl: string, codings: Array<[string | null, string | null]>, typeCode: string, item: Item, issues: Issue[]): Promise<void> {
     const mvs = await this.vsHeader(maxUrl);
     if (!mvs) {
@@ -6294,7 +6320,9 @@ export class InstanceValidator {
     // (parity v3, F23) InstanceValidator.validateReference (IV:3986-4011): an example URL is an error only when it
     // does not resolve (a definition loaded from an example.org namespace is fine) and the path is not exempt
     // checkPrimitive l. 3417: Bundle.entry.fullUrl never reaches validateReference (validator_cli: no message on an example.org fullUrl)
-    if (typeCode !== "oid" && typeCode !== "uuid" && !v.startsWith("#") && el.path !== "Bundle.entry.fullUrl" && isExampleUrl(v) && !this.inExampleExemptContext(item.path)) {
+    // only an absolute URL: validator_cli 7.0.1 reports no example URL for `www.example.org` or ' http://example.org/x'
+    // (evaluator corpus: all 5649 official URL_EXAMPLE errors are absolute URLs)
+    if (typeCode !== "oid" && typeCode !== "uuid" && !v.startsWith("#") && el.path !== "Bundle.entry.fullUrl" && isAbsoluteUrlJava(v) && isExampleUrl(v) && !this.inExampleExemptContext(item.path)) {
       const u = v.includes("|") ? v.slice(0, v.lastIndexOf("|")) : v;
       const found = !!this.resolver.definitionExists && (await this.defExists(u));
       // settings.isAllowExamples(): "nothing - these do need to resolve"
@@ -6386,11 +6414,15 @@ export class InstanceValidator {
       // hl7.org/fhir space: validator_cli 7.0.1 + tx.fhir.org answers
       // http://hl7.org/fhir/sid/icd-10-pcs with this warning plus the URL-resolution
       // error from checkUri (v8 probes P-*), not Terminology_TX_System_Unknown.
+      // Nothing here says the terminology server does not hold it (ICD-11: it does, and a wrong display is its error):
+      // not a checked code, unless the system lies in an installed IG's own namespace, which no server serves.
+      const igOwn = !this.resolver.systemInIgNamespace || (await this.resolver.systemInIgNamespace(system));
       issues.push({
         severity: "warning",
         path: `${item.path}.system`,
         code: "not-found",
         message: `A definition for CodeSystem '${system}' could not be found, so the code cannot be validated`,
+        ...(igOwn ? {} : { unchecked: { kind: "code" as const, canonical: system } }),
       });
     } else if (r.status === "invalid-code") {
       issues.push(this.invalidCodeIssue(r, `${item.path}.${r.at ?? "code"}`, system));

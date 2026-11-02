@@ -625,6 +625,21 @@ export class DbValidatorResolver implements ValidatorResolver {
     });
   }
 
+  private igCanonicals: Promise<string[]> | null = null;
+
+  async systemInIgNamespace(system: string): Promise<boolean> {
+    const bare = (u: string): string => u.replace(/^https?:\/\//u, "").replace(/\/$/u, "");
+    this.igCanonicals ??= query<{ canonical: string | null }>("SELECT DISTINCT canonical FROM fhir.ig_packages WHERE (package_id, version) IN (SELECT * FROM unnest($1::text[], $2::text[]))", terminology.closureArrays(this.pkg)).then((r) =>
+      r.rows.map((x) => bare(String(x.canonical ?? ""))).filter((c) => c !== ""),
+    );
+    try {
+      const sys = bare(system);
+      return (await this.igCanonicals).some((c) => sys === c || sys.startsWith(`${c}/`));
+    } catch {
+      return true; // never invent "not checked" on DB trouble
+    }
+  }
+
   async codeSystemResolvable(system: string): Promise<boolean> {
     if (txKnownSystem(system)) return true;
     return guarded(async () => {
@@ -753,6 +768,9 @@ export class DbValidatorResolver implements ValidatorResolver {
       const r = await this.checkCodeUncached(base, code, display, system.slice(bar + 1), langs);
       return nameSystemAsWritten(r, base, system);
     }
+    // the terminology server ignores a whitespace-only display; the jar's local check of an IG CodeSystem does not
+    // (evaluator corpus: LOINC / SNOMED / THO no issue; nhi-outpatient-case-type Display_Name_for__should_be_one_of__instead_of)
+    if (display !== null && display.trim() === "" && txKnownSystem(system)) display = null;
     if (system === ISO3166) return this.checkIso3166(code, display);
     // CVX: bundled tx.fhir.org table (fhirCvx.ts).
     // CVX names 'en' whatever the request language: the CLI on the suite's cvx.json, and 3972 of 4126 corpus messages (a Bundle in

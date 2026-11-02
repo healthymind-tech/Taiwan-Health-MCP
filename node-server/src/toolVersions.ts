@@ -260,11 +260,12 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.65.0: FHIRPath boundaries on the number source text, conformsTo() of a non-singleton is false, sort errors with the expression (parity v3 round 7).
   // 1.66.0: FHIRPath equals validator_cli 7.0.1 on the suite (1076/1076): decimal digits through Decimal / BigDecimal, Quantity units per operator, ~ null, date text, skip / take / substring / indexer exceptions, type() and is() over the element model.
   // 1.69.0 (parity v3 review-structure, checked on the jar): fetchCache, element identity across views, memberOf empty, deep element model for invariants, extension context list of embedded resources, UCUM inner text, duplicate contained ids.
-  fhir_validate_bundle: "1.75.0",
+  fhir_validate_bundle: "1.76.0",
   // 1.68.0 (parity v3 tx-validator-wiring, round 7): answers locally what the terminology server would: membership from local tables (concept in / not-in, ICD-10-CM is-a, RxNorm TTY, SNOMED is-not-a and ECL, ISO 3166, UCUM, CVX), urn:oid systems nobody holds are UNKNOWN_CODESYSTEM, a CodeableConcept of a system nobody holds has no binding issue, inactive SNOMED concepts are in no hierarchy, R4 core v2 tables with the version in the url, ATC displays against any installed ValueSet.
   // 1.69.0 (parity v3 tx-validator-wiring, round 9): systems the server answers but nobody holds here (EDQM, ICD-O-3, ICD-11, HCPCS …) are undecided, not UNKNOWN_CODESYSTEM; a Coding.system spelled url|version is checked as that version.
   // 1.70.0 (parity v3 tx-validator-wiring, round 9): LOINC regex filters (a find, jar); a ValueSet nobody holds outside the HL7 space is a definite not found.
   // 1.71.0 (parity v3 tx-validator-wiring, round 9): CVX Wrong Display names the language 'en' (jar CLI, corpus).
+  // 1.68.0 (parity v3, unsafe releases): JSON null beside a shadow is a parser error; codings without a code under a non-example binding (tx issues); a code system nothing here holds outside the IG namespaces is not fully checked; whitespace displays ignored for server-side systems; example URLs only when absolute.
   // 1.59.0: FHIRPath sort keys, the decimal type of `/` and the `id` type of Resource.id as FHIRPathEngine (parity v3 round 7).
   // 1.59.0 (parity v3 json-xhtml): an object emptied by the parser on a choice element gets no ele-1, as a source `{}` there.
   // 1.53.0: data carries codes_unchecked / slices_unchecked / invariants_unchecked / lookups_failed (the reasons for checked_fully=false, as fhir_validate_resource; they were dropped), and undecided_causes (`system|valueSet` behind undecided codes and slices).
@@ -330,11 +331,12 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.62.0: validation as fhir_validate_bundle 1.65.0.
   // 1.63.0: validation as fhir_validate_bundle 1.66.0.
   // 1.66.0: validation as fhir_validate_bundle 1.69.0 (parity v3 review-structure, checked on the jar).
-  fhir_validate_resource: "1.72.0",
+  fhir_validate_resource: "1.73.0",
   // 1.65.0: validation as fhir_validate_bundle 1.68.0.
   // 1.66.0: validation as fhir_validate_bundle 1.69.0.
   // 1.67.0: validation as fhir_validate_bundle 1.70.0.
   // 1.68.0: validation as fhir_validate_bundle 1.71.0.
+  // 1.65.0: validation as fhir_validate_bundle 1.68.0.
   // 1.56.0: validation as fhir_validate_bundle 1.59.0.
   // 1.56.0: validation as fhir_validate_bundle 1.59.0.
   // 1.50.0: undecided_causes as fhir_validate_bundle 1.53.0.
