@@ -102,6 +102,8 @@ export function isKnownSid(url: string): boolean {
 
 /** Port of InstanceValidator.isDefinitionURL / isKnownMappingUri + SpecialExtensions.KNOWN_EXTENSIONS (7.0.1). */
 const KNOWN_URLS = new Set([
+  // the obligation-profile flag is read by StructureDefinitionValidator; validator_cli does not report it unresolved (profile-patient-op2)
+  "http://hl7.org/fhir/StructureDefinition/obligation-profile",
   "http://hl7.org/fhirpath/System.Boolean", "http://hl7.org/fhirpath/System.String", "http://hl7.org/fhirpath/System.Integer",
   "http://hl7.org/fhirpath/System.Decimal", "http://hl7.org/fhirpath/System.Date", "http://hl7.org/fhirpath/System.Time",
   "http://hl7.org/fhirpath/System.DateTime", "http://hl7.org/fhirpath/System.Quantity", "urn:ietf:bcp:13",
@@ -198,7 +200,7 @@ const CANONICAL_RESOURCES = new Set(
 
 /** Element base paths whose URI value is not checked for resolution by the HL7 validator. */
 export function uriResolutionExempt(basePath: string): boolean {
-  if (basePath === "Bundle.entry.fullUrl" || basePath === "Extension.url") return true; // Extension.url: "validated elsewhere" (IV:4199)
+  if (basePath === "Bundle.entry.fullUrl") return true;
   const p = basePath.split(".");
   return p.length === 2 && p[1] === "url" && CANONICAL_RESOURCES.has(p[0]);
 }
