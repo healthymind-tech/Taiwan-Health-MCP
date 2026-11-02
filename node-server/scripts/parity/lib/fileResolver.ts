@@ -13,7 +13,8 @@
  * UCUM, THO, urn:…) are not decidable offline and stay silent — every such lookup is counted in `txLookups` so a
  * harness can flag results that depend on the terminology server.
  */
-import { indexCodeSystem, valueSetContains, type CodeSystemIndex, type TerminologyDeps } from "../../../src/fhirCodeSystem.js";
+import { indexCodeSystem, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains, type CodeSystemIndex, type TerminologyDeps } from "../../../src/fhirCodeSystem.js";
+import { SNOMED_TX_VERSION, loincUnknownMessage } from "../../../src/fhirExternalTerminology.js";
 import { terminologyServerKnows } from "../../../src/fhirSpecialSystems.js";
 import { rankHl7Current } from "../../../src/fhirTerminology.js";
 import { judgeHeldCodeSystem, judgeSpecialSystem, serverSideSystem, unknownCodeSystemVersion } from "../../../src/fhirValidationResolver.js";
@@ -196,6 +197,11 @@ export class FileValidatorResolver implements ValidatorResolver {
     }
     const special = judgeSpecialSystem(system, code, display);
     if (special) return special;
+    // the format checks DbValidatorResolver makes before its tables (a code of no edition at all)
+    if (system === "http://snomed.info/sct" && !snomedCheckDigitValid(code)) {
+      return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}' version '${SNOMED_TX_VERSION}' (International Edition)` };
+    }
+    if (system === "http://loinc.org" && !/^L[APGL]\d+-\d$/.test(code) && !loincCheckDigitValid(code)) return { status: "invalid-code", severity: "error", message: loincUnknownMessage(code) };
     if (txServedSystem(system) || serverSideSystem(system)) {
       this.txLookups++;
       return display === null ? { status: "silent", undecided: true } : { status: "display-unchecked", message: `Display not checked: no local terminology for ${system}`, undecided: true };
@@ -205,6 +211,10 @@ export class FileValidatorResolver implements ValidatorResolver {
 
   async codeSystemVersions(system: string): Promise<string[]> {
     return this.store.candidates(system, "CodeSystem").map((e) => e.version).filter((v): v is string => !!v);
+  }
+
+  async fetchCodeSystem(url: string): Promise<Res | null> {
+    return this.store.resolve("CodeSystem", url);
   }
 
   async codeSystemExists(url: string): Promise<boolean> {

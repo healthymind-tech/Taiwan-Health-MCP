@@ -587,6 +587,16 @@ export class DbValidatorResolver implements ValidatorResolver {
     }
   }
 
+  /** The CodeSystem resource of a canonical (closure; `|version` honoured); null on DB trouble. */
+  async fetchCodeSystem(url: string): Promise<Record<string, any> | null> {
+    try {
+      const { url: canonical, version } = splitCanonicalVersion(url);
+      return version === null ? await terminology.loadArtifactByCanonical("CodeSystem", canonical, this.pkg) : await this.loadVersioned("CodeSystem", canonical, version);
+    } catch {
+      return null;
+    }
+  }
+
   /** A CodeSystem with this canonical in the closure (binding → CodeSystem URL); false on DB trouble (no invented error). */
   async codeSystemExists(url: string): Promise<boolean> {
     try {

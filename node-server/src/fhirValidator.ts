@@ -42,9 +42,12 @@ import { validateStructureDefinition } from "./fhirSdValidator.js";
 import { pushAll } from "./arrayUtils.js";
 import { UCUM_SYSTEM, checkUcumCode, convertUcum, ucumDisplayIssue, ucumUnknownCodeMessage } from "./fhirUcum.js";
 import { XVER_SOURCE, xverDefinition, xverElementId, xverMatchingUrl, xverStatus, xverVersion } from "./fhirXver.js";
-import { hl7UrlMustResolve, uriResolutionExempt, urlResolveMessage, urnSyntaxIssue } from "./fhirUriRules.js";
+import { CANONICAL_RESOURCES, hl7UrlMustResolve, uriResolutionExempt, urlResolveMessage, urnSyntaxIssue } from "./fhirUriRules.js";
 import { codingVersionIssue } from "./fhirExternalTerminology.js";
 import { codingVersionIssues } from "./fhirCsVersion.js";
+import { isAbsoluteUrl } from "./fhirSpecialSystems.js";
+import { validateCodeSystemResource } from "./fhirCodeSystemResource.js";
+import { validateValueSetResource } from "./fhirValueSetResource.js";
 import { languageXhtmlIssues, narrativeControlIssues, parseXhtml, textLinkIssues, validateXhtml, xhtmlHrefIssues } from "./fhirXhtml.js";
 import { duplicateKeys, numberText } from "./fhirJsonLiterals.js";
 import { dropUnprocessed, JsonSyntaxError, jsonSyntaxIssues, parseFhirJsonText, toPlain, type JObject } from "./fhirJsonParser.js";
@@ -262,6 +265,8 @@ export interface ValidatorResolver {
   definitionExists?(url: string): Promise<boolean>;
   /** Versions of the CodeSystem `system` held in the closure ([] = not held). Optional (G3 version checks). */
   codeSystemVersions?(system: string): Promise<string[]>;
+  /** The CodeSystem resource of a canonical (`|version` honoured), null when not held. Optional (CodeSystem / ValueSet resource checks). */
+  fetchCodeSystem?(url: string): Promise<Record<string, any> | null>;
   /** Is there a CodeSystem with exactly this canonical (Terminology_TX_ValueSet_NotFound_CS)? Optional. */
   codeSystemExists?(url: string): Promise<boolean>;
   /** (v17.5) Is `version` an installed version of the definition `url`? Absent = not checked (fail-open). */
@@ -1536,6 +1541,8 @@ export class InstanceValidator {
 
   /** ValidateOptions.languages of the running validation. */
   private languages: string[] = ["en"];
+  /** Canonical urls of the contained resources in scope (a url they define resolves, vs-canonical-good). */
+  private containedUrls = new Set<string>();
   /** Working language of the resource being validated (its `language`), null = ValidateOptions.languages. */
   private workingLang: string[] | null = null;
   private matchetypeStatus: "disallowed" | "required" | "optional" = "disallowed";
@@ -2431,6 +2438,7 @@ export class InstanceValidator {
    */
   private async validateResource(rctx: ResourceCtx, path: string, extraProfiles: string[], issues: Issue[], depth: number): Promise<void> {
     const saved = this.workingLang;
+    const savedUrls = this.containedUrls;
     const lang = typeof rctx.resource?.language === "string" ? rctx.resource.language.trim() : "";
     if (lang) this.workingLang = [lang];
     // validateResource, IV:9034-9042: the matchetype extension and its status
@@ -2448,6 +2456,7 @@ export class InstanceValidator {
         issues.push({ severity: "error", path, code: "invalid", message: "This resource is required to be a matchetype resource (extension http://hl7.org/fhir/tools/StructureDefinition/matchetype must be true)" });
       }
     }
+    if (this.containedUrls.has(u)) return;
     try {
       await this.validateResourceBody(rctx, path, extraProfiles, issues, depth);
       // checkSpecials: StructureDefinitionValidator (InstanceValidator l. 7252)
@@ -2457,7 +2466,11 @@ export class InstanceValidator {
       }
     } finally {
       this.workingLang = saved;
+<<<<<<< HEAD
       this.inMatchetype = savedMt;
+=======
+      this.containedUrls = savedUrls;
+>>>>>>> e96fd0a (feat(validator): CodeSystem and ValueSet resources validated as CodeSystemValidator / ValueSetValidator (count, supplements, properties, include.system, concepts, filters, parameters), defining canonical urls absolute)
     }
   }
 
@@ -2478,6 +2491,26 @@ export class InstanceValidator {
     if (!base) {
       issues.push({ severity: "error", path, code: "structure", message: `Unknown resource type '${rt}'` });
       return;
+    }
+    // InstanceValidator.checkPrimitive → isCanonicalURLElement (IV tag 7.0.1:3412): the defining url of a canonical resource
+    if (CANONICAL_RESOURCES.has(rt) && typeof resource.url === "string" && resource.url !== "" && !isAbsoluteUrl(resource.url)) {
+      const m = rctx.container ? `Canonical URLs in contained resources must be absolute URLs if present (${resource.url})` : `Canonical URLs must be absolute URLs if they are not fragment references (${resource.url})`;
+      issues.push({ severity: "error", path: `${path}.url`, code: "invalid", message: m });
+    }
+    // InstanceValidator.checkSpecials (IV tag 7.0.1:7239 / 7251): CodeSystemValidator / ValueSetValidator
+    if (rt === "CodeSystem" || rt === "ValueSet") {
+      const deps = {
+        fetchCodeSystem: async (u: string) => (this.resolver.fetchCodeSystem ? await this.resolver.fetchCodeSystem(u).catch(() => null) : null),
+        fetchValueSet: (u: string) => this.vsHeader(u),
+        codeStatus: async (system: string, code: string, version: string | null) => {
+          const r = await this.codeCheck(system, code, null, version);
+          if (r.status === "unknown-system") return { status: "unsupported" as const };
+          return r.status === "invalid-code" && r.severity === "error" ? { status: "invalid" as const, message: r.message } : { status: "ok" as const };
+        },
+        allowExamples: this.allowExamples,
+        isExampleUrl,
+      };
+      for (const x of rt === "CodeSystem" ? await validateCodeSystemResource(resource, path, deps) : await validateValueSetResource(resource, path, deps)) issues.push(x);
     }
     // (parity v3) InstanceValidator.validateResourceRules: Language_XHTML_* warnings (resource language vs text.div)
     if (typeof resource.language === "string" && isObject(resource.text)) {
@@ -5535,7 +5568,12 @@ export class InstanceValidator {
     const basePath = isObject(el.base) && typeof el.base.path === "string" ? el.base.path : String(el.path || "");
     if (uriResolutionExempt(basePath)) return;
     if (!this.resolver.definitionExists || !hl7UrlMustResolve(v)) return;
+<<<<<<< HEAD
     const u = (v.includes("|") ? v.slice(0, v.lastIndexOf("|")) : v).replace(/#.*$/, "");
+=======
+    const u = v.includes("|") ? v.slice(0, v.lastIndexOf("|")) : v;
+    if (this.containedUrls.has(u)) return;
+>>>>>>> e96fd0a (feat(validator): CodeSystem and ValueSet resources validated as CodeSystemValidator / ValueSetValidator (count, supplements, properties, include.system, concepts, filters, parameters), defining canonical urls absolute)
     if (await this.defExists(u)) {
       // (v17.5) `url|version`: the HL7 validator resolves that version (Coding.system 'http://…/v2-0360|2.7' → not found)
       if (!v.includes("|") || !this.resolver.definitionVersionExists) return;

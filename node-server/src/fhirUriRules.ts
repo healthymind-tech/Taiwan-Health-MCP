@@ -188,7 +188,7 @@ export function urlResolveMessage(url: string): string {
 }
 
 /** Canonical-resource types whose `.url` is the resource's own identity (port of InstanceValidator.isCanonicalURLElement). */
-const CANONICAL_RESOURCES = new Set(
+export const CANONICAL_RESOURCES = new Set(
   (
     "ActivityDefinition ActorDefinition CapabilityStatement ChargeItemDefinition Citation CodeSystem CompartmentDefinition ConceptMap " +
     "ConditionDefinition EffectEvidenceSynthesis EventDefinition Evidence EvidenceReport EvidenceVariable ExampleScenario GraphDefinition " +
@@ -201,6 +201,8 @@ const CANONICAL_RESOURCES = new Set(
 /** Element base paths whose URI value is not checked for resolution by the HL7 validator. */
 export function uriResolutionExempt(basePath: string): boolean {
   if (basePath === "Bundle.entry.fullUrl") return true;
+  // CodeSystem.property.uri is judged by CodeSystemValidator.checkPropertyDefinition (official cs-bad-props: no URL error)
+  if (basePath === "CodeSystem.property.uri") return true;
   const p = basePath.split(".");
   return p.length === 2 && p[1] === "url" && CANONICAL_RESOURCES.has(p[0]);
 }
