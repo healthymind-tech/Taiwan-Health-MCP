@@ -272,6 +272,9 @@ test("a coding without a code: the value set still answers (cc.hasCoding), and a
   await v.checkCoding({ system: "urn:ietf:bcp:47", code: "" }, { path: "X.y.coding[0]" }, server, el);
   assert.deepEqual(server.map((i) => `${i.severity} ${i.path}`), ["error X.y.coding[0]", "warning X.y"]);
   assert.equal(server[0].message, "Coding has no code for system urn:ietf:bcp:47 and cannot be validated");
+  const silent: Issue[] = [];
+  await v.checkCoding({ system: "http://loinc.org" }, { path: "X.y.coding[0]" }, silent, el);
+  assert.deepEqual(silent, []); // official TW Core + IPS: 0 of 76
 });
 
 test("Coding.system: a number is read as its text, a value with whitespace only gets the URI rule", async () => {

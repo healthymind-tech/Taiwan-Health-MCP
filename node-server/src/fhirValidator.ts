@@ -6347,8 +6347,16 @@ export class InstanceValidator {
     const i = list.findIndex((c) => isObject(c) && typeof c.system === "string" && c.system !== "" && c.code === undefined && c._code === undefined);
     if (i < 0) return false;
     const system = String(list[i].system);
-    // checkCoding reports it (codelessCoding); a system nobody answers has nothing to report
-    return !(await this.heldCodeSystem(list[i], system)) && (await this.systemResolvable(system));
+    // checkCoding reports it (codelessCoding)
+    return !(await this.heldCodeSystem(list[i], system)) && this.serverAnswersCodeless(list[i], system);
+  }
+
+  /**
+   * Which codings without a code the server answers with its own error. Official TW Core + IPS outcomes: urn:ietf:bcp:47 7 of 7,
+   * urn:iso:std:iso:3166 8 of 8, a Coding.version no held copy has 3 of 3; LOINC 0 of 76, SNOMED CT 0 of 60, ATC 0 of 8, CVX 0 of 5.
+   */
+  private serverAnswersCodeless(v: Record<string, any>, system: string): boolean {
+    return system.startsWith("urn:ietf:") || system.startsWith("urn:iso:") || (typeof v.version === "string" && v.version !== "");
   }
 
   /** A CodeSystem the validator judges itself (ValueSetValidator l. 279): complete, fragment or supplement content. */
@@ -6574,7 +6582,7 @@ export class InstanceValidator {
     if (cs) {
       const message = cs.version ? `No code provided for CodeSystem '${system}' version '${cs.version}'` : `No code provided for CodeSystem '${system}'`;
       issues.push({ severity: "warning", path: item.path, code: "code-invalid", message });
-    } else if (await this.systemResolvable(system)) {
+    } else if (this.serverAnswersCodeless(v, system)) {
       const message = `Coding has no code for system ${system} and cannot be validated`;
       issues.push({ severity: "error", path: item.path, code: "code-invalid", message });
       issues.push({ severity: "warning", path: item.path.replace(/\.coding\[\d+\]$/, ""), code: "code-invalid", message });
