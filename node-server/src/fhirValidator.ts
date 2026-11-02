@@ -5180,6 +5180,13 @@ export class InstanceValidator {
         return;
       }
     }
+    const problem = typeCode === "Coding" ? await this.codeProblem(list[0]) : "";
+    if (typeCode === "Coding" && strength === "required" && isObject(list[0]) && typeof list[0].system === "string") {
+      // a system nobody can resolve: vr.getErrorClass() is infrastructure → Terminology_TX_Confirm_4a as a warning
+      // (validateBindingTerminologyCoding, IV tag 7.0.1:2150; UNKNOWN_CODESYSTEM comes from checkCoding)
+      const r = await this.codeCheck(list[0].system, String(list[0].code), null, null);
+      if (r.status === "unknown-system") return;
+    }
     if (strength === "required") {
       issues.push({
         severity: "error",
@@ -5190,8 +5197,16 @@ export class InstanceValidator {
             ? // Terminology_TX_NoValid_1_CC: describeReference (versioned url) + ccSummary (every coding as system#code)
               `None of the codings provided are in the value set ${vsRef}, and a coding from this value set is required) (codes = ${ccSummary})`
             : typeCode === "Coding"
-              ? // Terminology_TX_NoValid_12 with the server's messages (official corpus text)
-                `The Coding provided (${shown}) was not found in the value set ${vsRef}, and a code is required from this value set.  (error message = The provided code '${shown}' was not found in the value set '${vs.url}${vs.version ? `|${vs.version}` : ""}'${await this.codeProblem(list[0])})`
+              ? // validateBindingCodedElement / validateBindingTerminologyCoding with the server's messages (official corpus
+                // text): Terminology_TX_NoValid_12 for a coding of a CodeableConcept, Terminology_TX_Confirm_4a for a Coding element
+                (() => {
+                  const c0 = isObject(list[0]) ? list[0] : {};
+                  const provided = `The provided code '${shown}${typeof c0.display === "string" && c0.display ? ` ('${c0.display}')` : ""}' was not found in the value set '${vs.url}${vs.version ? `|${vs.version}` : ""}'${problem}`;
+                  const inCC = (isObject(el.base) && el.base.path === "CodeableConcept.coding") || String(el.path ?? "").endsWith(".coding");
+                  return inCC
+                    ? `The Coding provided (${shown}) was not found in the value set ${vsRef}, and a code is required from this value set.  (error message = ${provided})`
+                    : `The code provided (${shown}) was not found in the value set ${vsRef}, and a code from this value set is required: ${provided}`;
+                })()
               : `The value provided ('${shown}') was not found in the value set ${label}, and a code is required from this value set`,
       });
     } else {

@@ -20,8 +20,8 @@ export type CodeCheckNote = { severity: "warning" | "information"; message: stri
 // is only "strict" (unknown code → error) when it can answer for these.
 // --------------------------------------------------------------------------- //
 
-/** LOINC version tx.fhir.org serves ("Unknown code … version '2.82'"). */
-export const LOINC_TX_VERSION = "2.82";
+/** LOINC version tx.fhir.org serves ("Unknown code … version '2.83'": official corpus 2026-11). */
+export const LOINC_TX_VERSION = "2.83";
 /** SNOMED CT International edition tx.fhir.org serves by default. */
 export const SNOMED_INT_MODULE = "900000000000207008";
 export const SNOMED_INT_EDITION_URI = `http://snomed.info/sct/${SNOMED_INT_MODULE}`;

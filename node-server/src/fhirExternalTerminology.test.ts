@@ -61,7 +61,7 @@ test("LOINC LA / LP / LL displays as tx.fhir.org (2.82)", () => {
 test("LOINC unknown non-term codes: LG always, bad check digit always, otherwise only when strict", () => {
   // tx.fhir.org has no LOINC group codes at all.
   const lg = judgeLoincOther("LG11803-0", null, { kind: "group", display: "g", altDisplay: null, status: "Active" }, false);
-  assert.ok(bad(lg) && lg.status === "invalid-code" && lg.message === "Unknown code 'LG11803-0' in the CodeSystem 'http://loinc.org' version '2.82'");
+  assert.ok(bad(lg) && lg.status === "invalid-code" && lg.message === "Unknown code 'LG11803-0' in the CodeSystem 'http://loinc.org' version '2.83'");
   assert.ok(bad(judgeLoincOther("LA6752-4", null, null, false)));
   const missing = judgeLoincOther("LA99999-7", null, null, false);
   assert.equal(missing.status, "invalid-code");
