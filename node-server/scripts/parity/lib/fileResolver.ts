@@ -14,7 +14,7 @@
  * harness can flag results that depend on the terminology server.
  */
 import { indexCodeSystem, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains, type CodeSystemIndex, type TerminologyDeps } from "../../../src/fhirCodeSystem.js";
-import { SNOMED_TX_VERSION, loincUnknownMessage } from "../../../src/fhirExternalTerminology.js";
+import { SNOMED_TX_VERSION, judgeCvx, loincUnknownMessage } from "../../../src/fhirExternalTerminology.js";
 import { terminologyServerKnows } from "../../../src/fhirSpecialSystems.js";
 import { rankHl7Current } from "../../../src/fhirTerminology.js";
 import { judgeHeldCodeSystem, judgeSpecialSystem, serverSideSystem, unknownCodeSystemVersion } from "../../../src/fhirValidationResolver.js";
@@ -184,6 +184,8 @@ export class FileValidatorResolver implements ValidatorResolver {
    * picks that version of the CodeSystem when the store holds it (else the current one, as the DB resolver).
    */
   async checkCode(system: string, code: string, display: string | null, version?: string | null, langs?: string[]): Promise<CodeCheck> {
+    // the bundled tx.fhir.org table, as DbValidatorResolver
+    if (system === "http://hl7.org/fhir/sid/cvx") return judgeCvx(code, display);
     let idx = this.codeSystem(system);
     if (idx && idx.url && idx.url.split("|")[0] !== system) idx = null;
     if (idx && version && idx.version !== version) {

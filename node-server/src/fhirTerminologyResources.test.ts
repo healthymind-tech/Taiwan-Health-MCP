@@ -100,3 +100,10 @@ test("ValueSet filter expressions and parameters", async () => {
   assert.deepEqual(errors(await validateValueSetResource(vs("$ and %p-inactive"), "ValueSet", vsDeps())), [`${at} | The value of the expression '$ and %p-inactive' is not a valid FHIRPath: Error @1, 6: Found $ expecting a valid token name`]);
   assert.deepEqual(errors(await validateValueSetResource(vs("x", "text/cql"), "ValueSet", vsDeps())), [`${at} | A ValueSet expression language must be 'text/fhirpath' not 'text/cql'`]);
 });
+
+test("a SNOMED filter property outside SnomedCTChecker.listPropertyNames gets no rules: only a known attribute's op is judged", async () => {
+  const vs = { resourceType: "ValueSet", compose: { include: [{ system: "http://snomed.info/sct", filter: [{ property: "2342342123", op: "not-in", value: "734137005" }, { property: "1142143009", op: "not-in", value: "734137005" }] }] } };
+  assert.deepEqual(errors(await validateValueSetResource(vs, "ValueSet", vsDeps())), [
+    "ValueSet.compose.include[0].filter[1] | The operation 'not-in' is not allowed for property '1142143009' in system 'http://snomed.info/sct'. Allowed ops: =,in",
+  ]);
+});

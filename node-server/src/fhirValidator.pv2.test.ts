@@ -69,3 +69,9 @@ test("meta.profile with an unresolved example URL: TYPE_SPECIFIC_CHECKS_DT_URL_E
   const h = await errsMeta(obs({ meta: { profile: ["http://other.org/p", null], _profile: [null, { extension: [{ url: "http://hl7.org/fhir/StructureDefinition/data-absent-reason", valueCode: "unknown" }] }] } }));
   assert.ok(!h.some(([p, m]) => p === "Observation.meta.profile[1]" && /ele-1/u.test(m)), JSON.stringify(h));
 });
+
+test("a primitive choice of the wrong JSON type: the parser's path names value[x], the validator's the typed element", async () => {
+  const e = await errs(obs({ valueBoolean: "notatype" }));
+  assert.ok(e.some(([p, m]) => p === "Observation.value[x]" && m === "Error parsing JSON: the primitive value must be a boolean"), JSON.stringify(e));
+  assert.ok(!e.some(([p, m]) => p === "Observation.valueBoolean" && m.startsWith("Error parsing JSON")), JSON.stringify(e));
+});

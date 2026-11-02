@@ -61,13 +61,27 @@ function baseRules(property: string, ops: string[]): Rules | null {
   }
 }
 
+/** SnomedCTChecker.listPropertyNames l. 74-: the attribute concepts it knows; any other property is only a warning, with no rules applied. */
+const SNOMED_ATTRIBUTES = new Set(`
+  410662002 42752001 47429007 116676008 116686009 118168003 118169006 118170007 118171006 127489000 131195008 246075003 246090004 246093002 246112005
+  246454002 246456000 246501002 246513007 246514001 255234002 260507000 260686004 260870009 263502005 272741003 288556008 363589002 363698007 363699004
+  363700003 363701004 363702006 363703001 363704007 363705008 363709002 363710007 363713009 363714003 370129005 370130000 370131001 370132008 370133003
+  370134009 370135005 371881003 405813007 405814001 405815000 405816004 408729009 408730004 408731000 408732007 410675002 411116001 418775008 419066007
+  424226004 424244007 424361007 424876005 425391005 609096000 704319004 704320005 704321009 704322002 704323007 704324001 704325000 704326004 704327008
+  704346009 704347000 704647008 718497002 719715003 719722006 726542003 726633004 732943007 732945000 732947008 733722007 733725009 733928003 733930001
+  733931002 733932009 733933004 734136001 734137005 736472000 736473005 736474004 736475003 736476002 736518005 738774007 762705008 762706009 762949000
+  762951001 763032000 766939001 774081006 774158006 774159003 774160008 774163005 827081001 836358009 840560000 860779006 860781008 1003703000
+  1003735000 1142135004 1142136003 1142137007 1142138002 1142139005 1142140007 1142141006 1142142004 1142143009 1148793005 1148965004 1148967007
+  1148968002 1148969005 1149366004 1149367008 1230370004 320091000221107
+`.trim().split(/\s+/));
+
 /** The checker for a system: null = known names are not reproduced here (LOINC, RxNorm …), the filter is not judged. */
 function rulesForFilter(system: string, cs: Json | null, property: string): { known: boolean; rules: Rules | null } | null {
   if (system === "http://snomed.info/sct") {
     if (property === "constraint") return { known: true, rules: { type: "String", codeValidation: null, ops: ["="], active: true } };
     if (property === "expressions" || property === "inactive") return { known: true, rules: { type: "Boolean", codeValidation: null, ops: ["=", "in"] } };
     if (property === "concept") return { known: true, rules: { type: "Code", codeValidation: "Error", ops: ["is-a", "is-not-a", "in", "descendent-of", "descendent-leaf"] } };
-    return { known: /^\d+$/.test(property), rules: { type: "Code", codeValidation: "Error", ops: ["=", "in"] } };
+    return { known: SNOMED_ATTRIBUTES.has(property), rules: { type: "Code", codeValidation: "Error", ops: ["=", "in"] } };
   }
   // CodeSystemBasedChecker, or GeneralCodeSystemChecker when the CodeSystem is not held
   if (!cs) {

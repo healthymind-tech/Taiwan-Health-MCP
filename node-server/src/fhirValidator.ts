@@ -47,6 +47,7 @@ import { codingVersionIssue } from "./fhirExternalTerminology.js";
 import { codingVersionIssues } from "./fhirCsVersion.js";
 import { isAbsoluteUrl } from "./fhirSpecialSystems.js";
 import { validateCodeSystemResource } from "./fhirCodeSystemResource.js";
+import { validateConceptMapResource } from "./fhirConceptMapResource.js";
 import { validateValueSetResource } from "./fhirValueSetResource.js";
 import { languageXhtmlIssues, narrativeControlIssues, parseXhtml, textLinkIssues, validateXhtml, xhtmlHrefIssues } from "./fhirXhtml.js";
 import { duplicateKeys, numberText } from "./fhirJsonLiterals.js";
@@ -2512,6 +2513,15 @@ export class InstanceValidator {
       };
       for (const x of rt === "CodeSystem" ? await validateCodeSystemResource(resource, path, deps) : await validateValueSetResource(resource, path, deps)) issues.push(x);
     }
+    // InstanceValidator.checkSpecials: ConceptMapValidator
+    if (rt === "ConceptMap") {
+      const deps = {
+        fetchCodeSystem: async (u: string) => (this.resolver.fetchCodeSystem ? await this.resolver.fetchCodeSystem(u).catch(() => null) : null),
+        fetchValueSet: (u: string) => this.vsHeader(u),
+        member: (vs: string, system: string, code: string) => this.member(vs, system, code),
+      };
+      for (const x of await validateConceptMapResource(resource, path, deps)) issues.push(x);
+    }
     // (parity v3) InstanceValidator.validateResourceRules: Language_XHTML_* warnings (resource language vs text.div)
     if (typeof resource.language === "string" && isObject(resource.text)) {
       for (const x of languageXhtmlIssues(resource.language, resource.text.div)) issues.push({ severity: x.severity, path, code: "business-rule", message: x.message });
@@ -4617,8 +4627,10 @@ export class InstanceValidator {
       this.checkBlankPrimitive(item, el, profile, issues);
       return;
     }
+    // JsonParser.parseChildPrimitive l. 620: the parser's npath is the property name, value[x] for a choice — unlike the validator's paths
+    const npath = typeof el.path === "string" && el.path.endsWith("[x]") ? path.replace(/\.[^.]*$/, `.${el.path.split(".").pop()}`) : path;
     if (isObject(v) || Array.isArray(v)) {
-      issues.push({ severity: "error", path, code: "structure", message: `This property must be a simple value, not ${describeJson(v)} (${item.key} at ${path})` });
+      issues.push({ severity: "error", path: npath, code: "structure", message: `This property must be a simple value, not ${describeJson(v)} (${item.key} at ${npath})` });
       return;
     }
     if (item.profileType) {
@@ -4630,7 +4642,7 @@ export class InstanceValidator {
       return;
     }
     if (typeof v !== spec.json) {
-      issues.push({ severity: "error", path, code: "structure", message: `Error parsing JSON: the primitive value must be a ${spec.json}` });
+      issues.push({ severity: "error", path: npath, code: "structure", message: `Error parsing JSON: the primitive value must be a ${spec.json}` });
       // (parity v2) JsonParser.parseChildPrimitiveInstance keeps the value (as its string) and the InstanceValidator then
       // checks it as the element's type — those value errors take part in slice / profile matching like any other
     } else if (spec.json === "boolean") return;
