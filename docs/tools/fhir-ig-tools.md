@@ -694,7 +694,7 @@ gold Bundle 被內容 error 擋下：未分閘門時 1/17，分閘門後（只�
 | `malformed-profile` | `error` | `meta.profile` 根本不是 canonical，附 `fix` |
 | `no-local-data` | `unverifiable` | validator_cli 也查不了、本機也沒有資料（或只有不完整的副本，見 `reason`）的系統；每個系統一筆，`count` 為 Coding 數，只計數不擋放行 |
 
-判斷「本機持有」時尊重版本完整性：`fragment`、自述為部分清單、較舊版本（`icd.editions.complete` 等）或 IG 閉包外的副本，都不會回報「代碼不存在」，只會是 `unverifiable`。
+判斷「本機持有」時尊重版本完整性：`fragment`、節錄副本（宣告的 `count` 大於實際概念數，或描述自述只含部分代碼且概念數未滿 1,000；這句話也出現在完整副本上，所以大型副本不採信）、較舊版本（`icd.editions.complete` 等）或 IG 閉包外的副本，都不會回報「代碼不存在」，只會是 `unverifiable`。
 
 **術語伺服器知道的系統與 `unverifiable` 的分界**：validator_cli 是否把系統送到 tx.fhir.org，取決於伺服器公布的 TerminologyCapabilities（`ValueSetValidator.preferServerSide` → `TerminologyClientManager.supportsSystem`）。本專案把這份 URI 清單打包在 `node-server/data/terminology/tx-codesystems.json.gz`。本機沒有資料時：系統**在清單內** → validator_cli 會檢查、這裡做不到 → `checked_fully: false`；系統**不在清單內** → validator_cli 也只給 `UNKNOWN_CODESYSTEM` warning → `checked_fully: true`，並回報 `no-local-data`。ValueSet 找不到時維持 `checked_fully: false`，因為 validator_cli 會向伺服器查詢該 ValueSet（`BaseWorkerContext.findTxResource`），而伺服器有哪些 ValueSet 這裡無從得知。
 

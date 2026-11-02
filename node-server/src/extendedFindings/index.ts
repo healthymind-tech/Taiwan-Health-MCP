@@ -6,7 +6,7 @@
  *
  *   (a) code-not-in-held-codesystem (error): a Coding whose system the validator does not know (UNKNOWN_CODESYSTEM) is held
  *       here under a spelling of the same canonical (http / https, a CodeSystem published under its /ValueSet/ URL), and the
- *       complete copy does not have the code. Only a complete copy counts: a fragment, a self-declared partial list, an
+ *       complete copy does not have the code. Only a complete copy counts: a fragment, an excerpt (heldCopyIsExcerpt), an
  *       older edition or a copy outside the IG closure never yields a "not found" (they give `unverifiable`).
  *   (b) unresolvable-profile / malformed-profile (error): a meta.profile entry that resolves to no StructureDefinition of
  *       the closure, or is no canonical at all, with a fix; a unique mapping (mapProfile) is what fhir_finalize_bundle /

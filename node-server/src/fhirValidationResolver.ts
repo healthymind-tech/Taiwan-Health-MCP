@@ -432,6 +432,30 @@ export function loincStrict(edition: { version: string } | null): boolean {
  * that verdict and only add this hint. Returns null when nothing indicates a
  * partial list.
  */
+const PARTIAL_TEXT = /僅擷取部分|僅列出部分|部分代碼|partial list|subset of (the )?codes|only (a )?(part|subset|sample) of/i;
+
+/** Under this many concepts a description that says "only part of the codes" is believed (installed excerpts: 4-50, full tables: 5,837+). */
+export const EXCERPT_MAX_CONCEPTS = 1000;
+
+/**
+ * Can this held copy NOT prove a code absent (extended_findings)? Not `complete`; a declared `count` above what it carries; or
+ * a description that says it is partial, on a copy small enough to be one: the sentence is boilerplate that full copies carry too.
+ */
+export function heldCopyIsExcerpt(cs: Record<string, any> | null): boolean {
+  if (!cs || cs.content !== "complete") return true;
+  let held = 0;
+  const walk = (list: unknown): void => {
+    if (!Array.isArray(list)) return;
+    for (const c of list) {
+      held++;
+      walk(c && c.concept);
+    }
+  };
+  walk(cs.concept);
+  if (typeof cs.count === "number" && cs.count > held) return true;
+  return held < EXCERPT_MAX_CONCEPTS && PARTIAL_TEXT.test(typeof cs.description === "string" ? cs.description : "");
+}
+
 export function partialCodeSystemHint(cs: Record<string, any> | null): string | null {
   if (!cs || cs.content !== "complete") return null;
   const desc = typeof cs.description === "string" ? cs.description : "";
@@ -445,7 +469,7 @@ export function partialCodeSystemHint(cs: Record<string, any> | null): string | 
   };
   walk(cs.concept);
   const declared = typeof cs.count === "number" ? cs.count : null;
-  const partialText = /僅擷取部分|僅列出部分|部分代碼|partial list|subset of (the )?codes|only (a )?(part|subset|sample) of/i.test(desc);
+  const partialText = PARTIAL_TEXT.test(desc);
   if (!partialText && !(declared !== null && declared > held)) return null;
   const where = /\[([^\]]*術語服務平臺[^\]]*)\]\((https?:[^)]+)\)/.exec(desc);
   const more = where ? ` The full code list is published at ${where[2]}.` : "";
@@ -995,7 +1019,11 @@ export class DbValidatorResolver implements ValidatorResolver {
       const r = await this.checkCode(heldAs, code, null, version);
       if (r.status === "unknown-system") continue;
       if (r.status === "ok" && !r.undecided) return { held: "found", heldAs };
-      if (r.status === "invalid-code" && r.severity === "error" && !r.undecided && !r.extra?.length) return { held: "absent", heldAs };
+      if (r.status === "invalid-code" && r.severity === "error" && !r.undecided) {
+        const fuller = r.extra?.some((e) => /fuller copy/.test(e.message)) ?? false;
+        // no `extra`: an external table the validator's own edition rules already judged complete
+        if (!fuller && (!r.extra?.length || !heldCopyIsExcerpt(await terminology.loadArtifactByCanonical("CodeSystem", heldAs, this.pkg)))) return { held: "absent", heldAs };
+      }
       weak ??= heldAs;
     }
     if (weak) return { held: "incomplete", heldAs: weak };

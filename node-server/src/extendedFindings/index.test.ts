@@ -7,6 +7,7 @@ import { attributeErrors, underRepairedProfile, type AnnotatedChange } from "../
 import { finalizeBundle } from "../fhirBundleFinalize.js";
 import { setTxSystemsForTest, txKnowsSystem } from "../txCodeTables.js";
 import { terminologyServerKnows } from "../fhirSpecialSystems.js";
+import { EXCERPT_MAX_CONCEPTS, heldCopyIsExcerpt } from "../fhirValidationResolver.js";
 
 const BASE = "https://ig.example/fhir/StructureDefinition";
 const PROFILES = [`${BASE}/Patient-ig`, `${BASE}/Patient-ig-lab`, `${BASE}/Observation-ig`];
@@ -134,4 +135,15 @@ test("the terminology server's published list decides (the bundled file, and a f
   assert.equal(txKnowsSystem("http://only"), null);
   assert.equal(terminologyServerKnows("http://loinc.org"), true, "without the list: the built-in rules");
   setTxSystemsForTest(undefined);
+});
+
+test("heldCopyIsExcerpt: the text alone is believed only on a small copy; a declared count always", () => {
+  const concepts = (n: number) => Array.from({ length: n }, (_, i) => ({ code: `c${i}` }));
+  const text = "only part of the codes: 僅擷取部分代碼";
+  assert.equal(heldCopyIsExcerpt({ content: "complete", description: text, concept: concepts(11) }), true);
+  assert.equal(heldCopyIsExcerpt({ content: "complete", description: text, concept: concepts(EXCERPT_MAX_CONCEPTS) }), false);
+  assert.equal(heldCopyIsExcerpt({ content: "complete", count: EXCERPT_MAX_CONCEPTS + 1, concept: concepts(EXCERPT_MAX_CONCEPTS) }), true);
+  assert.equal(heldCopyIsExcerpt({ content: "complete", concept: concepts(3) }), false);
+  assert.equal(heldCopyIsExcerpt({ content: "fragment", concept: concepts(5000) }), true);
+  assert.equal(heldCopyIsExcerpt(null), true);
 });
