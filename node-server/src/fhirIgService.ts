@@ -2474,7 +2474,7 @@ export class FHIRIGService {
       entryResults.push({
         fullUrl: be.fullUrl ?? null,
         resourceType: resource.resourceType,
-        valid: validator.isValid(perEntry[idx]),
+        valid: core.valid === null ? null : validator.isValid(perEntry[idx]), // no verdict for the run: none per entry either
         profile: metas.length ? String(metas[0]).split("|")[0].split("/").pop() : null,
         issues: perEntry[idx],
       });
