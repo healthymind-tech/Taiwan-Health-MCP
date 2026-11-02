@@ -1837,7 +1837,9 @@ export class InstanceValidator {
     (Array.isArray(bundle.entry) ? bundle.entry : []).forEach((e: any, index: number) => {
       const r = isObject(e) ? e.resource : null;
       if (!isObject(r)) return;
-      const fullUrl = typeof e.fullUrl === "string" && e.fullUrl ? e.fullUrl : null;
+      // element.getNamedChildValue("fullUrl"): a "" is a value, not a missing fullUrl (Bundle_BUNDLE_Entry_NoFullUrl,
+      // Bundle_BUNDLE_FullUrl_Missing test `fullUrl != null` / `fullUrl == null`)
+      const fullUrl = typeof e.fullUrl === "string" ? e.fullUrl : null;
       const ent: BundleEntryCtx = { index, fullUrl, resource: r };
       entries.push(ent);
       entryOf.set(r, ent);
@@ -3449,7 +3451,8 @@ export class InstanceValidator {
     const absolute = /^[a-z][a-z0-9+.-]*:/i.test(url);
     // checkChildByDefinition l. 8045-8051: `extensionUrl` is the url of any enclosing extension (known or not), so a
     // relative url is accepted anywhere inside an extension
-    const inExtension = (parentSdx.type === "Extension" && parentSdx.url !== CORE + "Extension") || !!item.host?.extUrl;
+    // (thisExtension is set from any url element, "" too: l. 8048-8049)
+    const inExtension = (parentSdx.type === "Extension" && parentSdx.url !== CORE + "Extension") || typeof item.host?.extUrl === "string";
     if (!inExtension && !javaIsAbsoluteUrl(url)) {
       // EXTENSION_EXT_URL_ABSOLUTE (outside an extension); checkExtension is then not run
       issues.push({ severity: "error", path: item.path, code: "invalid", message: "Extension.url must be an absolute URL" });
