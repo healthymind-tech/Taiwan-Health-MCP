@@ -5021,7 +5021,7 @@ export class InstanceValidator {
 
   /** `(<path> memberOf '<vs>')` answered with the local terminology (undefined when it cannot decide). */
   private async bindingClause(valueSet: string, actual: any[]): Promise<boolean | undefined> {
-    if (!(await this.vsHeader(valueSet)) && !(await this.valueSetMayBeAtServer(valueSet))) return false; // funcMemberOf: no ValueSet → no match
+    if (!(await this.vsHeader(valueSet)) && !(await this.valueSetMayBeAtServer(valueSet))) return false; // the slicing clause is the operator: opMemberOf l. 2793-2817, no ValueSet → false (funcMemberOf: empty)
     let hit = false;
     let unknown = false;
     for (const a of actual) {
@@ -6255,7 +6255,7 @@ export class InstanceValidator {
   /**
    * A ValueSet outside the closure: the terminology server may hold it (jar: IPS vaccines-uv-ips answered, us-core birthsex,
    * TW Core medcation-atc-tw and RadLex "not found"). Which ones cannot be told offline: an HL7-space or installed canonical
-   * stays undecided, anything else is a definite not found.
+   * stays undecided, anything else is a definite not found. An inference from jar probes, not a rule of the validator.
    */
   private async valueSetMayBeAtServer(url: string): Promise<boolean> {
     if (/^https?:\/\/(terminology\.)?hl7\.org\//.test(url) || url.includes("?fhir_vs") || url.startsWith("http://snomed.info/") || url.startsWith("http://loinc.org")) return true;
