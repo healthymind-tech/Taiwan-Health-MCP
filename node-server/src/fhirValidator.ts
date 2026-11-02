@@ -5180,12 +5180,19 @@ export class InstanceValidator {
         return;
       }
     }
-    const problem = typeCode === "Coding" ? await this.codeProblem(list[0]) : "";
+    let problem = typeCode === "Coding" ? await this.codeProblem(list[0]) : "";
+    let unknownInVs = "";
     if (typeCode === "Coding" && strength === "required" && isObject(list[0]) && typeof list[0].system === "string") {
-      // a system nobody can resolve: vr.getErrorClass() is infrastructure → Terminology_TX_Confirm_4a as a warning
-      // (validateBindingTerminologyCoding, IV tag 7.0.1:2150; UNKNOWN_CODESYSTEM comes from checkCoding)
       const r = await this.codeCheck(list[0].system, String(list[0].code), null, null);
-      if (r.status === "unknown-system") return;
+      if (r.status === "unknown-system") {
+        // validateBindingCodedElement (IV tag 7.0.1:2497-2512): error class CODESYSTEM_UNSUPPORTED — a system outside the
+        // value set is only UNKNOWN_CODESYSTEM (checkCoding; empd Coverage.type.coding); a system the value set itself
+        // includes fails as Terminology_TX_Confirm_4a (mimic Encounter.class)
+        const includes: any[] = isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
+        if (!includes.some((i) => isObject(i) && i.system === list[0].system)) return;
+        unknownInVs = `A definition for CodeSystem '${list[0].system}' could not be found, so the code cannot be validated; `;
+        problem = "";
+      }
     }
     if (strength === "required") {
       issues.push({
@@ -5201,9 +5208,9 @@ export class InstanceValidator {
                 // text): Terminology_TX_NoValid_12 for a coding of a CodeableConcept, Terminology_TX_Confirm_4a for a Coding element
                 (() => {
                   const c0 = isObject(list[0]) ? list[0] : {};
-                  const provided = `The provided code '${shown}${typeof c0.display === "string" && c0.display ? ` ('${c0.display}')` : ""}' was not found in the value set '${vs.url}${vs.version ? `|${vs.version}` : ""}'${problem}`;
+                  const provided = `${unknownInVs}The provided code '${shown}${typeof c0.display === "string" && c0.display ? ` ('${c0.display}')` : ""}' was not found in the value set '${vs.url}${vs.version ? `|${vs.version}` : ""}'${problem}`;
                   const inCC = (isObject(el.base) && el.base.path === "CodeableConcept.coding") || String(el.path ?? "").endsWith(".coding");
-                  return inCC
+                  return inCC && !unknownInVs
                     ? `The Coding provided (${shown}) was not found in the value set ${vsRef}, and a code is required from this value set.  (error message = ${provided})`
                     : `The code provided (${shown}) was not found in the value set ${vsRef}, and a code from this value set is required: ${provided}`;
                 })()
