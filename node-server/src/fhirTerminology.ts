@@ -137,6 +137,7 @@ export class TtlCache<V> {
 
 // CodeSystem indexes, bounded by their summed concept count (CS_CACHE_CONCEPTS, default 150k)
 const csCache = new TtlCache<CodeSystemIndex | null>(Number(process.env.CS_CACHE_CONCEPTS) > 0 ? Number(process.env.CS_CACHE_CONCEPTS) : 150_000);
+const csLoading = new Map<string, Promise<CodeSystemIndex | null>>();
 const vsCache = new TtlCache<Record<string, any> | null>();
 const heldCache = new TtlCache<boolean>();
 
@@ -341,6 +342,18 @@ export async function loadCodeSystemIndex(url: string, pkg: PackageRow, exact = 
   const key = closureKey(pkg) + "|" + url.split("|")[0] + (version ? `|v=${version}` : "") + (exact ? "|exact" : "");
   const cached = csCache.get(key);
   if (cached !== undefined) return cached;
+  // One load at a time per key: concurrent requests pin one index, not one copy each (a large IG's indexes are hundreds of MB)
+  let loading = csLoading.get(key);
+  if (!loading) {
+    loading = loadCodeSystemIndexUncached(url, pkg, exact, key, bar, version).finally(() => csLoading.delete(key));
+    csLoading.set(key, loading);
+  }
+  const idx = await loading;
+  currentSnapshot()?.pin(csCache, key, idx);
+  return idx;
+}
+
+async function loadCodeSystemIndexUncached(url: string, pkg: PackageRow, exact: boolean, key: string, bar: number, version: string): Promise<CodeSystemIndex | null> {
   // REVIEW_port_2 G3 (ValueSetValidator.resolveCodeSystem(system, version), tag 7.0.1:654): `url|version` is that
   // version of the CodeSystem — never the closure's other copy
   const cs = version ? await loadCodeSystemVersion(url.slice(0, bar), version, pkg) : await loadByCanonical("CodeSystem", url, pkg, exact);

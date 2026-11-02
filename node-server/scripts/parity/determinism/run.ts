@@ -19,7 +19,7 @@
  *
  *   npm run test:determinism                                    (DATABASE_URL set; exit 1 on any difference)
  *   node --import tsx scripts/parity/determinism/run.ts [--corpus dir] [--runs n] [--sizes 100,500,1000] [--modes a,b]
- *     [--engine db|file] [--no-corpus] [--only substring] [--timing 100,500,1000,2000] [--md out.md]
+ *     [--engine db|file] [--no-corpus] [--only substring] [--expired-width n] [--timing 100,500,1000,2000] [--md out.md]
  *
  * --timing prints time against entries (whole validation + Bundle rules: reference resolution and reachability) with the
  * growth exponent between sizes, and skips the determinism runs unless --runs is given too.
@@ -205,7 +205,7 @@ async function determinism(items: Item[], validate: Validate): Promise<{ rows: R
   for (const mode of modes) {
     if (mode === "mixed4") continue;
     setCacheLimits(mode === "tiny" ? { maxEntries: 1, maxWeight: 1 } : mode === "expired" ? { ttlMs: -1 } : {});
-    const width = mode === "concurrent4" ? 4 : mode === "expired" ? 2 : 1;
+    const width = mode === "concurrent4" ? 4 : mode === "expired" ? Number(opt("--expired-width") ?? 2) : 1;
     for (const item of items) {
       const t0 = performance.now();
       const q0 = queries();
