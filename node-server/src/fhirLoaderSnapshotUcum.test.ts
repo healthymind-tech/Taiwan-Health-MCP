@@ -9,6 +9,7 @@ import { fixPackageResource } from "./fhirPackageHacker.js";
 import { validateStructureDefinition } from "./fhirSdValidator.js";
 import { generateSnapshotAsync, makeBaseDefinition, SnapshotGenerator } from "./fhirSnapshotGenerator.js";
 import { checkUcumCode, ucumCanonicalForm, ucumDisplayIssue, ucumDisplays } from "./fhirUcum.js";
+import { evaluateExpression, type FhirPathEnv } from "./fhirPath.js";
 import { completenessOf, InstanceValidator, type Issue } from "./fhirValidator.js";
 import { CORE, FakeResolver, SDS, el, sd } from "./fhirTestKit.test.js";
 
@@ -497,4 +498,15 @@ test("getCanonicalForm (ucum-java 1.0.10 Converter + Decimal)", () => {
   assert.equal(ucumCanonicalForm("1", "kg.m2")?.code, "g.m2");
   assert.equal(ucumCanonicalForm("1", "Cel"), null, "an offset special unit: UcumException");
   assert.equal(ucumCanonicalForm("1", "nonsense"), null);
+});
+
+test("FHIRPath as FHIRPathEngine: sort keys, the type of `/` and of Resource.id", () => {
+  const p = { resourceType: "Patient", id: "p", name: [{ use: "official", family: "Chalmers" }, { use: "usual", given: ["Jim"] }, { use: "maiden", family: "Windsor" }] };
+  const run = (e: string): unknown[] => evaluateExpression(p, "Patient", e, {} as FhirPathEnv);
+  assert.deepEqual(run("Patient.name.sort(-family).use"), ["usual", "maiden", "official"], "compareNatural: a missing key is last, then the reversal negates");
+  assert.deepEqual(run("Patient.name.sort(family).use"), ["official", "maiden", "usual"]);
+  assert.deepEqual(run("(3|1|2).sort(-$this)"), [3, 2, 1]);
+  assert.deepEqual(run("(2/2) is Decimal"), [true], "opDivideBy");
+  assert.deepEqual(run("2/2 = 1"), [true]);
+  assert.deepEqual(run("Patient.id is id"), [true]);
 });

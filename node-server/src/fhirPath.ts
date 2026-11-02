@@ -524,6 +524,34 @@ function javaQtyCompare(a: any, b: any, equivalent: boolean): boolean | null | u
   return same(l.value, r.value);
 }
 
+const SORT_INT = ["integer", "unsignedInt", "positiveInt", "integer64"];
+const SORT_DATE = ["date", "dateTime", "instant"];
+const SORT_TEXT = ["string", "code", "url", "uri", "uuid", "oid", "canonical"];
+const SORT_ALL = new Set([...SORT_INT, ...SORT_DATE, ...SORT_TEXT, "decimal", "boolean", "time"]);
+
+/** FHIRPathBaseSorter.isComparableTypes (FHIRPathEngine.java:6634-6656). */
+function sortComparable(t1: string, t2: string): boolean {
+  if (!SORT_ALL.has(t1) || !SORT_ALL.has(t2)) return false;
+  return [SORT_INT, ["boolean"], ["decimal"], ["time"], SORT_DATE, SORT_TEXT].some((g) => g.includes(t1) && g.includes(t2));
+}
+
+/** FHIRPathBaseSorter.compareNatural (FHIRPathEngine.java:6603-6631). */
+function javaCompareNatural(o1: any, o2: any, keyed: boolean): number {
+  if (o1 === null && o2 === null) return 0;
+  if (o1 === null) return 1;
+  if (o2 === null) return -1;
+  const t1 = javaFhirType(o1).type;
+  const t2 = javaFhirType(o2).type;
+  if (!sortComparable(t1, t2)) {
+    throw new JavaFhirPathError(keyed ? `Cannot sort the list because the sort expression return both a '${t1}' and a '${t2}'` : `Cannot sort a list that contains both a '${t1}' and a '${t2}' using natural sort order`);
+  }
+  const s1 = itemString(o1) ?? "";
+  const s2 = itemString(o2) ?? "";
+  if (SORT_INT.includes(t1) || t1 === "decimal") return Math.sign(Number(s1) - Number(s2));
+  if (t1 === "boolean") return s2 < s1 ? -1 : s2 > s1 ? 1 : 0;
+  return s1 < s2 ? -1 : s1 > s2 ? 1 : 0;
+}
+
 // ------------------------------------------------------------ dates and times
 
 const DT_RE = /^(\d{4})(?:-(\d{2})(?:-(\d{2})(?:T(\d{2})(?::(\d{2})(?::(\d{2})(?:\.(\d+))?)?)?)?)?)?(Z|[+-]\d{2}:\d{2})?$/;
@@ -765,6 +793,44 @@ if (loaded.engine) {
   };
   loaded.engine.SortDirectionArgument = reversedSortArg;
   if (loaded.engine.evalTable) loaded.engine.evalTable.SortDirectionArgument = reversedSortArg;
+  // Resource.id is `id` to Java (the fhir-type extension of the System.String element, Base.fhirType); the R4 model of
+  // fhirpath.js stops at System.String
+  const fromValue = fpTypes.TypeInfo.fromValue;
+  fpTypes.TypeInfo.fromValue = function (value: any): any {
+    const data = value?.parentResNode?.data;
+    if (value?.path === "System.String" && typeof data?.resourceType === "string" && data.id === value.data) return new fpTypes.TypeInfo({ namespace: "FHIR", name: "id" });
+    return fromValue.call(fpTypes.TypeInfo, value);
+  };
+  // funcSort + FHIRPathBaseSorter (FHIRPathEngine.java:6559-6658, 6659-6664): missing keys sort last before a reversal
+  // negates the result, so a descending key puts them first
+  table.sort = {
+    ...table.sort,
+    fn: function (this: any, data: any[], ...sortArgs: Array<{ expr: (d: any) => any[]; direction?: string }>): any[] {
+      const key = (item: any, arg: { expr: (d: any) => any[] }): any => {
+        const r = fpUtil.arraify(arg.expr(item));
+        if (r.length > 1) throw new JavaFhirPathError("Multiple values found in return from sort expression");
+        return r.length ? r[0] : null;
+      };
+      return data.slice().sort((a, b) => {
+        if (sortArgs.length === 0) return javaCompareNatural(a, b, false);
+        for (const arg of sortArgs) {
+          const res = javaCompareNatural(key(a, arg), key(b, arg), true);
+          if (res !== 0) return arg.direction === "desc" ? -res : res;
+        }
+        return 0;
+      });
+    },
+  };
+  // opDivideBy (l. 3235) answers a DecimalType whatever the operands
+  const divide = table["/"];
+  table["/"] = {
+    ...divide,
+    fn: function (this: any, a: any[], b: any[]): any {
+      const r = divide.fn.call(this, a, b);
+      if (r instanceof fpTypes.FP_Decimal) (r as any).isInteger = () => false; // 2 / 2 is the decimal 1, whose text has no places
+      return r;
+    },
+  };
   // funcIs: a type name that does not exist in the System namespace is simply not the item's type (no exception)
   const typeSpecifier = loaded.engine.TypeSpecifier;
   loaded.engine.TypeSpecifier = function (ctx: any, parentData: any, node: any): any {
