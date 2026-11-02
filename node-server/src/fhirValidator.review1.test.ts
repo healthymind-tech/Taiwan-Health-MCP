@@ -454,7 +454,13 @@ test("funcMemberOf l. 5181-5183: a ValueSet that cannot be resolved answers empt
   EXTRA[P] = sd(P, "Patient", "resource", SDS[CORE + "Patient"].snapshot.element.map((e: Json) =>
     e.path === "Patient" ? { ...e, constraint: [{ key: "mbr-1", severity: "error", human: "empty", expression: "gender.memberOf('http://example.org/fhir/ValueSet/none').empty()" }] } : e,
   ), { baseDefinition: CORE + "Patient", derivation: "constraint" });
-  const issues = await run({ resourceType: "Patient", gender: "male" }, [P]);
+  // a canonical nobody holds, outside the HL7 space: a definite not found (no terminology server can answer it)
+  class Unheld extends Resolver {
+    async definitionExists(): Promise<boolean> {
+      return false;
+    }
+  }
+  const issues = await new InstanceValidator(new Unheld()).validate({ resourceType: "Patient", gender: "male" }, { profiles: [P] });
   assert.ok(!issues.some((i) => /mbr-1/.test(i.message)), JSON.stringify(issues));
 });
 

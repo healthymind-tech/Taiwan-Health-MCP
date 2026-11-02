@@ -192,7 +192,7 @@ test("memberOf() in an invariant is answered by the terminology: the value set d
     const issues: Issue[] = [];
     const v = new InstanceValidator(new R()) as any;
     const e = url === VSC ? el : { ...el, constraint: [{ ...el.constraint[0], expression: `country.memberOf('${url}')` }] };
-    await v.checkConstraints({ url: "http://x/sd", type: "Patient" }, e, { value: { country }, path: "Patient.address[0]" }, "Address", { resource: { resourceType: "Patient" } }, issues);
+    await v.checkConstraints({ url: "http://x/sd", type: "Patient", children: () => undefined }, e, { value: { country }, path: "Patient.address[0]" }, "Address", { resource: { resourceType: "Patient" } }, issues);
     return issues;
   };
   assert.deepEqual(await run("NL"), []);
