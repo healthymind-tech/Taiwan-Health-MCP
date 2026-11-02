@@ -255,7 +255,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.49.0 (parity v3 profile matching): reference / conformsTo() sub-validations = validateResource (own meta.profile profiles, parser-emptied elements), bad primitives dropped as JsonParser does (_x not an object, object / array for a single primitive), CantMatchChoice lists every target profile sorted, NotSlice details.
   // 1.49.0 (parity v3 tx-validator-wiring, round 2; REVIEW_port_2 G1 G3 G19-G21 G24-G28, REVIEW_port_1 F5 F9 F20): Coding.version against the CodeSystem of that version (determineVersion: VALUESET_VALUE_MISMATCH*, UNKNOWN_CODESYSTEM_VERSION), versioned includes, maxValueSet, several inferred systems, enumerated codes need the CodeSystem, membership filters as codeInFilter, hierarchy only from the concept-properties#parent property, expansion before compose, alternateCode, deprecated designations, Terminology_TX_NoValid_1_CC wording; a Coding without a system is not bound; unevaluated invariants → checked_fully false (invariants_unchecked).
   // 1.60.0 (parity v3 determinism): per-request pin of definitions / terminology; a failed lookup is unverified (warning, `unverified`, checked_fully false; a definition that cannot be loaded: `valid: null`), never an error; every limit and unevaluated invariant reported (limits_exceeded, invariants_unchecked); codes_unchecked / slices_unchecked / lookups_failed in the Bundle result; indexed reference resolution and reachability.
-  fhir_validate_bundle: "1.62.0",
+  // 1.63.0 (parity v3 review-structure round 3): root type rules (cannot be parsed, Validation_VAL_Profile_WrongType), FHIRPath over the element model, simple extension checks, fixed primitives with extensions, memberOf() / conformsTo() in invariants, profile#element, forReference rules, version-specific target profiles.
+  fhir_validate_bundle: "1.63.0",
   // 1.59.0: FHIRPath sort keys, the decimal type of `/` and the `id` type of Resource.id as FHIRPathEngine (parity v3 round 7).
   // 1.59.0 (parity v3 json-xhtml): an object emptied by the parser on a choice element gets no ele-1, as a source `{}` there.
   // 1.53.0: data carries codes_unchecked / slices_unchecked / invariants_unchecked / lookups_failed (the reasons for checked_fully=false, as fhir_validate_resource; they were dropped), and undecided_causes (`system|valueSet` behind undecided codes and slices).
@@ -316,7 +317,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.46.0: validation as fhir_validate_bundle 1.49.0 (parity v3 profile matching).
   // 1.46.0: terminology as fhir_validate_bundle 1.49.0 (parity v3 tx-validator-wiring, round 2).
   // 1.57.0: validation as fhir_validate_bundle 1.60.0 (parity v3 determinism).
-  fhir_validate_resource: "1.59.0",
+  // 1.60.0: validation as fhir_validate_bundle 1.63.0 (parity v3 review-structure round 3).
+  fhir_validate_resource: "1.60.0",
   // 1.56.0: validation as fhir_validate_bundle 1.59.0.
   // 1.56.0: validation as fhir_validate_bundle 1.59.0.
   // 1.50.0: undecided_causes as fhir_validate_bundle 1.53.0.
