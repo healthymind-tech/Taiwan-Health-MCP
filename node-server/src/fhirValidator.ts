@@ -650,6 +650,13 @@ export function pickCanonicalVersion<T extends { version: string | null | undefi
 }
 
 /** Effective type code of an ElementDefinition.type entry (handles System.String + fhir-type ext). */
+/** Coding.display as the parser keeps it: a number or boolean is reported there and read as its text; "" is no display. */
+function writtenDisplay(c: Record<string, any>): string | null {
+  const d = c.display;
+  if (typeof d === "number" || typeof d === "boolean") return String(d);
+  return typeof d === "string" && d ? d : null;
+}
+
 function typeCodeOf(t: Record<string, any>): string {
   const code = String(t.code || "");
   for (const ext of t.extension || []) {
@@ -1534,8 +1541,8 @@ function expandPlist(message: string, path: string, comment: string): string {
   return message.replace(new RegExp(`${PLIST_TOKEN}(.*?)${PLIST_TOKEN}`, "u"), (_, json: string) => {
     const relative = path.startsWith(ROOT_TOKEN);
     const list = (JSON.parse(json) as string[]).map((e) => {
-      if (e.startsWith(ROOT_TOKEN)) return path + e.slice(1);
-      if (e.startsWith(LITERAL_ROOT_TOKEN)) return (relative ? LITERAL_ROOT_TOKEN + path.slice(1) : path) + comment + e.slice(1);
+      if (e.startsWith(ROOT_TOKEN)) return path + e.slice(ROOT_TOKEN.length);
+      if (e.startsWith(LITERAL_ROOT_TOKEN)) return (relative ? LITERAL_ROOT_TOKEN + path.slice(ROOT_TOKEN.length) : path) + comment + e.slice(LITERAL_ROOT_TOKEN.length);
       return e;
     });
     if (relative) return PLIST_TOKEN + JSON.stringify(list) + PLIST_TOKEN;
@@ -1631,15 +1638,15 @@ function appliesToR4(node: Record<string, any>): boolean {
 }
 
 const MAX_DEPTH = 60;
-const ROOT_TOKEN = "\u0001";
+const ROOT_TOKEN = "\uE000\u0001root\uE000";
 /** In a message: the resource root as NodeStack.getLiteralPath shows it (with validateContains' path comment). */
-const LITERAL_ROOT_TOKEN = "\u0002";
+const LITERAL_ROOT_TOKEN = "\uE000\u0002literal\uE000";
 /**
  * Wraps the plist of EXTENSION_EXTP_CONTEXT_WRONG while it is relative to the resource (conformance results are cached per
  * resource): checkExtensionContext l. 2740-2749 lists the literal path (with the embedding's pathComment) and the logical
  * paths, of which NodeStack keeps the embedding one (`Bundle.entry.resource.x`) beside the resource's own (`Patient.x`).
  */
-const PLIST_TOKEN = "\u0003";
+const PLIST_TOKEN = "\uE000\u0003plist\uE000";
 /** Marks a plist entry added after the sort (l. 2854 `plist.add(ext)`): it stays last. */
 const PLIST_TAIL = "\u0004";
 
@@ -5848,7 +5855,7 @@ export class InstanceValidator {
             if (!found) {
               const us = isObject(fc) && fc.userSelected !== undefined;
               // List<ValidationMessage>.toString(): ValidationMessage.toString (ToStringStyle.SHORT_PREFIX_STYLE)
-              const list = `[${all.map((x) => `ValidationMessage[level=ERROR,type=VALUE,location=${x.path},message=${x.message}]`).join(", ")}]`;
+              const list = `[${all.map((x) => `ValidationMessage[level=ERROR,type=VALUE,location=${x.path.startsWith(ROOT_TOKEN) ? LITERAL_ROOT_TOKEN + x.path.slice(ROOT_TOKEN.length) : x.path},message=${x.message}]`).join(", ")}]`;
               issues.push({
                 severity: "error",
                 path,
@@ -6027,10 +6034,22 @@ export class InstanceValidator {
     return { severity: r.severity, path, code: note ? "informational" : "code-invalid", message: r.message, ...(r.undecided ? { unchecked: { kind: "code" as const, canonical: system } } : {}) };
   }
 
+  /**
+   * tx.fhir.org's SNOMED CT expression parser, first of the server's messages (official corpus: Terminology_TX_Confirm_4a
+   * and the information beside it) for a code that starts with no digit, asked without a display; the character is
+   * the first non-blank one, counted from 1.
+   */
+  private snomedParseError(c: any): string {
+    if (!isObject(c) || c.system !== "http://snomed.info/sct" || typeof c.code !== "string" || c.display) return "";
+    const at = c.code.search(/\S/u);
+    if (at < 0 || /\d/u.test(c.code[at])) return "";
+    return `Not a valid expression: Concept not found (next char = "${c.code[at]}", in "${c.code}") at character ${at + 1}; `;
+  }
+
   /** "; <code system message>" for a Coding its CodeSystem rejects (the {1} of Terminology_TX_NoValid_12). */
   private async codeProblem(c: any): Promise<string> {
     if (!isObject(c) || typeof c.system !== "string" || typeof c.code !== "string") return "";
-    const r = await this.codeCheck(c.system, c.code, typeof c.display === "string" && c.display ? c.display : null, typeof c.version === "string" ? c.version : null);
+    const r = await this.codeCheck(c.system, c.code, writtenDisplay(c), typeof c.version === "string" ? c.version : null);
     if (r.status === "invalid-display" && r.severity === "error") return `; ${r.message}`;
     return r.status === "invalid-code" && !r.undecided ? `; ${r.message}` : "";
   }
@@ -6187,6 +6206,15 @@ export class InstanceValidator {
     if (strength !== "required" && strength !== "extensible") return;
     // checkPrimitiveBinding: code, string, uri, url, canonical
     if (!["code", "Coding", "CodeableConcept", "Quantity", "string", "uri", "url", "canonical", "CodeableReference"].includes(typeCode)) return;
+    // Terminology_TX_Confirm_4a with "" as the code: the system goes to the value set, whose answer is CODING_HAS_NO_CODE (official corpus)
+    if ((typeCode === "Coding" || typeCode === "Quantity") && strength === "required" && isObject(v) && v.code === "" && typeof v.system === "string" && v.system) {
+      const held = await this.vsHeader(String(b.valueSet));
+      if (held) {
+        const ref = `'${held.title || held.name || b.valueSet}' (${held.url}${held.version ? `|${held.version}` : ""})`;
+        issues.push({ severity: "error", path: item.path, code: "code-invalid", message: `The code provided (${v.system}#) was not found in the value set ${ref}, and a code from this value set is required: Coding has no code for system ${v.system} and cannot be validated` });
+      }
+      return;
+    }
     // UCUM quantities are judged by UCUM unit semantics in the HL7 validator
     // (e.g. L/min accepted against ucum-vitals-common); we cannot reproduce that
     // offline, so only non-UCUM coded quantities are checked against the binding.
@@ -6220,7 +6248,7 @@ export class InstanceValidator {
       const noCode: any[] = typeCode === "CodeableConcept" && isObject(v) && Array.isArray(v.coding) ? v.coding.filter((c: any) => isObject(c) && Object.keys(c).length > 0) : [];
       if (noCode.length) {
         const desc = `'${vs.title || vs.name || url}' (${vs.url}${vs.version ? `|${vs.version}` : ""})`;
-        const shown = noCode.map((c) => `${typeof c.system === "string" ? c.system : "null"}#${typeof c.code === "string" ? c.code : "null"}`).join(", ");
+        const shown = noCode.map((c) => `${typeof c.system === "string" ? c.system : "null"}#${typeof c.code === "string" && c.code ? c.code : "null"}`).join(", ");
         if (strength === "required") issues.push({ severity: "error", path: item.path, code: "code-invalid", message: `None of the codings provided are in the value set ${desc}, and a coding from this value set is required) (codes = ${shown})` });
         else if (strength === "extensible") issues.push({ severity: "warning", path: item.path, code: "code-invalid", message: `None of the codings provided are in the value set ${desc}, and a coding should come from this value set unless it has no suitable code (note that the validator cannot judge what is suitable) (codes = ${shown})` });
         else if (strength === "preferred") issues.push({ severity: "warning", path: item.path, code: "code-invalid", message: `None of the codings provided are in the value set ${desc}, and a coding is recommended to come from this value set (codes = ${shown})` });
@@ -6273,9 +6301,8 @@ export class InstanceValidator {
       if (m === true) {
         const idx = list.findIndex((c) => isObject(c) && c.code === code && (c.system ?? null) === system);
         const c = idx >= 0 ? list[idx] : null;
-        const shownDisplay = c ? jsonText(c.display) : undefined;
-        if (system && c && typeof shownDisplay === "string" && shownDisplay && (typeCode === "Coding" || typeCode === "CodeableConcept")) {
-          const r = await this.codeCheck(system, code!, shownDisplay, typeof c.version === "string" ? c.version : null);
+        if (system && c && writtenDisplay(c) !== null && (typeCode === "Coding" || typeCode === "CodeableConcept")) {
+          const r = await this.codeCheck(system, code!, writtenDisplay(c), typeof c.version === "string" ? c.version : null);
           if (r.status === "invalid-display" && r.severity === "error") {
             wrongDisplay ??= { system, code: code!, message: r.message, index: idx };
             continue;
@@ -6299,8 +6326,7 @@ export class InstanceValidator {
     if (typeCode === "CodeableConcept") {
       for (const c of list) {
         if (!isObject(c) || typeof c.system !== "string" || typeof c.code !== "string" || !c.code) continue;
-        const shown = jsonText(c.display);
-        const r = await this.codeCheck(c.system, c.code, typeof shown === "string" ? shown : null, typeof c.version === "string" ? c.version : null);
+        const r = await this.codeCheck(c.system, c.code, writtenDisplay(c), typeof c.version === "string" ? c.version : null);
         if ((r.status === "invalid-code" || r.status === "invalid-display") && r.severity === "error") {
           codingError = r.message;
           break;
@@ -6317,7 +6343,7 @@ export class InstanceValidator {
       const vsDesc = `'${vs.title || vs.name || url}' (${vs.url}${vs.version ? `|${vs.version}` : ""})`;
       issues.push(
         typeCode === "Coding"
-          ? { severity: "error", path: item.path, code: "code-invalid", message: `The code provided (${wrongDisplay.system}#${wrongDisplay.code}) was not found in the value set ${vsDesc}, and a code from this value set is required: ${wrongDisplay.message}` }
+          ? { severity: "error", path: item.path, code: "code-invalid", message: wrongDisplay.system === "http://snomed.info/sct" || wrongDisplay.system === "http://loinc.org" ? `The code provided (${wrongDisplay.system}#${wrongDisplay.code}) was not found in the value set ${vsDesc}, and a code from this value set is required: ${wrongDisplay.message}` : `The Coding provided (${wrongDisplay.system}#${wrongDisplay.code}) was not found in the value set ${vsDesc}, and a code is required from this value set.  (error message = ${wrongDisplay.message})` }
           : { severity: "error", path: item.path, code: "code-invalid", message: `None of the codings provided are in the value set ${vsDesc}, and a coding from this value set is required) (codes = ${codings.map(([s2, c2]) => (s2 ? `${s2}#${c2}` : c2)).join(", ")})` },
       );
       return;
@@ -6327,7 +6353,7 @@ export class InstanceValidator {
     const vsRef = `'${vs.title || vs.name || url}' (${vs.url}${vs.version ? `|${vs.version}` : ""})`;
     const ccSummary = (typeCode === "CodeableConcept" && isObject(v) && Array.isArray(v.coding) ? v.coding : [])
       .filter((c: any) => isObject(c))
-      .map((c: any) => `${typeof c.system === "string" ? c.system : "null"}#${typeof c.code === "string" ? c.code : "null"}`)
+      .map((c: any) => `${typeof c.system === "string" ? c.system : "null"}#${typeof c.code === "string" && c.code ? c.code : "null"}`)
       .join(", ");
     if (anyUnknown && codingError === null) {
       issues.push({
@@ -6388,7 +6414,7 @@ export class InstanceValidator {
                 // text)
                 (() => {
                   const c0 = isObject(list[0]) ? list[0] : {};
-                  const provided = `${unknownInVs}${codingNotFound(c0)}`;
+                  const provided = `${unknownInVs}${this.snomedParseError(c0)}${codingNotFound(c0)}`;
                   // Terminology_TX_Confirm_4a when the server answered with an error class (SNOMED CT, LOINC, an unknown system);
                   // Terminology_TX_NoValid_12 for a CodeSystem validated locally (official corpus, unknown-code family)
                   const server = !!unknownInVs || c0.system === "http://snomed.info/sct" || c0.system === "http://loinc.org";
@@ -6721,8 +6747,7 @@ export class InstanceValidator {
       return;
     }
     // Coding.setDisplay: Utilities.noString(value) → display = null (the Coding sent to validation has no display)
-    const shownDisplay = jsonText(v.display);
-    const display = typeof shownDisplay === "string" && shownDisplay !== "" ? shownDisplay : null;
+    const display = writtenDisplay(v);
     const version = typeof v.version === "string" && v.version ? v.version : null;
     const r = await this.codeCheck(system, code, display, version);
     for (const n of r.extra ?? []) {

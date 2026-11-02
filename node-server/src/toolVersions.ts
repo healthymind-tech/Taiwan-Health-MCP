@@ -270,8 +270,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.93.0 (parity v3 round 11, jar): a package resource is known by its .index.json url, not the url inside the file; wrong choice round 3 (bindings in the profile's package, leftovers).
   // 1.94.0: additional bindings with a testable purpose are checked (usage-scoped ones: rules_unchecked).
   // 1.95.0: a number where a string belongs is read as its text (fullUrl, Coding.display); an object for extension is its one child; implied vital-sign profile before meta.profile.
-  fhir_validate_bundle: "1.96.0",
+  fhir_validate_bundle: "1.97.0",
   // 1.94.0 (parity v3): Terminology_TX_NoValid_13 for a Coding outside an extensible binding, with the system's complaint incl. a wrong display; a bare code the UCUM grammar rejects is UNABLE_TO_INFER_CODESYSTEM
+  // 1.95.0 (parity v3): the SNOMED CT expression parser message in Terminology_TX_Confirm_4a; the resource comment in a pattern's nested locations; NoValid_12 for a wrong display of a local system; Confirm_4a for an empty code; a number as display read as text; an instance's control characters no longer collide with the location tokens
   // 1.87.0: JSON array findings of the parser do not fail a sub-validation; a complex list written as an object is its one child.
   // 1.88.0: hasValue() of a number element; a number for Reference.reference is checked as its text; `{}` on a type slice of a choice fails ele-1, parser path on [x].
   // 1.89.0: ele-1 on an empty choice element; a slice discriminator ignores an array on a single element (the parser dropped it).
@@ -359,8 +360,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.90.0: validation as fhir_validate_bundle 1.93.0.
   // 1.91.0: validation as fhir_validate_bundle 1.94.0.
   // 1.92.0: validation as fhir_validate_bundle 1.95.0.
-  fhir_validate_resource: "1.93.0",
+  fhir_validate_resource: "1.94.0",
   // 1.91.0 (parity v3): Terminology_TX_NoValid_13 for a Coding outside an extensible binding, with the system's complaint incl. a wrong display; a bare code the UCUM grammar rejects is UNABLE_TO_INFER_CODESYSTEM
+  // 1.92.0 (parity v3): the SNOMED CT expression parser message in Terminology_TX_Confirm_4a; the resource comment in a pattern's nested locations; NoValid_12 for a wrong display of a local system; Confirm_4a for an empty code; a number as display read as text; an instance's control characters no longer collide with the location tokens
   // 1.86.0: validation as fhir_validate_bundle 1.89.0.
   // 1.77.0: validation as fhir_validate_bundle 1.80.0.
   // 1.78.0: validation as fhir_validate_bundle 1.81.0.

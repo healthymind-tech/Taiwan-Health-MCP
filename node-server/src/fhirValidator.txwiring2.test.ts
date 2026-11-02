@@ -374,3 +374,85 @@ test("systemForCodeInValueSet: a bare code UCUM's grammar rejects is UNABLE_TO_I
   ]);
   assert.deepEqual(await run("mg"), []);
 });
+
+const SP = "http://x/StructureDefinition/cond-coding-sct";
+const SCTVS = "http://x/ValueSet/sct";
+const SCT = "http://snomed.info/sct";
+class SnomedBindingResolver extends FakeResolver {
+  async fetchStructureDefinition(url: string): Promise<Json | null> {
+    if (url.split("|")[0] !== SP) return super.fetchStructureDefinition(url);
+    const base = JSON.parse(JSON.stringify(await super.fetchStructureDefinition(CORE + "Condition")));
+    base.url = SP;
+    base.derivation = "constraint";
+    const at = base.snapshot.element.findIndex((e: Json) => e.path === "Condition.code");
+    base.snapshot.element[at].binding = undefined;
+    base.snapshot.element.splice(at + 1, 0, { id: "Condition.code.coding", path: "Condition.code.coding", min: 0, max: "*", type: [{ code: "Coding" }], binding: { strength: "required", valueSet: SCTVS } });
+    return base;
+  }
+  async fetchValueSet(url: string): Promise<Json | null> {
+    return url.split("|")[0] === SCTVS ? { resourceType: "ValueSet", url: SCTVS, title: "Sct", compose: { include: [{ system: SCT, concept: [{ code: "1234" }] }] } } : super.fetchValueSet(url);
+  }
+  async valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
+    return url.split("|")[0] === SCTVS ? code === "1234" : super.valueSetContains(url, system, code);
+  }
+  async checkCode(system: string, code: string, display: string | null): Promise<CodeCheck> {
+    return system === SCT ? { status: "invalid-code", severity: "error", message: `Unknown code '${code}'` } : super.checkCode(system, code, display);
+  }
+}
+
+test("Terminology_TX_Confirm_4a: the server's expression parser comes first for a SNOMED CT code with no leading digit, asked without a display (official corpus)", async () => {
+  const run = async (coding: Json): Promise<string> => {
+    const r = await new InstanceValidator(new SnomedBindingResolver()).validate({ resourceType: "Condition", id: "c", meta: { profile: [SP] }, code: { coding: [coding] }, subject: { reference: "Patient/p" } });
+    return r.find((i) => i.path === "Condition.code.coding[0]" && i.severity === "error")?.message ?? "";
+  };
+  const after = (shown: string, code: string): string => `The provided code '${shown}' was not found in the value set '${SCTVS}'; Unknown code '${code}'`;
+  assert.ok((await run({ system: SCT, code: "zz-x" })).endsWith(`required: Not a valid expression: Concept not found (next char = "z", in "zz-x") at character 1; ${after(`${SCT}#zz-x`, "zz-x")}`));
+  assert.ok((await run({ system: SCT, code: " lead" })).includes(`(next char = "l", in " lead") at character 2; `));
+  assert.ok((await run({ system: SCT, code: "zz-x", display: "d" })).endsWith(`required: ${after(`${SCT}#zz-x ('d')`, "zz-x")}`));
+  assert.ok((await run({ system: SCT, code: "999" })).endsWith(`required: ${after(`${SCT}#999`, "999")}`));
+});
+
+const RP = "http://x/StructureDefinition/cond-coding-req";
+const CCP = "http://x/StructureDefinition/cond-cc-req";
+const PATP = "http://x/StructureDefinition/cond-pattern";
+class RequiredCodingResolver extends CodingBindingResolver {
+  async fetchStructureDefinition(url: string): Promise<Json | null> {
+    const u = url.split("|")[0];
+    if (u !== RP && u !== CCP && u !== PATP) return super.fetchStructureDefinition(url);
+    const base = JSON.parse(JSON.stringify(await super.fetchStructureDefinition(CORE + "Condition")));
+    base.url = u;
+    base.derivation = "constraint";
+    const at = base.snapshot.element.findIndex((e: Json) => e.path === "Condition.code");
+    base.snapshot.element[at].binding = u === CCP ? { strength: "required", valueSet: SMALL } : undefined;
+    if (u === PATP) base.snapshot.element[at].patternCodeableConcept = { coding: [{ system: GENDER, code: "male" }] };
+    if (u === RP) base.snapshot.element.splice(at + 1, 0, { id: "Condition.code.coding", path: "Condition.code.coding", min: 0, max: "*", type: [{ code: "Coding" }], binding: { strength: "required", valueSet: SMALL } });
+    return base;
+  }
+}
+const cond = (profile: string, coding: Json): Json => ({ resourceType: "Condition", id: "c", meta: { profile: [profile] }, code: { coding: [coding] }, subject: { reference: "Patient/p" } });
+
+test("a required Coding, a wrong display of a locally validated system: Terminology_TX_NoValid_12 (official corpus)", async () => {
+  const r = errors(await new InstanceValidator(new RequiredCodingResolver()).validate(cond(RP, { system: GENDER, code: "male", display: "nope" })));
+  assert.ok(r.some((i) => i.path === "Condition.code.coding[0]" && i.message === `The Coding provided (${GENDER}#male) was not found in the value set 'Small' (${SMALL}|1.0), and a code is required from this value set.  (error message = Wrong Display Name 'nope')`), JSON.stringify(r));
+});
+
+test("a number as display is read as its text, an instance's control character stays in the message", async () => {
+  const num = errors(await new InstanceValidator(new RequiredCodingResolver()).validate(cond(RP, { system: GENDER, code: "male", display: 7 })));
+  assert.ok(num.some((i) => i.message === "Wrong Display Name '7'"), JSON.stringify(num));
+  const ctl = errors(await new InstanceValidator(new RequiredCodingResolver()).validate(cond(RP, { system: GENDER, code: "male", display: "tab\u0001" })));
+  assert.ok(ctl.some((i) => i.message === "Wrong Display Name 'tab\u0001'"), JSON.stringify(ctl));
+});
+
+test("an empty code: Terminology_TX_Confirm_4a on a Coding with a binding of its own, null in a CodeableConcept's summary (official corpus)", async () => {
+  const c = errors(await new InstanceValidator(new RequiredCodingResolver()).validate(cond(RP, { system: GENDER, code: "" })));
+  assert.ok(c.some((i) => i.path === "Condition.code.coding[0]" && i.message === `The code provided (${GENDER}#) was not found in the value set 'Small' (${SMALL}|1.0), and a code from this value set is required: Coding has no code for system ${GENDER} and cannot be validated`), JSON.stringify(c));
+  const cc = errors(await new InstanceValidator(new RequiredCodingResolver()).validate(cond(CCP, { system: GENDER, code: "" })));
+  assert.ok(cc.some((i) => i.path === "Condition.code" && i.message.endsWith(`(codes = ${GENDER}#null)`)), JSON.stringify(cc));
+});
+
+test("a pattern's nested locations carry the entry resource's comment (List<ValidationMessage>.toString, official corpus)", async () => {
+  const bundle = { resourceType: "Bundle", type: "collection", entry: [{ fullUrl: "urn:uuid:7c1b7a4e-0a33-4b52-9d1a-1f0f2f7f9b11", resource: cond(PATP, { system: "http://x/other", code: "male" }) }] };
+  const r = await new InstanceValidator(new RequiredCodingResolver()).validate(bundle);
+  const m = r.find((i) => i.path === "Bundle.entry[0].resource.code" && i.message.startsWith("The pattern ["));
+  assert.ok(m?.message.includes("location=Bundle.entry[0].resource/*Condition/c*/.code.coding.system"), JSON.stringify(r));
+});
