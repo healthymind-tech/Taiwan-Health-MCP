@@ -22,6 +22,7 @@ import org.hl7.fhir.services.elementmodel.Manager;
 import org.hl7.fhir.services.fhirpath.ExpressionNode;
 import org.hl7.fhir.services.fhirpath.FHIRPathEngine;
 import org.hl7.fhir.utilities.FhirPublication;
+import org.hl7.fhir.utilities.validation.ValidationMessage;
 import org.hl7.fhir.validation.ValidationEngine;
 import org.hl7.fhir.validation.instance.InstanceValidator;
 import org.hl7.fhir.validation.instance.utils.ValidationContext;
@@ -123,6 +124,8 @@ public final class FhirPathOracle {
     }
     try {
       ValidationContext vc = root == null ? new ValidationContext((Object) null) : new ValidationContext(null, root);
+      Map<String, List<ValidationMessage>> notes = new HashMap<>(); // why conformsTo() said false
+      vc.setSliceRecords(notes);
       List<Base> result = new ArrayList<>();
       String context = t.getAttribute("context");
       if (!context.isEmpty() && root != null) {
@@ -136,6 +139,11 @@ public final class FhirPathOracle {
       for (Base b : result) items.add(item(b));
       r.add("items", items);
       if ("true".equals(t.getAttribute("predicate"))) r.addProperty("predicate", fpe.convertToBoolean(result));
+      if (!notes.isEmpty()) {
+        JsonArray n = new JsonArray();
+        notes.forEach((url, messages) -> messages.forEach(m -> n.add(url + ": " + m.getLocation() + ": " + m.getMessage())));
+        r.add("notes", n);
+      }
     } catch (Throwable e) {
       r.addProperty("eval", "threw");
       failure(r, e);

@@ -43,7 +43,7 @@ jvm() {
     -v "$JAR:/oracle/validator_cli.jar:ro" -v "$WORK:/work" -v "$TC:/tc:ro" -w /work/run \
     ${ORACLE_PACKAGES:+-v "$ORACLE_PACKAGES:/work/home/.fhir/packages"} \
     --entrypoint nice "$JRE_IMAGE" -n 19 \
-    java -Xmx3200m -Duser.home=/work/home -Djava.io.tmpdir=/work/tmp -Duser.timezone=UTC -Dfile.encoding=UTF-8 \
+    java -Xmx2800m -XX:+ExitOnOutOfMemoryError -Duser.home=/work/home -Djava.io.tmpdir=/work/tmp -Duser.timezone=UTC -Dfile.encoding=UTF-8 \
     -Dfhir.settings.path=/work/fhir-settings.json "$@"
 }
 
@@ -96,7 +96,7 @@ case "$cmd" in
         *) cp "$1" "$job/"; args+=("/work/in/$(basename "$job")/$(basename "$1")"); shift ;;
       esac
     done
-    jvm -jar /oracle/validator_cli.jar "${args[@]}" -version 4.0.1 -allowNetworkAccess -tx https://tx.fhir.org \
+    jvm -jar /oracle/validator_cli.jar "${args[@]}" -version 4.0.1 -tx https://tx.fhir.org \
       -output "/work/in/$(basename "$job")/outcome.json" >&2 || true
     cat "$job/outcome.json"
     rm -rf "$job"
