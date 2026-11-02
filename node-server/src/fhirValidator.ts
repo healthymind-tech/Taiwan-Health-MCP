@@ -5012,7 +5012,7 @@ export class InstanceValidator {
           continue;
         }
         const m = await this.member(valueSet, system, code);
-        if (m === undefined) this.undecidedCauses?.add(`${system ?? ""}|${valueSet}`);
+        if (m === undefined && (system === null || (await this.systemResolvable(system)))) this.undecidedCauses?.add(`${system ?? ""}|${valueSet}`);
         if (m === true) {
           // FHIRPathEngine.opMemberOf (services, tag 7.0.1:2792): validateCode(…).isOk() — a wrong display (error) of
           // the member coding makes it not ok (REVIEW_port_1 F9; the operator form is "any value", not size == 1)
@@ -5941,6 +5941,7 @@ export class InstanceValidator {
     }
     let anyMember = false;
     let anyUnknown = false;
+    let unknownSystemInVs = false;
     // (parity v1) tx $validate-code checks the display too (ValueSetValidator: a wrong display makes the result not ok):
     // a member whose display the terminology rejects does not satisfy the binding
     let wrongDisplay: { system: string; code: string; message: string; index: number } | null = null;
@@ -5963,7 +5964,12 @@ export class InstanceValidator {
       } else if (m === undefined) {
         // a code its CodeSystem rejects is in no value set, whatever the (undecidable) filters say
         const r = system && (typeCode === "Coding" || typeCode === "CodeableConcept") ? await this.codeCheck(system, code!, null, null) : null;
-        if (!(r && r.status === "invalid-code" && r.severity === "error")) anyUnknown = true;
+        // A system nobody holds (VSV inComponent null): a definite outcome, not an undecided one. CodeableConcept: UNKNOWN_CODESYSTEM
+        // alone, no binding issue (jar, required binding, value set listing that system); Coding: the code is not in the value set
+        // (Terminology_TX_Confirm_4a / _5, official corpus)
+        if (r?.status === "unknown-system") {
+          if (typeCode === "CodeableConcept") unknownSystemInVs = true;
+        } else if (!(r && r.status === "invalid-code" && r.severity === "error")) anyUnknown = true;
       }
     }
     // ValueSetValidator.validateCode(CodeableConcept) (standalone tag 7.0.1:458 `info.hasErrors()`): any coding with an
@@ -5997,6 +6003,7 @@ export class InstanceValidator {
       .filter((c: any) => isObject(c))
       .map((c: any) => `${typeof c.system === "string" ? c.system : "null"}#${typeof c.code === "string" ? c.code : "null"}`)
       .join(", ");
+    if (unknownSystemInVs && codingError === null) return;
     if (anyUnknown && codingError === null) {
       issues.push({
         severity: "information",

@@ -460,7 +460,9 @@ async function systemPartContains(
   deps: TerminologyDeps,
   activeOnly = false,
 ): Promise<boolean | undefined> {
-  const cs = await deps.loadCodeSystem(partSystemUrl(part, system));
+  // content = not-present defines no codes (THO's stubs of ISO 3166, LOINC …): the system is answered as if not held here
+  const loaded = await deps.loadCodeSystem(partSystemUrl(part, system));
+  const cs = loaded && loaded.content === "not-present" ? null : loaded;
   // ValueSetValidator.inComponent (7.0.1): compose.inactive = false (or activeOnly) → an inactive
   // concept is not a member (STATUS_CODE_WARNING_CODE).
   if (activeOnly && cs) {
@@ -473,7 +475,8 @@ async function systemPartContains(
     // REVIEW_port_2 G19 (VSV:2211 validateCodeInConceptList before the include's concept list): a listed code the
     // complete CodeSystem does not define is not a member
     if (listed && cs && cs.content === "complete" && !findConcept(cs, code)) return false;
-    // G21 (VSV:2136-2150): no CodeSystem here nor at the terminology server → not decidable (only a warning there)
+    // VSV:2136-2150: a system neither held nor known to the terminology server: inComponent gives up (null), neither member nor
+    // not. The caller knows the answer (jar, CodeableConcept under a required binding: UNKNOWN_CODESYSTEM only, no binding issue)
     if (!listed && !cs && system !== null && deps.systemUnknown && (await deps.systemUnknown(system))) return undefined;
     return listed;
   }
@@ -493,11 +496,17 @@ async function systemPartContains(
         r = sub === undefined ? undefined : sub && (f.op === "is-a" || code !== String(f.value));
       } else if (f.op === "=" && (f.property === "concept" || f.property === "code")) {
         r = code === String(f.value);
+      } else if ((f.op === "in" || f.op === "not-in") && (f.property === "concept" || f.property === "code")) {
+        // an enumerated list needs no terminology
+        const listed = String(f.value ?? "").split(",").map((v) => v.trim()).includes(code);
+        r = f.op === "in" ? listed : !listed;
       } else if (deps.externalFilter) {
         r = await deps.externalFilter(system, f, code);
       } else {
         r = undefined;
       }
+      // Another SNOMED CT edition than the International one held here: a concept may belong to it, so "no" proves nothing
+      if (r === false && system === SNOMED_SYSTEM && typeof part.version === "string" && !part.version.startsWith("http://snomed.info/sct/900000000000207008")) r = undefined;
       if (r === false) return false;
       if (r === undefined) acc = undefined;
     }

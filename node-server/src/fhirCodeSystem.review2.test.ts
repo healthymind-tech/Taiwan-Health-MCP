@@ -5,6 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyFilter, codeInFilter, composeContains, conceptInactive, expandComposeWith, findConcept, indexCodeSystem, type TerminologyDeps } from "./fhirCodeSystem.js";
+import { externalFilterMatches } from "./fhirTerminology.js";
 import { txValidateCode } from "./fhirTxValidate.js";
 import { judgeHeldCodeSystem } from "./fhirValidationResolver.js";
 
@@ -29,11 +30,18 @@ test("G19: an enumerated code the complete CodeSystem does not define is not a m
   assert.deepEqual(ex.codings.map((c) => c.code), ["A"]);
 });
 
-test("G21: an unlisted code of a system nobody knows is undecidable, not a failure (VSV:2136-2150)", async () => {
-  const compose = { include: [{ system: "http://nowhere/cs", concept: [{ code: "A" }] }] };
-  assert.equal(await composeContains(compose, "http://nowhere/cs", "Z", depsWith(null, { systemUnknown: async () => true })), undefined);
-  assert.equal(await composeContains(compose, "http://nowhere/cs", "Z", depsWith(null, { systemUnknown: async () => false })), false);
-  assert.equal(await composeContains(compose, "http://nowhere/cs", "A", depsWith(null, { systemUnknown: async () => true })), true);
+test("a system nobody knows: listed at face value, otherwise neither member nor not (VSV:2136-2150, jar on the G21 input)", async () => {
+  const unknown = depsWith(null, { systemUnknown: async () => true });
+  const listed = { include: [{ system: "http://nowhere/cs", concept: [{ code: "A" }] }] };
+  assert.equal(await composeContains(listed, "http://nowhere/cs", "Z", unknown), undefined);
+  assert.equal(await composeContains(listed, "http://nowhere/cs", "Z", depsWith(null, { systemUnknown: async () => false })), false);
+  assert.equal(await composeContains(listed, "http://nowhere/cs", "A", unknown), true);
+});
+
+test("UCUM as a whole-system include: decided by the unit grammar", async () => {
+  const ucum = { include: [{ system: "http://unitsofmeasure.org" }] };
+  assert.equal(await composeContains(ucum, null, "mg/dL", depsWith(null)), true);
+  assert.equal(await composeContains(ucum, null, "notaunit!", depsWith(null)), false);
 });
 
 test("G25: hierarchy only through the property with the concept-properties#parent URI (CodeSystemUtilities.crossLinkCodeSystem)", () => {
@@ -121,4 +129,44 @@ test("G30: tx adapter — no language accepts any display language; ValueSet.lan
   assert.equal((await txValidateCode({ mode: "valueset", valueSet: vs, coding, params: { acceptLanguage: "en, en-AU; q=0.4" } }, deps)).result, false);
   const inferred = await txValidateCode({ mode: "valueset", valueSet: vs, code: "a", params: { inferSystem: true } }, deps);
   assert.equal(inferred.result, true);
+});
+
+test("concept in / not-in needs no terminology, on a system nobody holds", async () => {
+  const inc = (op: string) => ({ include: [{ system: "http://nowhere/cs", filter: [{ property: "concept", op, value: "A, B" }] }] });
+  assert.equal(await composeContains(inc("in"), "http://nowhere/cs", "B", depsWith(null)), true);
+  assert.equal(await composeContains(inc("in"), "http://nowhere/cs", "C", depsWith(null)), false);
+  assert.equal(await composeContains(inc("not-in"), "http://nowhere/cs", "C", depsWith(null)), true);
+});
+
+test("another SNOMED CT edition: the International hierarchy cannot say no", async () => {
+  const inc = (version?: string) => ({ include: [{ system: "http://snomed.info/sct", ...(version ? { version } : {}), filter: [{ property: "concept", op: "is-a", value: "111111" }] }] });
+  const d = depsWith(null, { snomedSubsumedBy: async () => false });
+  assert.equal(await composeContains(inc(), "http://snomed.info/sct", "222222", d), false);
+  assert.equal(await composeContains(inc("http://snomed.info/sct/900000000000207008/version/20250201"), "http://snomed.info/sct", "222222", d), false);
+  assert.equal(await composeContains(inc("http://snomed.info/sct/731000124108"), "http://snomed.info/sct", "222222", d), undefined);
+});
+
+test("ISO 3166 regex filters: the shape, then the table", async () => {
+  const f = (value: string) => ({ property: "code", op: "regex", value });
+  assert.equal(await externalFilterMatches("urn:iso:std:iso:3166", f("[A-Z]{2}"), "NL"), true);
+  assert.equal(await externalFilterMatches("urn:iso:std:iso:3166", f("[A-Z]{2}"), "NLD"), false);
+  assert.equal(await externalFilterMatches("urn:iso:std:iso:3166", f("[A-Z]{3}"), "NLD"), true);
+  assert.equal(await externalFilterMatches("urn:iso:std:iso:3166", f("[A-Z]{2}"), "QQ"), true);
+  assert.equal(await externalFilterMatches("urn:iso:std:iso:3166", f("[A-Z]{2}"), "JJ"), false);
+});
+
+test("a not-present CodeSystem stub defines nothing: the code is answered as for a system not held", async () => {
+  const stub = { ...CS, url: "urn:iso:std:iso:3166", content: "not-present", concept: [] };
+  const filtered = { include: [{ system: "urn:iso:std:iso:3166", filter: [{ property: "code", op: "regex", value: "[A-Z]{2}" }] }] };
+  const d = depsWith(stub, { externalFilter: async (_s, _f, c) => c === "NL" });
+  assert.equal(await composeContains(filtered, "urn:iso:std:iso:3166", "NL", d), true);
+  assert.equal(await composeContains(filtered, "urn:iso:std:iso:3166", "XX", d), false);
+});
+
+test("CVX and ISO 3166 as whole-system includes: decided by the bundled tables", async () => {
+  const cvx = { include: [{ system: "http://hl7.org/fhir/sid/cvx" }] };
+  assert.equal(await composeContains(cvx, "http://hl7.org/fhir/sid/cvx", "207", depsWith(null)), true);
+  assert.equal(await composeContains(cvx, "http://hl7.org/fhir/sid/cvx", "9999", depsWith(null)), false);
+  const iso = { include: [{ system: "urn:iso:std:iso:3166" }] };
+  assert.equal(await composeContains(iso, "urn:iso:std:iso:3166", "TW", depsWith(null)), true);
 });

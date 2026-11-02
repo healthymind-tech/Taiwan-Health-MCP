@@ -27,6 +27,8 @@ import {
 export type { Coding, ExpandResult } from "./fhirCodeSystem.js";
 import type { Icd10WhoRow, LoincOtherRow, SnomedConceptRow, SnomedDescriptionRow, SnomedEditionInfo } from "./fhirExternalTerminology.js";
 import { CVX_CODES } from "./fhirCvx.js";
+import { ISO3166_DISPLAY } from "./fhirIso3166.js";
+import { parseSimpleEcl, simpleEclContains } from "./fhirSimpleEcl.js";
 import { cacheLimits, currentSnapshot } from "./fhirValidationSnapshot.js";
 import { TtlMemo } from "./ttlMemo.js";
 
@@ -392,7 +394,11 @@ async function loadCodeSystemVersion(canonical: string, version: string, pkg: Pa
     .filter((r): r is { json: Record<string, any>; inClosure: boolean } => !!r.json)
     .map((r) => ({ ...r, version: typeof r.json.version === "string" ? (r.json.version as string) : null }));
   const pick = pickCanonicalVersion(cands.filter((c) => c.inClosure), version) ?? pickCanonicalVersion(cands, version);
-  return pick ? pick.json : null;
+  if (pick) return pick.json;
+  // R4 core publishes its v2 tables with the version inside the url ("…/v2-0360|2.7", version "0360")
+  const literal = (await query<{ raw_json: any }>("SELECT a.raw_json FROM fhir.artifacts a WHERE a.resource_type = 'CodeSystem' AND a.canonical_url = $1 LIMIT 1", [`${canonical}|${version}`])).rows[0];
+  const json = literal ? jsonOf(literal.raw_json) : null;
+  return json ? { ...json, url: canonical, version } : null;
 }
 
 /**
@@ -536,10 +542,14 @@ function loincValueMatches(column: string, actual: string | number, wanted: stri
  * code that is not a LOINC term held locally, and for a NULL column.
  */
 export async function externalFilterMatches(system: string, f: ComposeFilter, code: string): Promise<boolean | undefined> {
-  if (routeSystem(system) !== "loinc") return undefined;
   const prop = String(f.property ?? "");
   const op = String(f.op ?? "");
   const value = String(f.value ?? "");
+  if (routeSystem(system) === "snomed") return snomedFilterMatches(prop, op, value, code);
+  if (system === "urn:iso:std:iso:3166") return iso3166FilterMatches(prop, op, value, code);
+  if (system === ICD10CM_URL) return icd10cmFilterMatches(prop, op, value, code);
+  if (system === RXNORM_URL) return rxnormFilterMatches(prop, op, value, code);
+  if (routeSystem(system) !== "loinc") return undefined;
   if (op !== "=" && op !== "in") return undefined;
   const wanted = op === "in" ? value.split(",").map((v) => v.trim()).filter((v) => v !== "") : [value];
   if (!wanted.length) return undefined;
@@ -572,6 +582,54 @@ export async function externalFilterMatches(system: string, f: ComposeFilter, co
     if (m === undefined) undecided = true;
   }
   return undecided ? undefined : false;
+}
+
+const ICD10CM_URL = "http://hl7.org/fhir/sid/icd-10-cm";
+const RXNORM_URL = "http://www.nlm.nih.gov/research/umls/rxnorm";
+
+/** SNOMED CT `constraint` (the ECL local hierarchy can answer, fhirSimpleEcl.ts) and `concept is-not-a`. */
+async function snomedFilterMatches(prop: string, op: string, value: string, code: string): Promise<boolean | undefined> {
+  if (prop === "constraint" && op === "=") {
+    const ecl = parseSimpleEcl(value);
+    return ecl ? simpleEclContains(ecl, code, snomedSubsumedBy) : undefined;
+  }
+  if (prop === "concept" && op === "is-not-a") {
+    const sub = await snomedSubsumedBy(code, value);
+    return sub === undefined ? undefined : !sub;
+  }
+  return undefined;
+}
+
+/** ISO 3166: the alpha-2 / alpha-3 / numeric value sets are regex filters over the bundled tx.fhir.org table. */
+function iso3166FilterMatches(prop: string, op: string, value: string, code: string): boolean | undefined {
+  if ((prop !== "code" && prop !== "concept") || op !== "regex") return undefined;
+  let re: RegExp;
+  try {
+    re = new RegExp(`^(?:${value})$`, "u");
+  } catch {
+    return undefined;
+  }
+  return re.test(code) && Object.hasOwn(ISO3166_DISPLAY, code);
+}
+
+/** ICD-10-CM hierarchy: a code's ancestors are its prefixes (category, subcategories, the 7th-character parent). */
+async function icd10cmFilterMatches(prop: string, op: string, value: string, code: string): Promise<boolean | undefined> {
+  if (prop !== "concept" || (op !== "is-a" && op !== "descendent-of")) return undefined;
+  const r = await query<{ code: string }>("SELECT code FROM icd.diagnoses WHERE code = ANY($1::text[])", [[code, value]]);
+  const held = new Set(r.rows.map((x) => x.code));
+  if (!held.has(code) || !held.has(value)) return undefined;
+  if (code === value) return op === "is-a";
+  return code.startsWith(value);
+}
+
+/** RxNorm term type of a concept held locally. */
+async function rxnormFilterMatches(prop: string, op: string, value: string, code: string): Promise<boolean | undefined> {
+  if ((prop !== "TTY" && prop !== "tty") || (op !== "=" && op !== "in")) return undefined;
+  if (!/^\d{1,15}$/.test(code)) return undefined;
+  const r = await query<{ tty: string }>("SELECT tty FROM rxnorm.concepts WHERE rxcui = $1", [code]);
+  if (!r.rows.length) return undefined;
+  const wanted = op === "in" ? value.split(",").map((v) => v.trim()) : [value];
+  return r.rows.some((x) => wanted.includes(x.tty));
 }
 
 async function lookupExternalTables(system: string | null | undefined, code: string): Promise<LookupResult | null> {
@@ -1044,8 +1102,8 @@ export async function snomedSubsumedBy(code: string, ancestor: string): Promise<
     )
   ).rows;
   if (rows.length) return true;
-  const known = await lookupExternalTables(SNOMED_SYSTEM, code);
-  return known ? false : undefined;
+  // an inactive concept is known too: it has no active is-a, so it is in no hierarchy (official: not in the value set)
+  return (await snomedConcept(code)) ? false : undefined;
 }
 
 export async function snomedDisplays(ids: Array<number | string>): Promise<Map<number, string>> {

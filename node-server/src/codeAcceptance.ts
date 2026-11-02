@@ -81,6 +81,30 @@ export function enumeratedCodes(system: string, pkg: PackageRow): Promise<Map<st
   });
 }
 
+/** The display a ValueSet of any installed package lists for (system, code); the validator's server serves those editions too. */
+export async function installedEnumeratedDisplay(system: string, code: string): Promise<string | null> {
+  const all = await enumMemo.get(`installed|${system}`, async () => {
+    const rows = (
+      await query<{ inc: unknown }>(
+        "SELECT a.raw_json -> 'compose' -> 'include' AS inc FROM fhir.artifacts a " +
+          "WHERE a.resource_type = 'ValueSet' AND a.raw_json -> 'compose' -> 'include' @> jsonb_build_array(jsonb_build_object('system', $1::text))",
+        [system],
+      )
+    ).rows;
+    const out = new Map<string, EnumeratedCode>();
+    for (const r of rows) {
+      for (const inc of Array.isArray(r.inc) ? (r.inc as any[]) : []) {
+        if (!inc || inc.system !== system || !Array.isArray(inc.concept)) continue;
+        for (const c of inc.concept) {
+          if (c && typeof c.code === "string" && typeof c.display === "string" && c.display && !out.has(c.code)) out.set(c.code, { display: c.display, valueSets: [] });
+        }
+      }
+    }
+    return out;
+  });
+  return all.get(code)?.display ?? null;
+}
+
 export interface ConfirmedCoding extends Acceptance {
   system: string;
   code: string;

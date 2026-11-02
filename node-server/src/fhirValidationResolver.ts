@@ -24,7 +24,7 @@ import type { PackageRow } from "./fhirIg.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "./fhirValidator.js";
 import { conceptInactive, conceptStatus, findConcept, type CodeSystemIndex, type CsConcept, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains } from "./fhirCodeSystem.js";
 import * as terminology from "./fhirTerminology.js";
-import { BCP13, BCP47, RFC3986, isAbsoluteUrl, judgeLanguageTag, mimeTypeShapeOk } from "./fhirSpecialSystems.js";
+import { BCP13, BCP47, RFC3986, isAbsoluteUrl, judgeLanguageTag, mimeTypeShapeOk, terminologyServerKnows } from "./fhirSpecialSystems.js";
 import { ISO3166_DISPLAY, ISO3166_VERSION, iso3166UserAssigned } from "./fhirIso3166.js";
 import {
   CVX,
@@ -51,7 +51,7 @@ import { generateSnapshotAsync } from "./fhirSnapshotGenerator.js";
 import { fixPackageResource } from "./fhirPackageHacker.js";
 import { logWarning } from "./logger.js";
 import { txCodeVerdict, type TxCodeVerdict } from "./txCodeTables.js";
-import { enumeratedCodes } from "./codeAcceptance.js";
+import { enumeratedCodes, installedEnumeratedDisplay } from "./codeAcceptance.js";
 
 const SD_TTL_MS = 30 * 60 * 1000;
 const SD_CACHE_MAX = 1500;
@@ -745,7 +745,9 @@ export class DbValidatorResolver implements ValidatorResolver {
     let idx = await terminology.loadCodeSystemIndex(system, this.pkg, true);
     // REVIEW_port_2 G10: a urn:oid / urn:uuid CodeSystem in the closure is judged like any other (ValueSetValidator.java:654)
     if ((system.startsWith("urn:oid:") || system.startsWith("urn:uuid:")) && !(idx && idx.url && idx.url.split("|")[0] === system)) {
-      return noLocalDisplay(system, display);
+      // An OID no package holds is unknown to the terminology server as well: a definite UNKNOWN_CODESYSTEM, nothing left
+      // undecided (official corpus: every urn:oid system without a package, ips / twcore)
+      return terminologyServerKnows(system) ? noLocalDisplay(system, display) : { status: "unknown-system" };
     }
     // The terminology loader falls back to a CodeSystem with the same id (for
     // bare ids from tool callers); a Coding.system must match the canonical
@@ -921,7 +923,7 @@ export class DbValidatorResolver implements ValidatorResolver {
     if (tx.displayVerified) {
       let listed: string | null = null;
       try {
-        listed = (await enumeratedCodes(system, this.pkg)).get(code)?.display ?? null;
+        listed = (await enumeratedCodes(system, this.pkg)).get(code)?.display ?? (await installedEnumeratedDisplay(system, code));
       } catch {
         listed = null;
       }

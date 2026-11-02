@@ -12,6 +12,7 @@ import { CORE, FakeResolver } from "./fhirTestKit.test.js";
 type Json = Record<string, any>;
 const errors = (issues: Issue[]): Issue[] => issues.filter((i) => i.severity === "error" || i.severity === "fatal");
 
+
 test("G3 determineVersion: VS pin 5.0.0, Coding 9.9.9 → VALUESET_VALUE_MISMATCH + UNKNOWN_CODESYSTEM_VERSION (IG system)", () => {
   const inc = [{ system: "https://x/CodeSystem/freq", version: "5.0.0" }];
   const r = codingVersionIssues(inc, "https://x/CodeSystem/freq", "9.9.9", ["5.0.0"]);
@@ -174,4 +175,52 @@ test("an incompleteness note is an information issue with `unchecked`, so checke
     assert.equal(note!.severity, "information");
     assert.deepEqual((note as any).unchecked, { kind: "code", canonical: "http://x/lag" });
   }
+});
+
+test("memberOf() in an invariant is answered by the terminology: the value set decides pass and fail", async () => {
+  const VSC = "http://x/ValueSet/country";
+  class R extends FakeResolver {
+    async fetchValueSet(url: string): Promise<Json | null> {
+      return url.startsWith("http://x/ValueSet/") ? { resourceType: "ValueSet", url, compose: { include: [{ system: "urn:iso:std:iso:3166", concept: [{ code: "NL" }] }] } } : super.fetchValueSet(url);
+    }
+    async valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
+      return url.split("|")[0] === VSC ? code === "NL" : undefined;
+    }
+  }
+  const el = { path: "Patient.address", constraint: [{ key: "x-1", severity: "error", human: "country", expression: `country.empty() or country.memberOf('${VSC}')` }] };
+  const run = async (country: string, url = VSC): Promise<Issue[]> => {
+    const issues: Issue[] = [];
+    const v = new InstanceValidator(new R()) as any;
+    const e = url === VSC ? el : { ...el, constraint: [{ ...el.constraint[0], expression: `country.memberOf('${url}')` }] };
+    await v.checkConstraints({ url: "http://x/sd", type: "Patient" }, e, { value: { country }, path: "Patient.address[0]" }, "Address", { resource: { resourceType: "Patient" } }, issues);
+    return issues;
+  };
+  assert.deepEqual(await run("NL"), []);
+  const bad = await run("BE");
+  assert.equal(bad.length, 1);
+  assert.equal(bad[0].severity, "error");
+  const unknown = await run("NL", "http://x/ValueSet/other");
+  assert.equal(unknown[0].severity, "information");
+  assert.deepEqual((unknown[0] as any).unchecked, { kind: "invariant", canonical: "http://x/sd#x-1" });
+});
+
+test("G21 (jar): a CodeableConcept of a system nobody holds, the required value set listing that system: UNKNOWN_CODESYSTEM only, nothing unchecked", async () => {
+  const VSN = "http://x/ValueSet/nowhere";
+  const CSN = "http://x/nowhere/cs";
+  class R extends FakeResolver {
+    async fetchValueSet(url: string): Promise<Json | null> {
+      return url.split("|")[0] === VSN ? { resourceType: "ValueSet", url: VSN, compose: { include: [{ system: CSN, concept: [{ code: "A" }] }] } } : super.fetchValueSet(url);
+    }
+    async valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
+      return url.split("|")[0] === VSN ? (code === "A" ? true : undefined) : super.valueSetContains(url, system, code);
+    }
+    async checkCode(system: string, code: string, display: string | null): Promise<CodeCheck> {
+      return system === CSN ? { status: "unknown-system" } : super.checkCode(system, code, display);
+    }
+  }
+  const v = new InstanceValidator(new R()) as any;
+  const issues: Issue[] = [];
+  const el = { path: "Observation.code", base: { path: "Observation.code" }, binding: { strength: "required", valueSet: VSN } };
+  await v.checkBinding(el, { coding: [{ system: CSN, code: "Z" }] }, "CodeableConcept", { path: "Observation.code", value: {} }, issues);
+  assert.deepEqual(issues.filter((i) => i.severity === "error" || (i as any).unchecked), []);
 });

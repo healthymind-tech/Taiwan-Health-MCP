@@ -13,6 +13,9 @@
  * The registry is loaded lazily once per process; when it cannot be read every language tag stays undecided
  * (null), never valid.
  */
+import { CVX_CODES } from "./fhirCvx.js";
+import { ISO3166_DISPLAY } from "./fhirIso3166.js";
+import { UCUM_SYSTEM, checkUcumCode } from "./fhirUcum.js";
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
@@ -162,6 +165,12 @@ export function specialSystemMember(system: string, code: string): boolean | und
     return mimeTypeShapeOk(code);
   }
   if (system === RFC3986) return isAbsoluteUrl(code);
+  if (system === "http://hl7.org/fhir/sid/cvx") return Object.hasOwn(CVX_CODES, code);
+  if (system === "urn:iso:std:iso:3166") return Object.hasOwn(ISO3166_DISPLAY, code);
+  if (system === UCUM_SYSTEM) {
+    const r = checkUcumCode(code);
+    return r === "unchecked" ? undefined : r === "valid";
+  }
   return undefined;
 }
 
@@ -184,6 +193,14 @@ export function terminologyServerKnows(system: string): boolean {
     "urn:oid:1.2.36.1.2001.1005.17",
     "http://www.ama-assn.org/go/cpt",
     "http://www.whocc.no/atc",
+    // official outcomes answer codes of these with no package holding them
+    "http://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets",
+    "https://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets",
+    "http://www.ada.org/snodent",
+    "http://nucc.org/provider-taxonomy",
+    "http://standardterms.edqm.eu",
+    "http://fhir.de/CodeSystem/dimdi/icd-10-gm",
+    "http://fhir.de/CodeSystem/bfarm/atc",
   ];
   if (listed.includes(system)) return true;
   if (system.startsWith("urn:ietf:") || system.startsWith("urn:iso:")) return true;
