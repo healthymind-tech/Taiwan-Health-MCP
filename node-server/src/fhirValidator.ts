@@ -1501,6 +1501,11 @@ function isConstraintDefinition(s: SdIndex): boolean {
   return s.sd?.derivation === "constraint";
 }
 
+/** The text JsonParser keeps for a number or boolean written where a string belongs (after "must be a string"). */
+function jsonText(v: unknown): unknown {
+  return typeof v === "number" || typeof v === "boolean" ? String(v) : v;
+}
+
 /** The literal path of an item with its indexes: the choice elements on the way are `<stem>.ofType(<type>)` (NodeStack). */
 export function withChoiceLiterals(path: string, lit: string | undefined): string {
   if (!lit?.includes(".ofType(")) return path;
@@ -1820,7 +1825,7 @@ export class InstanceValidator {
       const method = isObject(ep.request) ? ep.request.method : undefined;
       const url = isObject(ep.request) ? ep.request.url : undefined;
       if (method === undefined || method === null) {
-        if (typeof ep.fullUrl !== "string") return true;
+        if (typeof jsonText(ep.fullUrl) !== "string") return true;
         return !(ep.fullUrl.startsWith("urn:uuid:") || ep.fullUrl.startsWith("urn:oid:"));
       }
       if (method === "PUT") return url === undefined || url === null;
@@ -2080,7 +2085,7 @@ export class InstanceValidator {
     (Array.isArray(bundle.entry) ? bundle.entry : []).forEach((e: any, index: number) => {
       if (!isObject(e)) return;
       // BaseValidator.resolveInBundle: fullUrl → entries, Type/id → entries, plus `/_history/<meta.versionId>` keys
-      const fu = typeof e.fullUrl === "string" ? e.fullUrl : null;
+      const fu = typeof jsonText(e.fullUrl) === "string" ? String(e.fullUrl) : null;
       const res = isObject(e.resource) ? e.resource : null;
       const re: RawBundleEntry = { index, entry: e, fullUrl: fu, resource: res };
       raw.push(re);
@@ -2102,7 +2107,7 @@ export class InstanceValidator {
       if (!isObject(r)) return;
       // element.getNamedChildValue("fullUrl"): a "" is a value, not a missing fullUrl (Bundle_BUNDLE_Entry_NoFullUrl,
       // Bundle_BUNDLE_FullUrl_Missing test `fullUrl != null` / `fullUrl == null`)
-      const fullUrl = typeof e.fullUrl === "string" ? e.fullUrl : null;
+      const fullUrl = typeof jsonText(e.fullUrl) === "string" ? String(e.fullUrl) : null;
       const ent: BundleEntryCtx = { index, fullUrl, resource: r };
       entries.push(ent);
       entryOf.set(r, ent);
@@ -2426,7 +2431,7 @@ export class InstanceValidator {
       for (const be of Array.isArray(bundle.entry) ? bundle.entry : []) {
         const res = isObject(be) && isObject(be.resource) ? be.resource : null;
         if (!res) continue;
-        if (typeof be.fullUrl === "string" && !idx.has(be.fullUrl)) idx.set(be.fullUrl, res);
+        if (typeof jsonText(be.fullUrl) === "string" && !idx.has(String(be.fullUrl))) idx.set(String(be.fullUrl), res);
         const tid = `${res.resourceType}/${res.id}`;
         if (!idx.has(tid)) idx.set(tid, res);
       }
@@ -3011,8 +3016,10 @@ export class InstanceValidator {
       if (typeof p === "string" && p && !profiles.includes(p)) profiles.push(p);
     });
     if (rt === "Observation") {
+      // checkSpecials runs inside startInner(defn), before the meta.profile loop (IV:7192-7196): what those profiles
+      // share with the implied one (the same invariant expression) is reported as the implied one's
       const url = impliedVitalSignProfile(resource.code);
-      if (url && !profiles.includes(url)) profiles.push(url);
+      if (url && !profiles.includes(url)) profiles.splice(new Set(extraProfiles.filter(Boolean)).size, 0, url);
     }
     // InstanceValidator.validateResource(…, defn, …) (7.0.1, l. 6880-6910): the resource is validated against `defn` —
     // the requested profile (-profile / the element's type profile) when there is one, otherwise the core definition —
@@ -3451,7 +3458,7 @@ export class InstanceValidator {
         // XML: an element with only an id attribute is the same element (patient-id-only)
         if (isObject(ext) && (!this.xmlSource || typeof ext.id === "string")) {
           // a `value` the JSON parser took as a child counts as one (ILLEGAL_PROPERTY, validatePrimitiveExtensions)
-          const hasExtensions = !xhtml && ((Array.isArray(ext.extension) && ext.extension.length > 0) || ext.value !== undefined);
+          const hasExtensions = !xhtml && ((Array.isArray(ext.extension) && ext.extension.length > 0) || isObject(ext.extension) || ext.value !== undefined);
           if (!hasExtensions) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
           // checkPrimitive l. 3238 (TYPE_SPECIFIC_CHECKS_DT_PRIMITIVE_VALUEEXT): e.hasChildren() — an id is a child
           if (!hasExtensions && typeof ext.id !== "string") issues.push({ severity: "error", path: item.path, code: "invalid", message: PRIMITIVE_VALUEEXT_MESSAGE });
@@ -4047,11 +4054,14 @@ export class InstanceValidator {
       }
     }
     if (xhtml) return;
-    const list = ext.extension;
+    let list = ext.extension;
     if (list === undefined) return;
     if (!Array.isArray(list)) {
-      issues.push({ severity: "error", path, code: "structure", message: "The property extension must be a JSON Array" });
-      return;
+      // parseChildComplex (JsonParser.java:521-525): the error, then an object is the one child
+      const at = item.jpath ?? item.parserPath ?? path;
+      issues.push({ severity: "error", path: `${at}.extension`, code: "structure", message: `The property extension must be a JSON Array, not ${describeJson(list)} (at ${at})` });
+      if (!isObject(list)) return;
+      list = [list];
     }
     // checkExtension l. 2733: FHIR_RESOURCE_ID_CANT_BE_EXTENDED, per extension, at the id
     if (isObject(el.base) && el.base.path === "Resource.id") {
@@ -6256,8 +6266,9 @@ export class InstanceValidator {
       if (m === true) {
         const idx = list.findIndex((c) => isObject(c) && c.code === code && (c.system ?? null) === system);
         const c = idx >= 0 ? list[idx] : null;
-        if (system && c && typeof c.display === "string" && c.display && (typeCode === "Coding" || typeCode === "CodeableConcept")) {
-          const r = await this.codeCheck(system, code!, c.display, typeof c.version === "string" ? c.version : null);
+        const shownDisplay = c ? jsonText(c.display) : undefined;
+        if (system && c && typeof shownDisplay === "string" && shownDisplay && (typeCode === "Coding" || typeCode === "CodeableConcept")) {
+          const r = await this.codeCheck(system, code!, shownDisplay, typeof c.version === "string" ? c.version : null);
           if (r.status === "invalid-display" && r.severity === "error") {
             wrongDisplay ??= { system, code: code!, message: r.message, index: idx };
             continue;
@@ -6281,7 +6292,8 @@ export class InstanceValidator {
     if (typeCode === "CodeableConcept") {
       for (const c of list) {
         if (!isObject(c) || typeof c.system !== "string" || typeof c.code !== "string" || !c.code) continue;
-        const r = await this.codeCheck(c.system, c.code, typeof c.display === "string" ? c.display : null, typeof c.version === "string" ? c.version : null);
+        const shown = jsonText(c.display);
+        const r = await this.codeCheck(c.system, c.code, typeof shown === "string" ? shown : null, typeof c.version === "string" ? c.version : null);
         if ((r.status === "invalid-code" || r.status === "invalid-display") && r.severity === "error") {
           codingError = r.message;
           break;
@@ -6696,7 +6708,8 @@ export class InstanceValidator {
       return;
     }
     // Coding.setDisplay: Utilities.noString(value) → display = null (the Coding sent to validation has no display)
-    const display = typeof v.display === "string" && v.display !== "" ? v.display : null;
+    const shownDisplay = jsonText(v.display);
+    const display = typeof shownDisplay === "string" && shownDisplay !== "" ? shownDisplay : null;
     const version = typeof v.version === "string" && v.version ? v.version : null;
     const r = await this.codeCheck(system, code, display, version);
     for (const n of r.extra ?? []) {

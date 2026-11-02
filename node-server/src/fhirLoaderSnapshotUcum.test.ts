@@ -678,3 +678,12 @@ test("additional bindings: a testable purpose is checked like the binding and na
   assert.ok(found.some((i) => i.message.includes("'T' (http://ex.org/vs|1) specified in an additional binding, and a code is required from this value set")), JSON.stringify(found));
   assert.ok(!(await run("candidate")).some((i) => /additional binding/.test(i.message)), "isTestableBinding: candidate has no strength");
 });
+
+test("a number where a string belongs: fullUrl and Coding.display are read as their text; an object for extension is its one child", async () => {
+  const v = new InstanceValidator(new FakeResolver());
+  const shadow = await v.validate({ resourceType: "Patient", _gender: { extension: { url: "http://x", valueString: "a" } } });
+  assert.ok(shadow.some((i) => /The property extension must be a JSON Array, not an Object/.test(i.message)), JSON.stringify(shadow));
+  assert.ok(!shadow.some((i) => /ele-1|Primitive types must have a value/.test(i.message)), JSON.stringify(shadow));
+  const b = await new InstanceValidator(new FakeResolver()).validate({ resourceType: "Bundle", type: "collection", entry: [{ fullUrl: 1, resource: { resourceType: "Patient", id: "a" } }] });
+  assert.ok(!b.some((i) => /Bundle entry missing fullUrl/.test(i.message)), JSON.stringify(b));
+});
