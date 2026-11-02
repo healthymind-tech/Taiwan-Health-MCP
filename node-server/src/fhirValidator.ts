@@ -2457,7 +2457,8 @@ export class InstanceValidator {
         issues.push({ severity: "error", path, code: "invalid", message: "This resource is required to be a matchetype resource (extension http://hl7.org/fhir/tools/StructureDefinition/matchetype must be true)" });
       }
     }
-    if (this.containedUrls.has(u)) return;
+    const contained = Array.isArray(rctx.resource?.contained) ? rctx.resource.contained : [];
+    if (contained.length) this.containedUrls = new Set([...savedUrls, ...contained.map((c: any) => (isObject(c) && typeof c.url === "string" ? c.url : "")).filter(Boolean)]);
     try {
       await this.validateResourceBody(rctx, path, extraProfiles, issues, depth);
       // checkSpecials: StructureDefinitionValidator (InstanceValidator l. 7252)
@@ -2467,11 +2468,8 @@ export class InstanceValidator {
       }
     } finally {
       this.workingLang = saved;
-<<<<<<< HEAD
       this.inMatchetype = savedMt;
-=======
       this.containedUrls = savedUrls;
->>>>>>> e96fd0a (feat(validator): CodeSystem and ValueSet resources validated as CodeSystemValidator / ValueSetValidator (count, supplements, properties, include.system, concepts, filters, parameters), defining canonical urls absolute)
     }
   }
 
@@ -5620,12 +5618,8 @@ export class InstanceValidator {
     const basePath = isObject(el.base) && typeof el.base.path === "string" ? el.base.path : String(el.path || "");
     if (uriResolutionExempt(basePath)) return;
     if (!this.resolver.definitionExists || !hl7UrlMustResolve(v)) return;
-<<<<<<< HEAD
     const u = (v.includes("|") ? v.slice(0, v.lastIndexOf("|")) : v).replace(/#.*$/, "");
-=======
-    const u = v.includes("|") ? v.slice(0, v.lastIndexOf("|")) : v;
     if (this.containedUrls.has(u)) return;
->>>>>>> e96fd0a (feat(validator): CodeSystem and ValueSet resources validated as CodeSystemValidator / ValueSetValidator (count, supplements, properties, include.system, concepts, filters, parameters), defining canonical urls absolute)
     if (await this.defExists(u)) {
       // (v17.5) `url|version`: the HL7 validator resolves that version (Coding.system 'http://…/v2-0360|2.7' → not found)
       if (!v.includes("|") || !this.resolver.definitionVersionExists) return;
