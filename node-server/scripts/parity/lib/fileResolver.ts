@@ -22,7 +22,7 @@ import { judgeHeldCodeSystem, judgeSpecialSystem, unknownCodeSystemVersion } fro
 import { SnapshotGenerator } from "../../../src/fhirSnapshotGenerator.js";
 import { fixPackageResource } from "../../../src/fhirPackageHacker.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "../../../src/fhirValidator.js";
-import { packageResources, type PackageRef, type Res } from "./packages.js";
+import { indexedUrl, packageResources, type PackageRef, type Res } from "./packages.js";
 
 interface Entry {
   res: Res;
@@ -46,9 +46,10 @@ export class ResourceStore {
     this.seq = parent ? parent.seq + 1_000_000 : 0;
   }
 
-  private put(res: Res, pkg: { id: string; version: string; fhirVersion: string | null }, loose: boolean): void {
-    if (typeof res.url !== "string" || !res.url) return;
-    const url = res.url.split("|")[0];
+  private put(res: Res, pkg: { id: string; version: string; fhirVersion: string | null }, loose: boolean, indexed?: string): void {
+    const known = indexed ?? res.url;
+    if (typeof known !== "string" || !known) return;
+    const url = known.split("|")[0];
     const e: Entry = { res, packageId: pkg.id, packageVersion: pkg.version, fhirVersion: pkg.fhirVersion, ord: ++this.seq, loose, version: typeof res.version === "string" ? res.version : null };
     const list = this.byUrl.get(url);
     if (list) list.push(e);
@@ -80,7 +81,7 @@ export class ResourceStore {
     const fv = ref.fhirVersions[0] ?? null;
     for (const r of packageResources(ref)) {
       // PackageHackerRN.fixRegisteredResource on registration from a package (BaseWorkerContext:424); idempotent
-      this.put(fixPackageResource(r, ref.id), { id: ref.id, version: ref.version, fhirVersion: fv }, false);
+      this.put(fixPackageResource(r, ref.id), { id: ref.id, version: ref.version, fhirVersion: fv }, false, indexedUrl(ref, r));
       // Bundles of definitions (rare in packages) are unpacked
       if (r.resourceType === "Bundle" && Array.isArray(r.entry))
         for (const en of r.entry) if (en?.resource) this.put(fixPackageResource(en.resource, ref.id), { id: ref.id, version: ref.version, fhirVersion: fv }, false);
@@ -225,7 +226,6 @@ export class FileValidatorResolver implements ValidatorResolver {
     // the bundled tx.fhir.org table, as DbValidatorResolver
     if (system === "http://hl7.org/fhir/sid/cvx") return judgeCvx(code, display, langs);
     let idx = this.codeSystem(system);
-    if (idx && idx.url && idx.url.split("|")[0] !== system) idx = null;
     if (idx && version && idx.version !== version) {
       const vidx = this.codeSystem(`${system}|${version}`);
       if (vidx) idx = vidx;

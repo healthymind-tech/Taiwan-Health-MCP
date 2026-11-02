@@ -531,6 +531,34 @@ function resourceEntries(entries: TarEntry[]): TarEntry[] {
   return entries.filter((e) => e.name.startsWith("package/") && e.name.endsWith(".json"));
 }
 
+/**
+ * The url each file of a package is known by: `.index.json`, as NpmPackage.listIndexedResources → PackageResourceInformation
+ * → CanonicalResourceProxy register it. CanonicalResourceManager keys a resource by the proxy's url, so that is the url
+ * lookups find, even when the file's own `url` differs; the url inside the file is not reachable. An index of another
+ * index-version is rebuilt from the files (NpmPackage l. 274), so it says nothing.
+ */
+function packageIndexUrls(entries: TarEntry[]): Map<string, string> {
+  const urls = new Map<string, string>();
+  for (const e of entries) {
+    if (!e.name.startsWith("package/") || !e.name.endsWith("/.index.json")) continue;
+    const folder = e.name.slice(0, -".index.json".length);
+    let index: any;
+    try {
+      index = JSON.parse(entryText(e));
+    } catch {
+      continue;
+    }
+    if (index?.["index-version"] !== INDEX_VERSION || !Array.isArray(index.files)) continue;
+    for (const f of index.files) {
+      if (typeof f?.filename === "string" && typeof f.url === "string" && f.url) urls.set(folder + f.filename, f.url);
+    }
+  }
+  return urls;
+}
+
+/** NpmPackageIndexBuilder.CURRENT_INDEX_VERSION. */
+const INDEX_VERSION = 2;
+
 /** Decoded file text, minus a UTF-8 BOM (jsonb rejects it). */
 function entryText(e: TarEntry): string {
   const text = strFromU8(e.data);
@@ -561,6 +589,7 @@ function parseResource(packagePath: string, text: string): any | null {
  */
 function buildArtifactPayload(entries: TarEntry[]): ArtifactCore[] {
   const files = resourceEntries(entries);
+  const indexUrls = packageIndexUrls(entries);
 
   // Pass 1: grouping maps from the ImplementationGuide resource(s) only.
   const groupingNames: Record<string, string> = {};
@@ -599,7 +628,7 @@ function buildArtifactPayload(entries: TarEntry[]): ArtifactCore[] {
     if (!data) continue;
     const resourceType = pyStrOr(data.resourceType);
     const artifactId = pyStrOr(data.id);
-    const canonicalUrl = pyStrOr(data.url);
+    const canonicalUrl = indexUrls.get(packagePath) ?? pyStrOr(data.url);
     const name = pyStrOr(data.name);
     const title = pyStrOr(data.title, data.display);
     const status = pyStrOr(data.status);

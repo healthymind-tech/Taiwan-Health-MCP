@@ -778,19 +778,13 @@ export class DbValidatorResolver implements ValidatorResolver {
     let idx = await terminology.loadCodeSystemIndex(system, this.pkg, true);
     // REVIEW_port_2 G10: a urn:oid / urn:uuid CodeSystem in the closure is judged like any other (ValueSetValidator.java:654)
     // A system neither held nor listed by the terminology server ends in UNKNOWN_CODESYSTEM like any other (official corpus).
-    if ((system.startsWith("urn:oid:") || system.startsWith("urn:uuid:")) && !(idx && idx.url && idx.url.split("|")[0] === system)) {
+    if ((system.startsWith("urn:oid:") || system.startsWith("urn:uuid:")) && !idx) {
       // An OID the terminology server does not list is unknown there as well: a definite UNKNOWN_CODESYSTEM
       return serverPrefers(system) === false ? { status: "unknown-system" } : noLocalDisplay(system, display);
     }
-    // The terminology loader falls back to a CodeSystem with the same id (for
-    // bare ids from tool callers); a Coding.system must match the canonical
-    // exactly — e.g. a ValueSet URL is not its CodeSystem (HL7:
-    // "The Coding references a value set, not a code system").
-    // (No exception for TW Core 0.3.2's icd-10-*-2023-tw, published under its
-    // ValueSet URL: validator_cli 7.0.1 does not resolve it either and only warns
-    // "A definition for CodeSystem ... could not be found".)
-    if (idx && idx.url && idx.url.split("|")[0] !== system) idx = null;
-    if (idx && !version && idx.url.startsWith("http://terminology.hl7.org/CodeSystem/")) idx = (await terminology.loadThoCurrentIndex(system)) ?? idx;
+    // Loaded with exact = true: no fallback by id, so this is the CodeSystem known by that canonical. Its own `url` need not
+    // be the system: a package's .index.json decides what a file is known by (CanonicalResourceProxy, loaders/ig.ts).
+    if (idx && !version && system.startsWith("http://terminology.hl7.org/CodeSystem/")) idx = (await terminology.loadThoCurrentIndex(system)) ?? idx;
     if (idx && version && idx.version !== version) {
       // REVIEW_port_2 G3: Coding.version names the CodeSystem version to check against (resolveCodeSystem(system, version))
       const vidx = await terminology.loadCodeSystemIndex(`${system}|${version}`, this.pkg, true);
@@ -908,8 +902,8 @@ export class DbValidatorResolver implements ValidatorResolver {
 
   /**
    * Another installed package (outside this closure, or another version) holding a
-   * larger copy of the same CodeSystem (same canonical, or TW Core 0.3.2's copy
-   * published under the ValueSet URL) that does contain `code`, e.g. TW Core 1.0.0
+   * larger copy of the same CodeSystem (same canonical, or a copy
+   * known by another url in its file) that does contain `code`, e.g. TW Core 1.0.0
    * medication-nhi-tw (35 example codes, content complete) vs TW Core 0.3.2 (the
    * full list). The verdict stays the HL7 one (Unknown code); this only says where
    * the code is defined so the caller can choose that package.

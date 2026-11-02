@@ -5197,9 +5197,7 @@ export class InstanceValidator {
         // (7.0.1): a required-binding discriminator becomes
         // `memberOf('<vs>')`, answered by the terminology layer; a code system
         // neither the package closure nor tx.fhir.org can resolve is "not a
-        // member" (PAS Condition coding with TW Core 0.3.2's
-        // …/CodeSystem/icd-10-cm-2023-tw, published under its ValueSet URL →
-        // no slice matches).
+        // member", so no slice matches.
         if (m === undefined && (system === null || (await this.systemResolvable(system)))) {
           unknown = true;
           this.undecidedCauses?.add(`${system ?? ""}|${valueSet}`);

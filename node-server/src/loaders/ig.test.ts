@@ -63,6 +63,35 @@ test("IG package with 300k concepts builds without overflowing the call stack", 
   }
 });
 
+test("canonical_url is the package index's url (raw_json keeps the file's own); another index-version says nothing", () => {
+  const build = (indexVersion: number): Array<Array<string | number>> => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ig-index-"));
+    const file = path.join(dir, "p.tgz");
+    const cs = { resourceType: "CodeSystem", id: "x", url: "http://acme.test/ValueSet/x", version: "1", content: "complete", concept: [] };
+    const other = { resourceType: "ValueSet", id: "y", url: "http://acme.test/ValueSet/y", version: "1" };
+    const index = { "index-version": indexVersion, files: [
+      { filename: "CodeSystem-x.json", resourceType: "CodeSystem", id: "x", url: "http://acme.test/CodeSystem/x", version: "1" },
+      { filename: "ValueSet-y.json", resourceType: "ValueSet", id: "y", url: "http://acme.test/ValueSet/y", version: "1" },
+    ] };
+    fs.writeFileSync(file, gzipSync(tar({
+      "package/package.json": JSON.stringify({ name: "acme.index", version: "1.0.0", fhirVersions: ["4.0.1"] }),
+      "package/CodeSystem-x.json": JSON.stringify(cs),
+      "package/ValueSet-y.json": JSON.stringify(other),
+      "package/.index.json": JSON.stringify(index),
+    })));
+    try {
+      return buildIgPackagePayload(file).artifacts;
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const urlOf = (rows: Array<Array<string | number>>, id: string): Array<string | number> => rows.find((r) => r.includes(`CodeSystem/${id}`) || r.includes(`ValueSet/${id}`))!;
+  const row = urlOf(build(2), "x");
+  assert.ok(row.includes("http://acme.test/CodeSystem/x"), JSON.stringify(row).slice(0, 300));
+  assert.ok(String(row[row.length - 1]).includes('"url":"http://acme.test/ValueSet/x"'), "raw_json unchanged");
+  assert.ok(urlOf(build(1), "x").includes("http://acme.test/ValueSet/x"));
+});
+
 test("pushAll / minOf handle arrays far beyond the argument-spread limit", () => {
   const big = Array.from({ length: 500_000 }, (_, i) => i + 1);
   assert.throws(() => [].push(...(big as never[])), RangeError);

@@ -124,6 +124,29 @@ export function extractTgz(file: string): PackageRef | null {
 const resourceCache = new Map<string, Res[]>();
 
 /** Every top-level JSON resource of a package dir (index-free; examples are not loaded). */
+/** The file a resource of `packageResources` came from. */
+const fileOfResource = new WeakMap<object, string>();
+
+/**
+ * The url a package resource is known by: its `.index.json` url when the package has an index of the current version
+ * (see packageIndexUrls in src/loaders/ig.ts), the file's own otherwise.
+ */
+export function indexedUrl(ref: PackageRef, r: Res): string | undefined {
+  let urls = indexCache.get(ref.dir);
+  if (!urls) {
+    urls = new Map();
+    const index = readJson(join(ref.dir, ".index.json"));
+    if (index?.["index-version"] === 2 && Array.isArray(index.files)) {
+      for (const f of index.files as Res[]) if (typeof f?.filename === "string" && typeof f.url === "string" && f.url) urls.set(f.filename, f.url);
+    }
+    indexCache.set(ref.dir, urls);
+  }
+  const file = fileOfResource.get(r);
+  return (file ? urls.get(file) : undefined) ?? r.url;
+}
+
+const indexCache = new Map<string, Map<string, string>>();
+
 export function packageResources(ref: PackageRef): Res[] {
   const hit = resourceCache.get(ref.dir);
   if (hit) return hit;
@@ -137,7 +160,10 @@ export function packageResources(ref: PackageRef): Res[] {
       continue;
     }
     const r = readJson(p);
-    if (r && typeof r.resourceType === "string") out.push(r);
+    if (r && typeof r.resourceType === "string") {
+      fileOfResource.set(r, f);
+      out.push(r);
+    }
   }
   resourceCache.set(ref.dir, out);
   return out;

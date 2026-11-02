@@ -4,9 +4,8 @@
  * Self-check (job `ig_selfcheck`, after every ig_import): every example instance of a package (standalone
  * examples and the entry resources of its example Bundles) is validated against each profile of the same
  * package it declares. An error at the same element with the same rule in EVERY example of a profile is a
- * known defect of that profile (`known_invalid`): no instance written like the IG's own examples can pass,
- * e.g. TWPAS Condition-twpas — `code.coding` sliced by `pattern $this` while its slices carry only bindings,
- * so no coding matches a slice and the slicing is closed. Errors that depend on this installation
+ * known defect of that profile (`known_invalid`): no instance written like the IG's own examples can pass.
+ * Errors that depend on this installation
  * (terminology tables, external references, lookups) are left out. IG-agnostic: nothing is named here.
  *
  * Read side: `knownDefects(package)` (memoised), used by fhir_get_bundle_blueprint / fhir_get_minimal_skeleton /
