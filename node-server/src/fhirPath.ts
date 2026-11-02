@@ -1020,6 +1020,8 @@ export interface FhirPathEnv {
   resolveReference?: (reference: string, fromResource: Record<string, any>) => Record<string, any> | null;
   /** Membership of a code / Coding / CodeableConcept in a ValueSet; undefined = unknown. */
   memberOf?: (value: any, valueSetUrl: string) => boolean | undefined;
+  /** conformsTo(): does the value conform to the profile; undefined = unknown. */
+  conformsTo?: (value: any, profileUrl: string) => boolean | null | undefined;
 }
 
 export type ConstraintOutcome =
@@ -1237,8 +1239,15 @@ const USER_FUNCTIONS: Record<string, any> = {
   conformsTo: {
     internalStructures: true,
     arity: { 1: ["String"] },
-    fn: function (): any[] {
-      throw new Unevaluable("conformsTo() not supported");
+    fn: function (coll: any[], profile: any): any[] {
+      const env = current;
+      const url = Array.isArray(profile) ? fpUtil.valData(profile[0]) : profile;
+      if (!coll || coll.length !== 1 || typeof url !== "string") return [];
+      const answer = env?.conformsTo ? env.conformsTo(fpUtil.valData(coll[0]), url) : undefined;
+      if (answer === undefined) throw new Unevaluable("conformsTo() not supported");
+      // InstanceValidator.conformsToProfile: an unknown profile throws (UNABLE_TO_RESOLVE_), which fails the invariant
+      if (answer === null) throw new JavaFhirPathError(`Unable to resolve ${url}`);
+      return [answer];
     },
   },
 };

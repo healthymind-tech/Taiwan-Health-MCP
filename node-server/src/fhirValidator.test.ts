@@ -90,7 +90,7 @@ test("ref-1 passes for a Reference without .reference (Java startsWith on empty 
   assert.deepEqual(errors(issues), []);
 });
 
-test("an invariant using an unsupported function is information, never an error", async () => {
+test("conformsTo() of an unknown profile fails the invariant (InstanceValidator.conformsToProfile l. 434: UNABLE_TO_RESOLVE_ is thrown)", async () => {
   const resolver = new FakeResolver();
   const orig = resolver.fetchStructureDefinition.bind(resolver);
   resolver.fetchStructureDefinition = async (url: string) => {
@@ -103,8 +103,7 @@ test("an invariant using an unsupported function is information, never an error"
     return s;
   };
   const issues = await new InstanceValidator(resolver).validate({ resourceType: "Organization", name: "a" });
-  assert.deepEqual(errors(issues), []);
-  assert.ok(issues.some((i) => i.severity === "information" && i.code === "invariant-unevaluated"));
+  assert.ok(errors(issues).some((i) => i.message.startsWith("Constraint failed: x-1: 'x'")), JSON.stringify(issues));
 });
 
 // ---- Claim 2: per-instance cardinality + slicing -------------------------------

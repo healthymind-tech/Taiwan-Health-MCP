@@ -31,7 +31,8 @@ test("empty object: 'Object must have some content' + ele-1 (not on a choice ele
 
 test("wrong JSON type: the parse error plus the type's value error (validation goes on)", async () => {
   const e = await errs(obs({ valueQuantity: { value: "notatype" } }));
-  assert.ok(e.some(([p, m]) => p === "Observation.valueQuantity.value" && m === "Error parsing JSON: the primitive value must be a number"), JSON.stringify(e));
+  // JsonParser reports at its npath: a choice element by its property name (parseChildPrimitiveInstance, logError npath)
+  assert.ok(e.some(([p, m]) => p === "Observation.value[x].value" && m === "Error parsing JSON: the primitive value must be a number"), JSON.stringify(e));
   assert.ok(e.some(([p, m]) => p === "Observation.valueQuantity.value" && m === "The value 'notatype' is not a valid decimal"));
   // a number where a string is expected is read as its text
   const s = await errs(obs({ code: { text: 5 } }));

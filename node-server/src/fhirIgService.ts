@@ -2240,7 +2240,7 @@ export class FHIRIGService {
     packageId: string | null = null,
     version: string | null = null,
   ): Promise<string> {
-    if (!(resource && typeof resource === "object" && !Array.isArray(resource)) || !resource.resourceType) {
+    if (!(resource && typeof resource === "object" && !Array.isArray(resource))) {
       return this.err("INVALID_ARGUMENT", "resource must include a resourceType");
     }
     let pkg: PackageRow;

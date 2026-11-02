@@ -208,7 +208,7 @@ test("F25 several types, none matching: Reference first → validated as Referen
   EXTRA[P2] = sd(P2, "Observation", "resource", [...base, el("Observation.value[x]", 0, "1", ["Reference", "Quantity"])], { baseDefinition: CORE + "Observation", derivation: "constraint" });
   const obs = { resourceType: "Observation", status: "final", code: { text: "x" }, valueString: "s" };
   const m = errs(await run(obs, [P]));
-  assert.ok(m.some(([p, x]) => p === "Observation.value.ofType(string)" && x === "The type of element valueString is not known - it could not be determined from the information available. Valid types at this point are Quantity, CodeableConcept"), JSON.stringify(m));
+  assert.ok(m.some(([p, x]) => p === "Observation" && x === "The type of element valueString is not known - it could not be determined from the information available. Valid types at this point are Quantity, CodeableConcept"), JSON.stringify(m));
   assert.deepEqual(errs(await run(obs, [P2])), []);
 });
 
@@ -432,4 +432,26 @@ test("VALIDATION_VAL_PROFILE_MINIMUM / _MAXIMUM name the versioned profile; opti
   }
   const f = await new InstanceValidator(new R3()).validate({ resourceType: "Patient", managingOrganization: { reference: "Organization/o1" } }, { validateReference: "CHECK_VALID" });
   assert.ok(!f.some((i) => i.severity === "error" && i.path === "Patient.managingOrganization" && /not found/.test(i.message)), JSON.stringify(f));
+});
+
+test("F10 invariants with memberOf() / conformsTo() are evaluated (FHIRPathEngine.funcMemberOf, funcConformsTo)", async () => {
+  const NEED = "http://example.org/fhir/StructureDefinition/pat-need-birth";
+  EXTRA[NEED] = sd(NEED, "Patient", "resource", [
+    ...SDS[CORE + "Patient"].snapshot.element.filter((e: Json) => e.path !== "Patient.birthDate"),
+    el("Patient.birthDate", 1, "1", ["date"]),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint" });
+  const P = "http://example.org/fhir/StructureDefinition/pat-inv";
+  const root = (constraint: Json[]): Json => el("Patient", 0, "*", [], { constraint });
+  EXTRA[P] = sd(P, "Patient", "resource", [
+    root([
+      { key: "m-1", severity: "error", human: "member", expression: "gender.memberOf('http://hl7.org/fhir/ValueSet/administrative-gender')" },
+      { key: "c-1", severity: "error", human: "conforms", expression: `conformsTo('${NEED}')` },
+    ]),
+    ...SDS[CORE + "Patient"].snapshot.element.slice(1),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint" });
+  const bad = errs(await run({ resourceType: "Patient", gender: "nonsense" }, [P])).map(([, m]) => m);
+  assert.ok(bad.some((m) => m.startsWith("Constraint failed: m-1: 'member'")), JSON.stringify(bad));
+  assert.ok(bad.some((m) => m.startsWith("Constraint failed: c-1: 'conforms'")), JSON.stringify(bad));
+  const good = errs(await run({ resourceType: "Patient", gender: "male", birthDate: "2000-01-01" }, [P])).map(([, m]) => m);
+  assert.ok(!good.some((m) => m.startsWith("Constraint failed: ")), JSON.stringify(good));
 });
