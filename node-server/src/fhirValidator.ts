@@ -2908,7 +2908,8 @@ export class InstanceValidator {
     const shadow = isObject(resource.meta) && Array.isArray(resource.meta._profile) ? resource.meta._profile : [];
     shadow.forEach((x: unknown, i: number) => {
       const own = Array.isArray(resource.meta.profile) ? resource.meta.profile[i] : undefined;
-      if (isObject(x) && (own === null || own === undefined)) issues.push({ severity: "error", path: `${path}.meta.profile[${i}]`, code: "exception", message: `Cannot invoke "String.length()" because "url" is null` });
+      // (a shadow with only an id already fails ele-1)
+      if (isObject(x) && Array.isArray(x.extension) && x.extension.length && (own === null || own === undefined)) issues.push({ severity: "error", path: `${path}.meta.profile[${i}]`, code: "exception", message: `Cannot invoke "String.length()" because "url" is null` });
     });
     // validateResource l. 7022-7040: the `global` profiles of the known ImplementationGuides for this resource type
     for (const ig of this.igs) {

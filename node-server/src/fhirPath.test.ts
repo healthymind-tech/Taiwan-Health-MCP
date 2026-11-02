@@ -69,7 +69,8 @@ test("%resource / %rootResource and dom-3 (as() read as ofType())", () => {
   const expr = invariantExpression(dom3, "dom-3");
   assert.deepEqual(evaluateConstraint(ok, "Patient", expr, env(ok)), { status: "pass" });
   const orphan = { resourceType: "Patient", contained: [{ resourceType: "Organization", id: "o1" }] };
-  assert.deepEqual(evaluateConstraint(orphan, "Patient", expr, env(orphan)), { status: "fail" });
+  // FHIRPathEngine.forLog (l. 1031-1037): the trace() output of a failed invariant, which checkInvariant appends
+  assert.deepEqual(evaluateConstraint(orphan, "Patient", expr, env(orphan)), { status: "fail", log: " (unmatched: o1)" });
   // R4: as() does not enforce the singleton rule (InstanceValidator IV:602 setDoNotEnforceAsSingletonRule(!isR5Plus)),
   // so the raw expression evaluates like the rewritten one (REVIEW_port_1 F22)
   assert.deepEqual(evaluateConstraint(ok, "Patient", dom3, env(ok)), { status: "pass" });
@@ -86,12 +87,13 @@ test("ref-1: fixed expression (FHIRPathExpressionFixer) with Java string-functio
   assert.notEqual(fixed, ref1);
   const r = { resourceType: "Condition", contained: [{ resourceType: "Patient", id: "p" }] };
   assert.deepEqual(evaluateConstraint({ display: "x" }, "Reference", fixed, env(r)), { status: "pass" });
-  assert.deepEqual(evaluateConstraint({ reference: "#missing" }, "Reference", fixed, env(r)), { status: "fail" });
+  // FHIRPathEngine.forLog (l. 1031-1037), as above
+  assert.deepEqual(evaluateConstraint({ reference: "#missing" }, "Reference", fixed, env(r)), { status: "fail", log: " (url: missing; ids: p)" });
   assert.deepEqual(evaluateConstraint({ reference: "#p" }, "Reference", fixed, env(r)), { status: "pass" });
   assert.deepEqual(evaluateConstraint({ reference: "#" }, "Reference", fixed, env(r)), { status: "pass" });
   assert.deepEqual(evaluateConstraint({ reference: "Patient/1" }, "Reference", fixed, env(r)), { status: "pass" });
   // unfixed: empty focus gives an empty (false) result, like Java
-  assert.deepEqual(evaluateConstraint({ display: "x" }, "Reference", ref1, env(r)), { status: "fail" });
+  assert.deepEqual(evaluateConstraint({ display: "x" }, "Reference", ref1, env(r)), { status: "fail", log: " (url: ; ids: p)" });
 });
 
 test("Java string functions: empty focus → empty, non-string types → empty, '' prefix → true", () => {
