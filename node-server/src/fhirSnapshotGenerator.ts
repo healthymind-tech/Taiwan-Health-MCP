@@ -36,6 +36,8 @@ export interface SnapshotMessage {
   level: "error" | "warning" | "information";
   path: string;
   message: string;
+  /** Raised while generating a definition this one depends on (a ProfileUtilities of its own in Java). */
+  nested?: boolean;
 }
 
 export interface SnapshotGeneratorOptions {
@@ -260,6 +262,20 @@ interface BaseTypeSlice {
   handled: boolean;
 }
 
+/** ElementDefinitionSlicingComponent.toString (ElementDefinition.java:1612-1615), discriminators as `type=path`. */
+function slicingSummary(s: Json): string {
+  const ordered = typeof s.ordered !== "boolean" ? "??" : s.ordered ? "ordered" : "unordered";
+  const discriminators = (Array.isArray(s.discriminator) ? s.discriminator : []).map((d: Json) => `${d.type}=${d.path}`).join(", ");
+  return `${ordered}/${s.rules ?? "??"} [${discriminators}]`;
+}
+
+/** ProfilePathProcessor.slicingMatches l. 590-598. */
+function slicingMatches(s1: Json, s2: Json): boolean {
+  if ((s1.ordered === undefined && s2.ordered !== undefined) || (s1.ordered !== undefined && s2.ordered !== undefined && s1.ordered !== s2.ordered)) return false;
+  if ((s1.rules === undefined && s2.rules !== undefined) || (s1.rules !== undefined && s2.rules !== undefined && s1.rules !== s2.rules)) return false;
+  return JSON.stringify(s1.discriminator ?? []) === JSON.stringify(s2.discriminator ?? []);
+}
+
 // ----------------------------------------------------------------------------------------------- generator
 
 export class SnapshotGenerator {
@@ -276,7 +292,7 @@ export class SnapshotGenerator {
   constructor(private readonly opts: SnapshotGeneratorOptions) {}
 
   private addMessage(level: SnapshotMessage["level"], path: string, message: string): void {
-    this.messages.push({ level, path, message });
+    this.messages.push({ level, path, message, ...(this.generating.size > 1 ? { nested: true } : {}) });
   }
 
   // ------------------------------------------------------------------------- context
@@ -455,10 +471,15 @@ export class SnapshotGenerator {
         }
       }
 
-      let unmatched = 0;
-      for (const e of diffEls) if (!this.generatedIn.has(e)) unmatched++;
-      if (unmatched) {
-        this.addMessage("error", url, `The profile ${url} has ${unmatched} element${unmatched === 1 ? "" : "s"} in the differential that don't have a matching element in the snapshot`);
+      // ProfileUtilities.generateSnapshot l. 893-923: every differential element has its snapshot element
+      const unmatched: string[] = [];
+      diffEls.forEach((e, i) => {
+        if (this.generatedIn.has(e)) return;
+        unmatched.push(e.id ? `id: ${e.id}` : `path: ${e.path}`);
+        if (e.id) this.addMessage("error", `StructureDefinition.differential.element[${i}]`, `No match found for ${e.id} in the generated snapshot: check that the path and definitions are legal in the differential (including order)`);
+      });
+      if (unmatched.length) {
+        this.addMessage("error", url, `The profile ${url} has ${unmatched.length} element${unmatched.length === 1 ? "" : "s"} in the differential (${unmatched.join(",")}) that don't have a matching element in the snapshot: check that the path and definitions are legal in the differential (including order)`);
       }
       for (const ed of snap) {
         for (const c of ed.constraint || []) {
@@ -647,6 +668,16 @@ export class SnapshotGenerator {
         this.autoAddedSlicing.add(outcome);
       } else {
         outcome.slicing = clone(diffMatches[0].slicing);
+        // ProfilePathProcessor.processSimplePathWithExtensionSlicing... l. 358-370: a later slice restating the slicing
+        for (let i = 1; i < diffMatches.length; i++) {
+          if (!hasSlicing(diffMatches[i])) continue;
+          const [s0, si] = [diffMatches[0].slicing, diffMatches[i].slicing];
+          if (!slicingMatches(s0, si)) {
+            this.addMessage("error", String(diffMatches[0].path), `The element at ${diffMatches[0].id} defines the slicing ${slicingSummary(s0)} but then an element in the slicing ${diffMatches[i].id} tries to redefine the slicing to ${slicingSummary(si)}`);
+          } else {
+            this.addMessage("information", String(diffMatches[0].path), `The element at ${diffMatches[0].id} defines the slicing ${slicingSummary(s0)}, and the element at ${diffMatches[i].id} restates the same slicing, which has no effect`);
+          }
+        }
       }
       if (cursors.resultPathBase != null && !String(outcome.path).startsWith(cursors.resultPathBase)) throw new SnapshotError("Adding wrong path");
       pp.result.push(outcome);

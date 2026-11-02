@@ -640,6 +640,20 @@ export class DbValidatorResolver implements ValidatorResolver {
     }
   }
 
+  async fetchSearchParameter(url: string): Promise<Record<string, any> | null> {
+    return terminology.loadArtifactByCanonical("SearchParameter", splitCanonicalVersion(url).url, this.pkg, { hl7Current: true });
+  }
+
+  async fetchCanonical(resourceType: "Measure" | "Library", url: string): Promise<Record<string, any> | null> {
+    const { url: canonical, version } = splitCanonicalVersion(url);
+    return version === null ? terminology.loadArtifactByCanonical(resourceType, canonical, this.pkg, { hl7Current: true }) : this.loadVersioned(resourceType, canonical, version);
+  }
+
+  async fetchQuestionnaire(url: string): Promise<Record<string, any> | null> {
+    const { url: canonical, version } = splitCanonicalVersion(url);
+    return version === null ? terminology.loadArtifactByCanonical("Questionnaire", canonical, this.pkg, { hl7Current: true }) : this.loadVersioned("Questionnaire", canonical, version);
+  }
+
   /** A CodeSystem with this canonical in the closure (binding → CodeSystem URL); false on DB trouble (no invented error). */
   async codeSystemExists(url: string): Promise<boolean> {
     return guarded(async () => {
@@ -716,7 +730,7 @@ export class DbValidatorResolver implements ValidatorResolver {
   private async checkCodeUncached(system: string, code: string, display: string | null, version: string | null = null, langs?: string[]): Promise<CodeCheck> {
     if (system === ISO3166) return this.checkIso3166(code, display);
     // CVX: bundled tx.fhir.org table (fhirCvx.ts).
-    if (system === CVX) return judgeCvx(code, display);
+    if (system === CVX) return judgeCvx(code, display, langs);
     if (system === ICD10_WHO) return this.checkIcd10Who(code, display);
     if (system === RXNORM) return this.checkRxnorm(code, display);
     if (SILENT_SYSTEMS.includes(system)) {

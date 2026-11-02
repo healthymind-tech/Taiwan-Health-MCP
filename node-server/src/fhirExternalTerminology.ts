@@ -299,13 +299,13 @@ export function judgeSnomed(
  * ('08' valid, '8' unknown); display = CDC short description, the long
  * description designation is also accepted; the message names the short one.
  */
-export function judgeCvx(code: string, display: string | null): CodeCheck {
+export function judgeCvx(code: string, display: string | null, langs?: string[]): CodeCheck {
   const row = CVX_CODES[code];
   if (!row) {
     return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${CVX}' version '${CVX_VERSION}'` };
   }
   if (display !== null) {
-    const bad = judgeExternalDisplay(CVX, code, display, [row[0], row[1] ?? ""], [row[0]]);
+    const bad = judgeExternalDisplay(CVX, code, display, [row[0], row[1] ?? ""], [row[0]], ` (for the language(s) '${langs?.length ? langs.join(",") : "en"}')`);
     if (bad) return bad;
   }
   return { status: "ok" };

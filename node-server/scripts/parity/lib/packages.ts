@@ -57,7 +57,7 @@ export function cmpVersion(a: string, b: string): number {
   return pa < pb ? -1 : 1;
 }
 
-function refOf(dir: string): PackageRef | null {
+export function refOf(dir: string): PackageRef | null {
   const pj = readJson(join(dir, "package.json"));
   if (!pj) return null;
   return {

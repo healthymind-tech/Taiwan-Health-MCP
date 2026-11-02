@@ -54,6 +54,10 @@ import { copyLiterals, duplicateKeys, numberText } from "./fhirJsonLiterals.js";
 import { dropUnprocessed, JsonSyntaxError, jsonSyntaxIssues, parseFhirJsonText, toPlain, type JObject } from "./fhirJsonParser.js";
 import { withValidationSnapshot } from "./fhirValidationSnapshot.js";
 import { LookupSession, sessionResolver } from "./fhirValidatorSession.js";
+import { validateImplementationGuide, validateSearchParameter } from "./fhirConformanceRules.js";
+import { validateQuestionnaire, validateQuestionnaireResponse } from "./fhirQuestionnaireRules.js";
+import { validateMeasure, validateMeasureReport } from "./fhirMeasureRules.js";
+import { ucumCanonicalForm } from "./fhirUcum.js";
 
 export const SOURCE = "builtin";
 
@@ -308,6 +312,12 @@ export interface ValidatorResolver {
    * ValidateOptions.validateReference). Absent = external references are never fetched.
    */
   fetchReference?(ref: string): Promise<Record<string, any> | null>;
+  /** A SearchParameter by canonical URL (SearchParameterValidator: derivedFrom). */
+  fetchSearchParameter?(url: string): Promise<Record<string, any> | null>;
+  /** A Questionnaire by canonical URL (QuestionnaireValidator). */
+  fetchQuestionnaire?(url: string): Promise<Record<string, any> | null>;
+  /** A Measure or Library by canonical URL (MeasureValidator). */
+  fetchCanonical?(resourceType: "Measure" | "Library", url: string): Promise<Record<string, any> | null>;
 }
 
 export interface ValidateOptions {
@@ -332,6 +342,8 @@ export interface ValidateOptions {
   allowExamples?: boolean;
   /** InstanceValidator.matchetypeStatus (default disallowed). */
   matchetypeStatus?: "disallowed" | "required" | "optional";
+  /** IValidationPolicyAdvisor.relativeDatePlaceHolder: printed instead of the limit of a duration min/maxValue. */
+  relativeDatePlaceHolder?: string;
   /**
    * ValidatorSettings.displayWarningMode (validator_cli -display-issues-are-warnings; default false): a wrong
    * display (tx-issue-type invalid-display) is a warning instead of an error, and does not fail a binding.
@@ -842,6 +854,44 @@ function dateMinOk(el: Record<string, any>, v: string): boolean {
   const b = dateStartMs(v);
   return Number.isNaN(a) || Number.isNaN(b) || !(a > b);
 }
+/** min/maxValue[x] of a Quantity kind (ElementDefinition.hasMinValueQuantity: Duration, Age … extend Quantity). */
+function dateQuantityBound(el: Record<string, any>, which: "min" | "max"): Record<string, any> | null {
+  for (const t of ["Quantity", "Duration", "Age", "Distance", "Count"]) if (isObject(el[`${which}Value${t}`])) return el[`${which}Value${t}`];
+  return null;
+}
+/** Quantity.isExactTime (Quantity.java:728). */
+function quantityIsExactTime(q: Record<string, any>): boolean {
+  if (typeof q.value !== "number" || typeof q.code !== "string" || q.system !== "http://unitsofmeasure.org") return false;
+  if (["a", "mo", "ms"].includes(q.code)) return Number.isInteger(q.value);
+  return ["wk", "d", "h", "min", "s"].includes(q.code);
+}
+/** BaseDateTimeType.add / subtract(Quantity) from now: years and months by the calendar, the rest in whole milliseconds. */
+function nowShifted(q: Record<string, any>, sign: 1 | -1): Date {
+  const d = new Date();
+  const v = sign * Number(q.value);
+  if (q.code === "a" || q.code === "mo") {
+    const day = d.getDate();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + (q.code === "a" ? 12 * v : v));
+    // Calendar.add keeps the day, or the month's last one
+    d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+    return d;
+  }
+  const unit: Record<string, number> = { wk: 604_800_000, d: 86_400_000, h: 3_600_000, min: 60_000, s: 1_000, ms: 1 };
+  return new Date(d.getTime() + Math.trunc(v * unit[q.code]));
+}
+/** getValueAsString(DAY) in the JVM's zone, as the message prints the limit. */
+function localDay(d: Date): string {
+  const p = (n: number): string => String(n).padStart(2, "0");
+  return `${String(d.getFullYear()).padStart(4, "0")}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+/** getValueAsString(MILLI). */
+function localMilli(d: Date): string {
+  const off = -d.getTimezoneOffset();
+  const p = (n: number, w = 2): string => String(Math.trunc(Math.abs(n))).padStart(w, "0");
+  const zone = off === 0 ? "Z" : `${off < 0 ? "-" : "+"}${p(off / 60)}:${p(off % 60)}`;
+  return `${localDay(d)}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}${zone}`;
+}
 /** InstanceValidator.isAbsolute (Identifier value for urn:ietf:rfc:3986) */
 function javaIsAbsolute(uri: string): boolean {
   if (!uri.includes(":")) return false;
@@ -1337,6 +1387,8 @@ interface Item {
    * name, plus the type name(s). Used for extension context checks.
    */
   lp?: string[];
+  /** NodeStack.literalPath without indexes (a choice is `value.ofType(boolean)`); roots: derived from `path`. */
+  lit?: string;
   /** Url of the Extension this item is the value[x] of (HL7: context type "extension"). */
   parentExtUrl?: string;
   /** For an extension item: the element that holds it (its context). */
@@ -1377,6 +1429,18 @@ const CANONICAL_RESOURCE_TYPES = new Set(
   ).split(" "),
 );
 
+/** java.util.HashMap<String, ?> iteration order of keys put in this order (table size 16, doubled past load 0.75). */
+function javaHashMapOrder(keys: string[]): string[] {
+  let n = 16;
+  while (keys.length > n * 0.75) n *= 2;
+  const hash = (k: string): number => {
+    let h = 0;
+    for (let i = 0; i < k.length; i++) h = (Math.imul(31, h) + k.charCodeAt(i)) | 0;
+    return (h ^ (h >>> 16)) & (n - 1);
+  };
+  return keys.map((k, i) => ({ k, b: hash(k), i })).sort((a, b) => a.b - b.b || a.i - b.i).map((x) => x.k);
+}
+
 /** Port of NodeStack.isRealPath (7.0.1): which children of an abstract logical path are real. */
 function isRealPath(lp: string, name: string): boolean {
   if (lp === "Element") return name === "id" || name === "extension";
@@ -1401,23 +1465,44 @@ function childLogicalPaths(parent: string[] | undefined, def: Record<string, any
   const out = new Set<string>();
   const defPath = String(def.path || "");
   const tail = defPath.slice(defPath.lastIndexOf(".") + 1) || key;
-  const complex = !isPrimitive(typeCode) && typeCode !== "BackboneElement" && typeCode !== "Element" && !def.contentReference;
+  // NodeStack.pushInternal l. 160-176: every element with a resolved type, primitives too (IV:7988 resolveType)
+  const typed = typeCode !== "BackboneElement" && typeCode !== "Element" && !def.contentReference;
   for (const lp of parent || []) {
-    if (complex) {
+    if (typed) {
       if (!isRealPath(lp, tail)) continue;
       out.add(`${lp}.${tail}`);
-      if (tail.endsWith("[x]")) out.add(`${lp}.${key}`);
+      if (tail.endsWith("[x]")) {
+        const base = tail.slice(0, -3);
+        out.add(`${lp}.${base}.ofType(${typeCode})`);
+        out.add(`${lp}.${base}${typeCode}`);
+      }
     } else {
       if (!isRealPath(lp, key) && !isRealPath(lp, tail)) continue;
       out.add(`${lp}.${key}`);
       if (tail !== key) out.add(`${lp}.${tail}`);
     }
   }
-  if (complex) out.add(typeCode);
+  if (typed) out.add(typeCode);
   else if (def.contentReference) out.add(String(def.contentReference).slice(String(def.contentReference).indexOf("#") + 1));
   else for (const t of def.type || []) out.add(typeCodeOf(t));
-  if (!complex && !(def.type || []).length && !def.contentReference) out.add(typeCode);
+  if (!typed && !(def.type || []).length && !def.contentReference) out.add(typeCode);
   return [...out];
+}
+
+/** NodeStack.pushInternal l. 141-156 without indexes: a choice element's literal path is `<name>.ofType(<type>)`. */
+function childLiteralPath(parent: string, def: Record<string, any>, key: string): string {
+  const defPath = String(def.path || "");
+  const tail = defPath.slice(defPath.lastIndexOf(".") + 1);
+  if (!tail.endsWith("[x]") || !key.startsWith(tail.slice(0, -3))) return `${parent}.${key}`;
+  const base = tail.slice(0, -3);
+  const t = key.slice(base.length);
+  const lower = t.charAt(0).toLowerCase() + t.slice(1);
+  return `${parent}.${base}.ofType(${isPrimitive(lower) ? lower : t})`;
+}
+
+/** checkExtensionContext l. 2738-2748: literal path + logical paths, indexes stripped (`value[x]` -> `value`), sorted. */
+function extensionPlist(literal: string, lp: string[] | undefined): string[] {
+  return [...new Set([literal, ...(lp || []).map(stripIndexes)])].sort();
 }
 
 /** Port of InstanceValidator.hasElementName (7.0.1): segment-wise match, `x[x]` matching a typed choice name. */
@@ -1600,6 +1685,7 @@ export class InstanceValidator {
   /** Working language of the resource being validated (its `language`), null = ValidateOptions.languages. */
   private workingLang: string[] | null = null;
   private matchetypeStatus: "disallowed" | "required" | "optional" = "disallowed";
+  private relativeDatePlaceHolder: string | null = null;
   /** ValidationContext.isMatchetype of the resource being validated. */
   private inMatchetype = false;
   /** ValidateOptions.allowExamples of the running validation. */
@@ -1652,6 +1738,7 @@ export class InstanceValidator {
     this.languages = langs.length ? langs : ["en"];
     this.allowExamples = opts.allowExamples === true;
     this.matchetypeStatus = opts.matchetypeStatus ?? "disallowed";
+    this.relativeDatePlaceHolder = opts.relativeDatePlaceHolder ?? null;
     this.displayWarnings = opts.displayWarnings === true;
     this.htmlInMarkdown = opts.htmlInMarkdown ?? "warning";
     this.workingLang = null;
@@ -2264,6 +2351,34 @@ export class InstanceValidator {
       }
       count++;
     }
+    if (isObject(b.bundle.signature)) this.checkSignatureData(b.bundle.signature, path, issues);
+  }
+
+  /**
+   * BundleValidator.validateSignature l. 1009-1088, the shape of Signature.data only. validateSignatureJose /
+   * DigSig (the signed bytes, the canonical form, the certificate) are not ported: no signature is verified here.
+   */
+  private checkSignatureData(sig: Record<string, any>, path: string, issues: Issue[]): void {
+    const data = sig.data;
+    if (typeof data !== "string") return;
+    // org.hl7.fhir.utilities.Base64.isBase64: the commons-codec alphabet (url-safe too), '=' and white space
+    const base64 = /^[A-Za-z0-9+/=\-_\t\n\r ]*$/.test(data);
+    let format = typeof sig.sigFormat === "string" && sig.sigFormat ? sig.sigFormat : null;
+    if (format === null) {
+      try {
+        const text = Buffer.from(data, "base64").toString();
+        const header = text.split(".").length === 3 ? Buffer.from(text.split(".")[0], "base64").toString() : text;
+        if ("alg" in JSON.parse(header)) format = "application/jose";
+      } catch {
+        // l. 1035: "nothing"
+      }
+    }
+    if (format === "application/pkcs7-signature" && !base64) {
+      issues.push({ severity: "warning", path, code: "invalid", message: "The signature data is not valid base64 content, so the signature cannot be checked" });
+    } else if (format === "application/jose" && !base64) {
+      const jws = data.split(".").length === 3;
+      issues.push({ severity: "error", path, code: "invalid", message: jws ? "The signature data is not valid base64 content, but it looks like native application/jose, so it will be checked anyway" : "The signature data is not valid base64 content, so the signature cannot be checked" });
+    }
   }
 
   /** Port of BundleValidator.validateLink and its per-type variants (7.0.1). */
@@ -2637,6 +2752,46 @@ export class InstanceValidator {
       };
       for (const x of await validateConceptMapResource(resource, path, deps)) issues.push(x);
     }
+    // InstanceValidator.checkSpecials l. 7247, 7257
+    if (rt === "SearchParameter") {
+      const deps = {
+        fetchSearchParameter: async (u: string) => (this.resolver.fetchSearchParameter ? await this.resolver.fetchSearchParameter(u) : null),
+        parentType: async (type: string) => {
+          const baseUrl = (await this.sdx(CORE + type))?.sd?.baseDefinition;
+          return typeof baseUrl === "string" ? baseUrl.slice(baseUrl.lastIndexOf("/") + 1) : null;
+        },
+      };
+      for (const x of await validateSearchParameter(resource, path, deps)) issues.push(x);
+    }
+    if (rt === "ImplementationGuide") for (const x of validateImplementationGuide(resource, path)) issues.push(x);
+    // InstanceValidator.checkSpecials l. 7233-7236
+    if (rt === "Measure" || rt === "MeasureReport") {
+      const fetchCanonical = async (t: "Measure" | "Library", u: string): Promise<Record<string, any> | null> => (this.resolver.fetchCanonical ? await this.resolver.fetchCanonical(t, u) : null);
+      const deps = {
+        fetchMeasure: (u: string) => fetchCanonical("Measure", u),
+        fetchLibrary: (u: string) => fetchCanonical("Library", u),
+        resolveSubject: async (ref: string) => this.resolveRefForFhirPath(ref, rctx) ?? (this.resolver.fetchReference ? await this.resolver.fetchReference(ref) : null),
+        isResourceName: isCoreTypeName,
+      };
+      for (const x of await (rt === "Measure" ? validateMeasure(resource, path, deps) : validateMeasureReport(resource, path, deps))) issues.push(x);
+    }
+    // InstanceValidator.checkSpecials l. 7229-7232
+    if (rt === "Questionnaire") for (const x of validateQuestionnaire(resource, path)) issues.push(x);
+    if (rt === "QuestionnaireResponse") {
+      const deps = {
+        fetchQuestionnaire: async (u: string) => (this.resolver.fetchQuestionnaire ? await this.resolver.fetchQuestionnaire(u) : null),
+        valueSetKnown: async (u: string) => !!(await this.vsHeader(u)),
+        member: (vs: string, system: string | null, code: string) => this.member(vs, system, code),
+        evaluate: (expression: string, response: Record<string, any>) => {
+          const outcome = evaluateConstraint(response, "QuestionnaireResponse", expression, { resource: response, rootResource: response });
+          return outcome.status === "pass" ? true : outcome.status === "fail" && !outcome.error ? false : undefined;
+        },
+        ucumCanonical: ucumCanonicalForm,
+        assumeValidRestReferences: this.assumeValidRestReferences,
+        isResourceName: isCoreTypeName,
+      };
+      for (const x of await validateQuestionnaireResponse(resource, path, deps)) issues.push(x);
+    }
     // (parity v3) InstanceValidator.validateResourceRules: Language_XHTML_* warnings (resource language vs text.div)
     if (typeof resource.language === "string" && isObject(resource.text)) {
       for (const x of languageXhtmlIssues(resource.language, resource.text.div)) issues.push({ severity: x.severity, path, code: "business-rule", message: x.message });
@@ -2747,6 +2902,14 @@ export class InstanceValidator {
         pushAll(issues, await this.conformance(rctx, ip, path, depth));
       }
     }
+    // start l. 6946-6949: VersionUtilities.parseVersionUrl(null) throws for a meta.profile without a value, and
+    // validator_cli gives no outcome for such a resource. It is not accepted here either; the text is the JVM's own
+    // exception message, not a Messages.properties entry.
+    const shadow = isObject(resource.meta) && Array.isArray(resource.meta._profile) ? resource.meta._profile : [];
+    shadow.forEach((x: unknown, i: number) => {
+      const own = Array.isArray(resource.meta.profile) ? resource.meta.profile[i] : undefined;
+      if (isObject(x) && (own === null || own === undefined)) issues.push({ severity: "error", path: `${path}.meta.profile[${i}]`, code: "exception", message: `Cannot invoke "String.length()" because "url" is null` });
+    });
     // validateResource l. 7022-7040: the `global` profiles of the known ImplementationGuides for this resource type
     for (const ig of this.igs) {
       const vig = `${ig.url}${typeof ig.version === "string" && ig.version ? `|${ig.version}` : ""}`;
@@ -2888,8 +3051,14 @@ export class InstanceValidator {
    */
   private internalRefsOf(resource: Record<string, any>): Set<string> {
     const out = new Set(this.internalRefs.get(resource) ?? []);
-    const div = isObject(resource.text) && typeof resource.text.div === "string" ? resource.text.div : "";
-    for (const m of div.matchAll(/<(a|img)\b[^>]*?\s(href|src)\s*=\s*("([^"]*)"|'([^']*)')/gi)) {
+    const divs: string[] = [];
+    // checkReferences / checkImageSources run on every xhtml element of the resource, not only Resource.text
+    const scan = (o: unknown): void => {
+      if (Array.isArray(o)) o.forEach(scan);
+      else if (isObject(o) && (o === resource || typeof o.resourceType !== "string")) for (const [k, x] of Object.entries(o)) typeof x === "string" ? k === "div" && divs.push(x) : scan(x);
+    };
+    scan(resource);
+    for (const m of divs.join(" ").matchAll(/<(a|img)\b[^>]*?\s(href|src)\s*=\s*("([^"]*)"|'([^']*)')/gi)) {
       const v = m[4] ?? m[5] ?? "";
       if (!v.startsWith("#")) continue;
       if (m[1].toLowerCase() === "a" && v === "#") continue;
@@ -2985,8 +3154,10 @@ export class InstanceValidator {
         const ext = item.ext;
         // xhtml has no extension element: an extension on `_div` is not a child of the element
         const xhtml = typeCode === "xhtml";
-        if (isObject(ext) && !this.xmlSource) {
-          const hasExtensions = !xhtml && Array.isArray(ext.extension) && ext.extension.length > 0;
+        // XML: an element with only an id attribute is the same element (patient-id-only)
+        if (isObject(ext) && (!this.xmlSource || typeof ext.id === "string")) {
+          // a `value` the JSON parser took as a child counts as one (ILLEGAL_PROPERTY, validatePrimitiveExtensions)
+          const hasExtensions = !xhtml && ((Array.isArray(ext.extension) && ext.extension.length > 0) || ext.value !== undefined);
           if (!hasExtensions) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
           // checkPrimitive l. 3238 (TYPE_SPECIFIC_CHECKS_DT_PRIMITIVE_VALUEEXT): e.hasChildren() — an id is a child
           if (!hasExtensions && typeof ext.id !== "string") issues.push({ severity: "error", path: item.path, code: "invalid", message: PRIMITIVE_VALUEEXT_MESSAGE });
@@ -3202,7 +3373,9 @@ export class InstanceValidator {
     if (typeProfiles.length > 1) {
       const key = (i: Issue): string => `${i.severity}|${i.path}|${i.message}`;
       const bare: Issue[] = [];
+      this.noInvariantMemo++;
       await this.validateItemAgainst(sdx, { ...el, type: [{ ...el.type[0], profile: undefined }] }, item, typeCode, rctx, bare, depth);
+      this.noInvariantMemo--;
       const own = new Set(bare.filter((i) => i.path === item.path).map(key));
       const good: Array<[string, Issue[]]> = [];
       const bad: Array<[string, Issue[]]> = [];
@@ -3216,20 +3389,23 @@ export class InstanceValidator {
         const errs = trial.filter((i) => (i.severity === "error" || i.severity === "fatal") && !own.has(key(i)));
         (errs.length ? bad : good).push([p, trial]);
       }
+      // l. 8144-8158: setMessage on the message object, over the HashMap's key order: an object two profiles share
+      // (an executed invariant) collects both tags
       const tagged = async (p: string, list: Issue[]): Promise<Issue[]> => {
         const psdx = await this.sdx(p);
         const tag = ` (validating against ${psdx?.url ?? p}${psdx?.sd?.version ? `|${psdx.sd.version}` : ""} [${psdx?.sd?.name ?? ""}])`;
-        return list.map((i) => (own.has(key(i)) ? i : { ...i, message: i.message + tag }));
+        for (const i of list) if (!own.has(key(i))) i.message += tag;
+        return list;
       };
       if (good.length === 1) {
         issues.push(...good[0][1]);
       } else if (good.length === 0) {
         issues.push({ severity: "error", path: item.path, code: "structure", message: `Unable to find a match for the specified profile among choices: ${[...typeProfiles].sort().join(", ")}` });
-        for (const [p, list] of bad) issues.push(...(await tagged(p, list)));
+        for (const p of javaHashMapOrder(bad.map(([u]) => u))) issues.push(...(await tagged(p, bad.find(([u]) => u === p)![1])));
       } else {
         const n = good.length;
         issues.push({ severity: "warning", path: item.path, code: "structure", message: `Found multiple matching profiles among ${n} choice${n === 1 ? "" : "s"}: ${good.map(([p]) => p).sort().join(", ")}` });
-        for (const [p, list] of good) issues.push(...(await tagged(p, list)));
+        for (const p of javaHashMapOrder(good.map(([u]) => u))) issues.push(...(await tagged(p, good.find(([u]) => u === p)![1])));
       }
       return;
     }
@@ -3460,8 +3636,27 @@ export class InstanceValidator {
       return this.sdx(CORE + "Extension");
     }
     if (absolute) {
-      const ext = await this.sdx(url);
-      if (ext) return ext;
+      // checkExtension l. 2584-2618: the definition is looked up without the version; a '|' in the url is then judged
+      const pipe = url.indexOf("|");
+      const unversioned = pipe >= 0 ? await this.sdx(url.slice(0, pipe)) : await this.sdx(url);
+      if (unversioned) {
+        if (pipe >= 0) {
+          const at = `${item.path}[url='${url}']`;
+          if (url === unversioned.sd.url) issues.push({ severity: "warning", path: at, code: "invalid", message: "The extension URL contains a '|' which makes it look like a versioned URL, but it's not, and this is confusing for implementers" });
+          else if (url === `${unversioned.sd.url}|${unversioned.sd.version}`) issues.push({ severity: "error", path: at, code: "invalid", message: "The extension URL must not contain a version" });
+          else issues.push({ severity: "error", path: at, code: "invalid", message: `The extension URL must not contain a version. The extension was validated against version ${unversioned.sd.version} of the extension` });
+        }
+        return unversioned;
+      }
+      if (pipe >= 0 && !xverMatchingUrl(url)) {
+        const ext = await this.sdx(url);
+        const at = `${item.path}[url='${url}']`;
+        if (ext) {
+          issues.push({ severity: "error", path: at, code: "invalid", message: "Extension URLs don't have versions. The validator has ignored the version and processed the extension anyway" });
+          return ext;
+        }
+        issues.push({ severity: "warning", path: at, code: "invalid", message: "Extension URLs don't have versions. The validator wasn't able to resolve this URL with or without version-based resolution" });
+      }
       if (xverMatchingUrl(url)) {
         // BaseValidator.getXverExt (7.0.1, l. 1698-1728): a cross-version extension url — generated definition, or
         // the reason it is not valid (and no "unknown extension" error)
@@ -3525,7 +3720,9 @@ export class InstanceValidator {
     // xhtml has no extension element: an extension on `_div` is an unknown property
     const xhtml = item.typeCode === "xhtml";
     for (const k of Object.keys(ext)) {
-      if (k !== "id" && (k !== "extension" || xhtml)) {
+      // checkPrimitive l. 3230-3233: `value` is a property of the primitive's definition, so the parser keeps it
+      if (k === "value" && !xhtml) issues.push({ severity: "error", path, code: "invalid", message: "The property 'value' is invalid" });
+      else if (k !== "id" && (k !== "extension" || xhtml)) {
         issues.push({ severity: "error", path, code: "structure", message: `Unrecognized property '${k}'` });
       }
     }
@@ -3542,11 +3739,11 @@ export class InstanceValidator {
     }
     const extSdx = await this.sdx(CORE + "Extension");
     if (!extSdx) return;
-    const literal = stripIndexes(path.startsWith(ROOT_TOKEN) ? rctx.resource.resourceType + path.slice(ROOT_TOKEN.length) : path);
+    const literal = item.lit ?? stripIndexes(path.startsWith(ROOT_TOKEN) ? rctx.resource.resourceType + path.slice(ROOT_TOKEN.length) : path);
     const host: ExtensionHost = {
       path,
       value: item.value,
-      plist: [...new Set([literal, ...(item.lp || [])])].sort(),
+      plist: extensionPlist(literal, item.lp),
       isResource: false,
       // checkExtensionContext l. 2838-2846: the value[x] of an extension is that extension for an `extension` context
       extUrl: item.parentExtUrl ?? null,
@@ -3594,10 +3791,10 @@ export class InstanceValidator {
     }
     // Context of extensions held by this element (InstanceValidator.checkExtensionContext).
     let hostCache: Omit<ExtensionHost, "modifier"> | null = null;
+    const rootedLit = item.lit ?? stripIndexes(item.path.startsWith(ROOT_TOKEN) ? rctx.resource.resourceType + item.path.slice(ROOT_TOKEN.length) : item.path);
     const hostOf = (modifier: boolean): ExtensionHost => {
       if (!hostCache) {
-        const literal = stripIndexes(item.path.startsWith(ROOT_TOKEN) ? rctx.resource.resourceType + item.path.slice(ROOT_TOKEN.length) : item.path);
-        const plist = [...new Set([literal, ...(item.lp || [])])].sort();
+        const plist = extensionPlist(rootedLit, item.lp);
         const typeCode = item.typeCode || "";
         hostCache = {
           path: item.path,
@@ -3629,6 +3826,7 @@ export class InstanceValidator {
         used.add(key);
         used.add("_" + key);
         const lp = childLogicalPaths(item.lp, def, key, typeCode);
+        const lit = childLiteralPath(rootedLit, def, key);
         const parentExtUrl = item.typeCode === "Extension" && key.startsWith("value") && typeof node.url === "string" ? node.url : undefined;
         const host = name === "extension" || name === "modifierExtension" ? hostOf(name === "modifierExtension") : undefined;
         const baseMax0 = String((def.base && def.base.max) ?? def.max ?? "*");
@@ -3636,7 +3834,7 @@ export class InstanceValidator {
         const mk = (value: any, ext: any, p: string): Item => {
           const idx = /\[(\d+)\]$/.exec(p);
           const jpath = idx && p !== path ? `${jbase}[${idx[1]}]` : jbase;
-          return { value, ext, key, path: p, jpath, parent: node, typeCode, lp, parentExtUrl, host, inList: baseMax0 !== "1" && baseMax0 !== "0", profileType: profileTypeKeys.has(key) };
+          return { value, ext, key, path: p, jpath, parent: node, typeCode, lp, lit, parentExtUrl, host, inList: baseMax0 !== "1" && baseMax0 !== "0", profileType: profileTypeKeys.has(key) };
         };
         const raw = node[key];
         const rawExt = node["_" + key];
@@ -4571,9 +4769,9 @@ export class InstanceValidator {
     const target = dpath === "$this" ? [it.value] : this.discriminatorValues(it.value, dpath, rctx);
     if (target.length !== 1) return false;
     const r = target[0];
-    if (!isObject(r)) return false;
-    if (!r.resourceType) {
-      // a datatype value (Coding, Identifier …) against a datatype profile
+    if (r === null || r === undefined) return false;
+    if (!isObject(r) || !r.resourceType) {
+      // a datatype value (Coding, Identifier …, or a primitive: conformsToProfile l. 449-457 takes any Element) against a datatype profile
       for (const p of profs) {
         const psdx = await this.sdx(p);
         if (!psdx) continue;
@@ -5028,6 +5226,30 @@ export class InstanceValidator {
         else warning(false, message);
       }
     }
+    // checkMinMaxValueDate[Time] l. 3715-3726, 3738-3749: a duration before / after now (the date message prints the
+    // limit by day, the dateTime one to the millisecond; the max message prints the value by day, the min one toString())
+    const dateQuantityRules = (value: string, showLimit: (d: Date) => string): boolean => {
+      let good = true;
+      for (const which of ["max", "min"] as const) {
+        const q = dateQuantityBound(el, which);
+        if (!q) continue;
+        const qty = `${q.comparator ?? ""}${q.value}${q.system === "http://unitsofmeasure.org" ? "" : ` ${q.system}#`}${q.code}`;
+        if (!rule(q.comparator === undefined, `Comparators are not supported for min/maxValue when restricting date/time values with a Duration ('${qty}')`) || !rule(quantityIsExactTime(q), `The quantity value '${qty}' is not supported for min/maxValue when restricting date/time values with a Duration`)) {
+          good = false;
+          continue;
+        }
+        const limit = nowShifted(q, which === "max" ? 1 : -1);
+        const at = dateStartMs(value);
+        const shown = this.relativeDatePlaceHolder ?? showLimit(limit);
+        if (which === "max") {
+          const day = /^(-?\d{4})(?:-(\d{2}))?(?:-(\d{2}))?/.exec(value);
+          good = rule(!(limit.getTime() < at), `The date/time value '${day ? `${day[1]}-${day[2] ?? "01"}-${day[3] ?? "01"}` : value}' is not legal: maxValue is ${qty} after now (which is ${shown})`) && good;
+        } else {
+          good = rule(!(limit.getTime() > at), `The date/time value 'DateTimeType[${value}]' is not legal: minValue is ${qty} before now (which is ${shown})`) && good;
+        }
+      }
+      return good;
+    };
     if (typeCode === "dateTime") {
       let dok = (ok = rule(DATETIME_JAVA_RE.test(s), `Not a valid date/time format: '${s}'`) && ok);
       if (coreProfile || (dateRules ?? "").includes("tz-for-time")) {
@@ -5036,6 +5258,7 @@ export class InstanceValidator {
       // checkMinMaxValueDateTime: an unreadable date/time is TYPE_SPECIFIC_CHECKS_DT_DATETIME_VALID
       if (dok) dok = rule(validCalendarDate(s), `Not a valid date/time format: '${s}'`) && dok;
       if (dok) dok = rule(dateMinOk(el, s), `date/time value is less than permitted minimum value of ${dateMin(el)}`) && dok;
+      if (dok) dok = dateQuantityRules(s, localMilli) && dok;
       dok = lengthOk() && dok;
       if (dok && (coreProfile || dateRules === null || dateRules.includes("year-valid"))) {
         warning(yearIsValid(s), `The value '${s}' is outside the range of reasonable years - check for data entry error`);
@@ -5055,6 +5278,7 @@ export class InstanceValidator {
       // checkMinMaxValueDate: an unreadable date is TYPE_SPECIFIC_CHECKS_DT_DATE_VALID
       if (dok) dok = rule(validCalendarDate(s), `Not a valid date format: '${s}'`) && dok;
       if (dok) dok = rule(dateMinOk(el, s), `date/time value is less than permitted minimum value of ${dateMin(el)}`) && dok;
+      if (dok) dok = dateQuantityRules(s, localDay) && dok;
       dok = lengthOk() && dok;
       if (dok && (coreProfile || (dateRules ?? "").includes("year-valid"))) {
         warning(yearIsValid(s), `The value '${s}' is outside the range of reasonable years - check for data entry error`);
@@ -5090,6 +5314,7 @@ export class InstanceValidator {
       let dok = rule(INSTANT_JAVA_RE.test(s), `Not a valid instant format: '${s}'`);
       if (dok) dok = rule(validCalendarDate(s.replace(/^-/, "")), `Not a valid date/time format: '${s}'`) && dok;
       if (dok) dok = rule(dateMinOk(el, s), `date/time value is less than permitted minimum value of ${dateMin(el)}`) && dok;
+      if (dok) dok = dateQuantityRules(s, localMilli) && dok;
       if (dok && (coreProfile || (dateRules ?? "").includes("year-valid"))) {
         warning(yearIsValid(s), `The value '${s}' is outside the range of reasonable years - check for data entry error`);
       }
@@ -6019,7 +6244,8 @@ export class InstanceValidator {
       if (bytes.length > max) err(`Attachment size is ${bytes.length} bytes which exceeds the stated limit of ${max} bytes`);
     }
     if (size > -1 && bytes) {
-      if (bytes.length !== size) err(`Stated Attachment Size ${size} does not match actual attachment size ${bytes.length}`);
+      // MessageFormat prints the numeric arguments with grouping
+      if (bytes.length !== size) err(`Stated Attachment Size ${size.toLocaleString("en-US")} does not match actual attachment size ${bytes.length.toLocaleString("en-US")}`);
     }
     if (hash !== null && bytes) {
       const sha1 = createHash("sha1").update(bytes).digest();
@@ -6359,7 +6585,7 @@ export class InstanceValidator {
     const contexts: Array<Record<string, any>> = Array.isArray(sd.context) ? sd.context.filter(isObject) : [];
     if (!contexts.length) return;
     const label = `${ext.url}${typeof sd.version === "string" && sd.version ? ` v${sd.version}` : ""}`;
-    const plist = host.plist;
+    const plist = [...host.plist];
     const shown: string[] = [];
     let skippedForVersion = false;
     let ok = false;
@@ -6386,7 +6612,9 @@ export class InstanceValidator {
         else if (pu === null || (await this.contextProfileConforms(pu, expr, ext.url, host, rctx, issues))) ok = await this.contextByBaseType(plist, en);
       } else if (c.type === "extension") {
         shown.push(`x:${expr}`);
-        if (host.extUrl !== null && stripVersion(expr) === stripVersion(host.extUrl)) ok = true;
+        // l. 2848-2852: `plist.add(ext)`: shown after the sorted paths, and matched by the contexts that follow
+        if (host.extUrl !== null && expr === host.extUrl) ok = true;
+        else if (host.extUrl !== null) plist.push(host.extUrl);
       } else if (c.type === "fhirpath") {
         shown.push(`p:${expr}`);
         // l. 2852-2858: the context is every element the expression selects from the resource
@@ -6765,7 +6993,8 @@ export class InstanceValidator {
           if (!isObject(pe)) continue;
           const pp = Array.isArray(raw) ? `${childPath}[${i}]` : childPath;
           for (const k of Object.keys(pe)) {
-            if (k !== "id" && k !== "extension") {
+            // `value` is kept by the parser (ILLEGAL_PROPERTY, validatePrimitiveExtensions)
+            if (k !== "id" && k !== "extension" && !(k === "value" && typeCode !== "xhtml" && isPrimitive(typeCode))) {
               issues.push({ severity: "error", path: pp, code: "structure", message: `Unrecognized property '${k}'` });
             }
           }
@@ -6817,6 +7046,11 @@ export class InstanceValidator {
     return r?.resourceType === "SearchParameter" && typeof r.code === "string" ? ` at ${r.code}` : "";
   }
 
+  /** InstanceValidator.EXECUTED_CONSTRAINT_LIST: per element, the message list of each executed invariant. */
+  private invariantMemo = new WeakMap<object, Map<string, Issue[]>>();
+  /** > 0 during the bare pass of a multi-profile element, which has no Java counterpart. */
+  private noInvariantMemo = 0;
+
   private async checkConstraints(
     sdx: SdIndex,
     el: Record<string, any>,
@@ -6859,54 +7093,72 @@ export class InstanceValidator {
       if (!c.expression || c.key === "ele-1" || c.key === "dom-3") continue;
       // InstanceValidator.checkInvariant evaluates FHIRPathExpressionFixer.fixExpr(expression, key)
       const fixed = invariantExpression(String(c.expression), c.key);
-      const expr = isPrimitive(typeCode) ? primitiveValueAlias(fixed) : fixed;
-      // FHIRPathEngine.funcMemberOf / funcConformsTo (l. 5173, 6417) are synchronous there, asynchronous here: the
-      // evaluation asks, the answers are fetched, and it runs again with them
-      let outcome = evaluateConstraint(constraintNode, base, expr, env);
-      for (let round = 0; round < 6 && pendingHost.size; round++) {
-        const asks = [...pendingHost.values()];
-        pendingHost.clear();
-        for (const a of asks) answers.set(a.key, await a.fetch());
-        outcome = evaluateConstraint(constraintNode, base, expr, env);
-      }
-      if (outcome.status === "pass") continue;
-      const bestPractice = (c.extension || []).some((e: any) => e.url === BEST_PRACTICE_EXT && e.valueBoolean === true);
-      if (outcome.status === "unevaluable") {
-        issues.push({
-          severity: "information",
-          path: item.path,
-          code: "invariant-unevaluated",
-          message: `Invariant ${c.key} could not be evaluated locally (${outcome.reason}); not a conformance failure`,
-          element: el.id,
-          profile: sdx.url,
-          // REVIEW_port_1 F5: an invariant that was not evaluated is not a pass
-          unchecked: { kind: "invariant", canonical: `${sdx.url}#${c.key}` },
-        });
+      // checkInvariants l. 8806-8823: one evaluation per element, keyed by the fixed expression and severity, whichever
+      // definition asks; a later definition gets the first one's message objects
+      const memoHost = isObject(item.value) ? item.value : item.parent;
+      const memoKey = `${isObject(item.value) ? "" : item.path}\u0000${c.severity}\u0000${fixed}`;
+      let memo = memoHost && !this.noInvariantMemo ? this.invariantMemo.get(memoHost) : undefined;
+      if (memoHost && !this.noInvariantMemo && !memo) this.invariantMemo.set(memoHost, (memo = new Map()));
+      const executed = memo?.get(memoKey);
+      if (executed) {
+        issues.push(...executed);
         continue;
       }
-      if (outcome.parse) {
-        // InstanceValidator.checkInvariant l. 8876-8881: fpe.parse failed — always an error
+      const invErrors: Issue[] = [];
+      memo?.set(memoKey, invErrors);
+      const evaluate = async (issues: Issue[]): Promise<void> => {
+        const expr = isPrimitive(typeCode) ? primitiveValueAlias(fixed) : fixed;
+        // FHIRPathEngine.funcMemberOf / funcConformsTo (l. 5173, 6417) are synchronous there, asynchronous here: the
+        // evaluation asks, the answers are fetched, and it runs again with them
+        let outcome = evaluateConstraint(constraintNode, base, expr, env);
+        for (let round = 0; round < 6 && pendingHost.size; round++) {
+          const asks = [...pendingHost.values()];
+          pendingHost.clear();
+          for (const a of asks) answers.set(a.key, await a.fetch());
+          outcome = evaluateConstraint(constraintNode, base, expr, env);
+        }
+        if (outcome.status === "pass") return;
+        const bestPractice = (c.extension || []).some((e: any) => e.url === BEST_PRACTICE_EXT && e.valueBoolean === true);
+        if (outcome.status === "unevaluable") {
+          issues.push({
+            severity: "information",
+            path: item.path,
+            code: "invariant-unevaluated",
+            message: `Invariant ${c.key} could not be evaluated locally (${outcome.reason}); not a conformance failure`,
+            element: el.id,
+            profile: sdx.url,
+            // REVIEW_port_1 F5: an invariant that was not evaluated is not a pass
+            unchecked: { kind: "invariant", canonical: `${sdx.url}#${c.key}` },
+          });
+          return;
+        }
+        if (outcome.parse) {
+          // InstanceValidator.checkInvariant l. 8876-8881: fpe.parse failed — always an error
+          issues.push({
+            severity: "error",
+            path: item.path,
+            code: "invariant",
+            message: `Problem processing expression '${c.expression}' in profile '${sdx.url}${sdx.sd?.version ? `|${sdx.sd.version}` : ""}' at path '${item.path}': ${outcome.error}`,
+            element: el.id,
+            profile: sdx.url,
+          });
+          return;
+        }
+        const severity = bestPractice || c.severity === "warning" ? "warning" : "error";
+        // checkInvariant l. 8896-8909: an evaluation exception fails the invariant; its message follows the text
+        const detail = outcome.error ?? outcome.log;
+        const log = detail ? `${detail} (log: ${detail})` : "";
         issues.push({
-          severity: "error",
+          severity,
           path: item.path,
           code: "invariant",
-          message: `Problem processing expression '${c.expression}' in profile '${sdx.url}${sdx.sd?.version ? `|${sdx.sd.version}` : ""}' at path '${item.path}': ${outcome.error}`,
+          message: `Constraint failed: ${c.key}: '${c.human || c.expression}'${this.invariantId(item.path, rctx)}${c.source ? ` (defined in ${stripVersion(c.source)})` : ""}${log}`,
           element: el.id,
           profile: sdx.url,
         });
-        continue;
-      }
-      const severity = bestPractice || c.severity === "warning" ? "warning" : "error";
-      // checkInvariant l. 8896-8909: an evaluation exception fails the invariant; its message follows the text
-      const log = outcome.error ? `${outcome.error} (log: ${outcome.error})` : "";
-      issues.push({
-        severity,
-        path: item.path,
-        code: "invariant",
-        message: `Constraint failed: ${c.key}: '${c.human || c.expression}'${this.invariantId(item.path, rctx)}${c.source ? ` (defined in ${stripVersion(c.source)})` : ""}${log}`,
-        element: el.id,
-        profile: sdx.url,
-      });
+      };
+      await evaluate(invErrors);
+      issues.push(...invErrors);
     }
   }
 }

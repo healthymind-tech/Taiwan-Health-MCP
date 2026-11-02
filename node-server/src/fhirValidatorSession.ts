@@ -68,5 +68,8 @@ export function sessionResolver(inner: ValidatorResolver, session: LookupSession
   // a code system's content (CodeSystemValidator / ValueSetValidator): without an answer the checks on it are skipped
   if (hasReject("fetchCodeSystem")) view.fetchCodeSystem = (u) => pinned("code system content", [u], u, () => inner.fetchCodeSystem!(u), { answer: null });
   if (hasReject("fetchReference")) view.fetchReference = (r) => pinned("reference", [r], r, () => inner.fetchReference!(r), null);
+  if (hasReject("fetchSearchParameter")) view.fetchSearchParameter = (u) => pinned("search parameter", [u], u, () => inner.fetchSearchParameter!(u), { answer: null });
+  if (hasReject("fetchCanonical")) view.fetchCanonical = (t, u) => pinned("canonical", [t, u], u, () => inner.fetchCanonical!(t, u), { answer: null });
+  if (hasReject("fetchQuestionnaire")) view.fetchQuestionnaire = (u) => pinned("questionnaire", [u], u, () => inner.fetchQuestionnaire!(u), { answer: null });
   return view;
 }

@@ -23,6 +23,7 @@
  * git). Exit code 0 always (a report, not a gate) unless the suite cannot be read.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { InstanceValidator, type Issue } from "../../../src/fhirValidator.js";
@@ -30,7 +31,7 @@ import { parseFhirXml } from "../../../src/fhirXml.js";
 import { errorClass } from "../classify.js";
 import { compareIssues, isError, issuesOfOutcome, type Comparison, type SimpleIssue } from "../lib/compare.js";
 import { FileValidatorResolver, ResourceStore } from "../lib/fileResolver.js";
-import { findPackage, packageClosure, type Res } from "../lib/packages.js";
+import { findPackage, packageClosure, refOf, type Res } from "../lib/packages.js";
 import { loadRuns, SUITE_DIR, type TestRun } from "./manifest.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -44,6 +45,8 @@ const timeoutMs = Number(opt("--timeout") ?? 60_000);
 const verbose = args.includes("-v");
 const showSkipped = args.includes("--show-skipped");
 const oracleFile = opt("--oracle");
+/** The jar's package cache: the manifest's 5.3.0-ballot exactly, which the validator's own caches do not hold. */
+const ORACLE_PACKAGES = join(homedir(), "tools", "validator-oracle", "home", ".fhir", "packages");
 
 export interface RunResult {
   id: string;
@@ -160,16 +163,20 @@ function loadJsonFile(p: string): Res | null {
   }
 }
 
-/** The shared base layer (built once). */
-function baseStore(suite: string): { store: ResourceStore; ids: Set<string>; missing: string[] } {
+/**
+ * The shared base layer (built once). `extensions` overrides the extensions package version: ValidationTests keeps one
+ * context per FHIR version and every case's packages stay in it, so the jar's copy depends on the cases before it.
+ */
+function baseStore(suite: string, extensions?: string): { store: ResourceStore; ids: Set<string>; missing: string[] } {
   const manifest = loadJsonFile(join(suite, "manifest.json")) ?? {};
   const v = (manifest.versions ?? {}) as Res;
-  const specs = ["hl7.fhir.r4.core#4.0.1", `hl7.terminology.r4#${v.terminology ?? ""}`.replace(/#$/, ""), `hl7.fhir.uv.extensions.r4#${v.extensions ?? ""}`.replace(/#$/, ""), "hl7.fhir.uv.tools.r4"];
+  const specs = ["hl7.fhir.r4.core#4.0.1", `hl7.terminology.r4#${v.terminology ?? ""}`.replace(/#$/, ""), `hl7.fhir.uv.extensions.r4#${extensions ?? v.extensions ?? ""}`.replace(/#$/, ""), "hl7.fhir.uv.tools.r4"];
   const store = new ResourceStore();
   const ids = new Set<string>();
   const missing: string[] = [];
   for (const s of specs) {
-    const ref = findPackage(s) ?? findPackage(s.split("#")[0]);
+    const inOracleCache = s.startsWith("hl7.fhir.uv.extensions.r4#") ? refOf(join(ORACLE_PACKAGES, s, "package")) : null;
+    const ref = inOracleCache ?? findPackage(s) ?? findPackage(s.split("#")[0]);
     if (!ref) {
       missing.push(s);
       continue;
@@ -307,7 +314,8 @@ export async function executeRun(run: TestRun, base: { store: ResourceStore; ids
       const htmlInMarkdown: "warning" | "error" = run.raw.noHtmlInMarkdown === true ? "error" : "warning";
       // ValidationTests: a primitive "matchetype" in the case → MatchetypeStatus.Required
       const matchetypeStatus: "required" | undefined = typeof run.raw.matchetype === "boolean" && run.raw.matchetype ? "required" : undefined;
-      const opts = { profiles, languages, displayWarnings, allowExamples, matchetypeStatus, htmlInMarkdown, assumeValidRestReferences: run.options.includes("assumeValidRestReferences"), bundleRules: bundleRulesOf(run.raw), implementationGuides: igs, validateReference: referencePolicyOf(run.raw) };
+      // ValidationTests.relativeDatePlaceHolder (l. 1170): "XXX"
+      const opts = { relativeDatePlaceHolder: "XXX", profiles, languages, displayWarnings, allowExamples, matchetypeStatus, htmlInMarkdown, assumeValidRestReferences: run.options.includes("assumeValidRestReferences"), bundleRules: bundleRulesOf(run.raw), implementationGuides: igs, validateReference: referencePolicyOf(run.raw) };
       const v = new InstanceValidator(resolver);
       const issues = isXml
         ? [...parseIssues, ...(await withTimeout(v.validate(resource!, { ...opts, format: "xml" }), timeoutMs))]
@@ -402,10 +410,18 @@ async function main(): Promise<void> {
   console.error(`base layer: ${base.store.packages.join(", ")}; ${runs.length} runs`);
   const results: RunResult[] = [];
   const oracle = oracleFile ? readOracle(oracleFile) : null;
+  let tc1Base: ReturnType<typeof baseStore> | null = null;
+  const jarRows = [...(oracle?.values() ?? [])];
+  const jarOrder = new Map(jarRows.map((row, n) => [row.id, n]));
+  const firstTc1 = jarRows.findIndex((row) => JSON.stringify(row.outcome ?? "").includes("5.3.0-ballot-tc1"));
+  const tc1From = firstTc1 < 0 ? Infinity : firstTc1;
   let i = 0;
   for (const run of runs) {
     i++;
-    const res = await executeRun(run, base, suite);
+    // the first jar outcome naming the later extensions package marks the case that brought it in (see baseStore)
+    const usesTc1 = (jarOrder.get(run.id) ?? -1) >= tc1From;
+    if (usesTc1 && !tc1Base) tc1Base = baseStore(suite, "5.3.0-ballot-tc1");
+    const res = await executeRun(run, usesTc1 ? tc1Base! : base, suite);
     if (oracle) res.oracle = judgeWithOracle(res, oracle.get(run.id), run.expectation?.issues ?? []);
     results.push(res);
     if (verbose || (only && res.status !== "skipped") || (showSkipped && res.status === "skipped")) {

@@ -1372,7 +1372,7 @@ export type ConstraintOutcome =
   | { status: "pass" }
   /** `error`: the evaluation raised an exception the Java engine raises too (the invariant fails with that message);
    *  `parse`: the expression itself is rejected (FHIRPathEngine.parse). */
-  | { status: "fail"; error?: string; parse?: boolean }
+  | { status: "fail"; error?: string; parse?: boolean; log?: string }
   | { status: "unevaluable"; reason: string };
 
 class Unevaluable extends Error {}
@@ -1600,7 +1600,13 @@ const USER_FUNCTIONS: Record<string, any> = {
   },
 };
 
-const OPTIONS = { userInvocationTable: USER_FUNCTIONS, traceFn: () => undefined };
+/** FHIRPathEngine.traceLog of the running invariant (addToLog l. 1012-1029): `name: a,b` entries, "; " separated. */
+let traceLog: string[] | null = null;
+const traceToLog = (value: any, label: string): void => {
+  traceLog?.push(`${label}: ${(Array.isArray(value) ? value : [value]).map((x) => itemString(x) ?? "").join(",")}`);
+};
+
+const OPTIONS = { userInvocationTable: USER_FUNCTIONS, traceFn: traceToLog };
 
 const compiled = new Map<string, (data: any, env: any) => any[]>();
 const COMPILE_CACHE_MAX = 5000;
@@ -1756,14 +1762,19 @@ export function evaluateConstraint(
   env: FhirPathEnv,
   extraVars: Record<string, any> = {},
 ): ConstraintOutcome {
+  const outerLog = traceLog;
+  const log: string[] = [];
+  traceLog = log;
+  // FHIRPathEngine.forLog (l. 1031-1037): checkInvariant appends it to the message of a failed invariant
+  const failed = (): ConstraintOutcome => (log.length ? { status: "fail", log: ` (${log.join("; ")})` } : { status: "fail" });
   try {
     const result = evaluateExpression(node, base, expression, env, extraVars);
     if (!Array.isArray(result) || result.length === 0) {
       // Same as the HL7 Java engine (convertToBoolean): an empty result is false.
-      return { status: "fail" };
+      return failed();
     }
     if (result.length === 1 && typeof result[0] === "boolean") {
-      return result[0] ? { status: "pass" } : { status: "fail" };
+      return result[0] ? { status: "pass" } : failed();
     }
     // FHIRPathEngine.convertToBoolean: any other non-empty collection is true (even [false, false])
     return { status: "pass" };
@@ -1772,6 +1783,8 @@ export function evaluateConstraint(
     if (e instanceof JavaFhirPathParseError) return { status: "fail", error: msg, parse: true };
     if (e instanceof JavaFhirPathError || JAVA_EQUIVALENT_ERRORS.some((re) => re.test(msg))) return { status: "fail", error: msg };
     return { status: "unevaluable", reason: msg };
+  } finally {
+    traceLog = outerLog;
   }
 }
 

@@ -9,12 +9,12 @@
  * (validateTypeProfile: SD_ED_TYPE_PROFILE_WRONG) and fixed values against the base.
  * Not ported: the rest of the element rules (invariants, obligations, mappings, context invariants, compliesWith).
  */
-import { NeedDefinition, SnapshotError, SnapshotGenerator } from "./fhirSnapshotGenerator.js";
+import { NeedDefinition, SnapshotError, SnapshotGenerator, type SnapshotMessage } from "./fhirSnapshotGenerator.js";
 
 type Json = Record<string, any>;
 
 export interface SdIssue {
-  severity: "error" | "warning";
+  severity: "error" | "warning" | "information";
   path: string;
   code: string;
   message: string;
@@ -47,7 +47,7 @@ function workingCode(t: Json): string {
 }
 
 /** ContextUtilities.generateSnapshot over the async resolver: the failure message and the error-level messages. */
-async function snapshotProblems(sd: Json, deps: SdValidatorDeps): Promise<{ failure: string | null; messages: string[] }> {
+async function snapshotProblems(sd: Json, deps: SdValidatorDeps): Promise<{ failure: string | null; messages: SnapshotMessage[] }> {
   const cache = new Map<string, Json | null>();
   const derived: Json = { ...sd };
   delete derived.snapshot;
@@ -62,7 +62,7 @@ async function snapshotProblems(sd: Json, deps: SdValidatorDeps): Promise<{ fail
     });
     try {
       gen.generate(derived);
-      return { failure: null, messages: gen.messages.filter((m) => m.level === "error").map((m) => m.message) };
+      return { failure: null, messages: gen.messages.filter((m) => !m.nested) };
     } catch (e) {
       if (e instanceof NeedDefinition) {
         cache.set(e.url, await deps.fetch(e.url).catch(() => null));
@@ -113,6 +113,31 @@ async function bindable(typeCodes: Set<string>, deps: SdValidatorDeps): Promise<
   return false;
 }
 
+/**
+ * validateElementDefinition l. 698-737: a discriminator path must select something on the sliced element's types
+ * (fpe.checkOnTypes). Only the path of one name, on complex types with a definition of their own, is judged here:
+ * checkOnTypes is a full type checker, and the rest stays unjudged rather than guessed.
+ */
+async function discriminatorRules(out: SdIssue[], ed: Json, path: string, at: string, deps: SdValidatorDeps): Promise<void> {
+  const discriminators: Json[] = Array.isArray(ed.slicing?.discriminator) ? ed.slicing.discriminator : [];
+  if (!discriminators.length || !path.includes(".")) return;
+  const tn = path.slice(0, path.indexOf("."));
+  const tsd = await deps.fetch(CORE + tn);
+  if (!(tsd?.snapshot?.element || []).some((e: Json) => e.path === path)) return; // ted == null
+  const codes = ((Array.isArray(ed.type) ? ed.type : []) as Json[]).map(workingCode).filter(Boolean);
+  if (!codes.length || codes.some((c) => !/^[A-Z]/.test(c) || c === "BackboneElement" || c === "Element")) return;
+  for (let i = 0; i < discriminators.length; i++) {
+    const name = discriminators[i]?.path;
+    if (typeof name !== "string" || !/^[a-z][A-Za-z0-9]*$/.test(name)) continue;
+    let selects = false;
+    for (const c of codes) {
+      const elements: Json[] = (await deps.fetch(CORE + c))?.snapshot?.element ?? [];
+      if (!elements.length || elements.some((e) => e.path === `${c}.${name}` || e.path === `${c}.${name}[x]`)) selects = true;
+    }
+    if (!selects) out.push({ severity: "error", path: `${at}.slicing.discriminator[${i}]`, code: "invalid", message: `The discriminator path '${name}' does not appear to be valid for the element that is being sliced '${path}'` });
+  }
+}
+
 async function elementRules(
   out: SdIssue[],
   sd: Json,
@@ -132,6 +157,7 @@ async function elementRules(
     const at = `${listPath}.element[${i}]`;
     if (tn && path !== tn && !path.startsWith(`${tn}.`)) out.push({ severity: "error", path: at, code: "not-found", message: `The path ${path} must start with the type of the structure ${tn}` });
     if (!snapshot && !path.includes(".") && ed.slicing) out.push({ severity: "error", path: at, code: "invalid", message: "Slicing is not allowed at the root of a profile" });
+    await discriminatorRules(out, ed, path, at, deps);
 
     const typeCodes = new Set<string>();
     let characteristicsValid = false;
@@ -267,6 +293,11 @@ export async function validateStructureDefinition(sd: Json, path: string, deps: 
     const r = await snapshotProblems(sd, deps);
     if (r.failure !== null) {
       out.push({ severity: "error", path, code: "exception", message: `Error generating Snapshot: ${r.failure} (this usually arises from a problem in the differential)` });
+    }
+    // l. 153-166: the generator's messages, at their own location inside the definition, else at the definition
+    for (const m of r.messages) {
+      const at = m.path.startsWith("StructureDefinition.") ? path + m.path.slice(m.path.indexOf(".")) : path;
+      out.push({ severity: m.level, path: at, code: "business-rule", message: m.message });
     }
   } else if (sd.derivation === "specialization" && sd.type === base.type) {
     out.push({ severity: "error", path, code: "not-found", message: `The type ${sd.type} must not be the same as the type in the base structure ${base.type} that is being specialised` });

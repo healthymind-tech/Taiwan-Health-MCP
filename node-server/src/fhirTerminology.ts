@@ -232,15 +232,24 @@ function majMinParts(v: string | null | undefined): [number, number] | null {
  * Applied after rankCandidates' rules (other FHIR major releases last, THO
  * packages first for terminology.hl7.org canonicals); ties keep closure order.
  */
-export function rankHl7Current<T extends ArtifactCandidate & { version?: string | null }>(canonical: string, rows: T[]): T[] {
+export function rankHl7Current<T extends ArtifactCandidate & { version?: string | null }>(canonical: string, rows: T[], resourceOf?: (row: T) => Record<string, any> | null | undefined): T[] {
   const ranked = rankCandidates(canonical, rows);
   if (canonical.startsWith("http://terminology.hl7.org/")) return ranked;
+  // CanonicalResourceManager.see l. 294-300 + get l. 624-630: the master package's CodeSystems, ValueSets and
+  // specialization StructureDefinitions answer an unversioned canonical whatever else is loaded
+  const master = (r: T): boolean => {
+    if (r.packageId !== "hl7.fhir.r4.core") return false;
+    const res = resourceOf?.(r);
+    return !!res && (res.resourceType === "CodeSystem" || res.resourceType === "ValueSet" || (res.resourceType === "StructureDefinition" && res.derivation === "specialization"));
+  };
   const foreign = (r: T): boolean => {
     const fv = r.fhirVersion || "";
     return /\.r5(\.|$)/.test(r.packageId) || (fv !== "" && !fv.startsWith("4"));
   };
   const pos = new Map(ranked.map((r, i) => [r, i]));
   const cmp = (a: T, b: T): number => {
+    const ma0 = Number(master(b)) - Number(master(a));
+    if (ma0 !== 0) return ma0;
     const fa = Number(foreign(a)) - Number(foreign(b));
     if (fa !== 0) return fa;
     const va = a.version ?? null;
@@ -287,7 +296,7 @@ export async function loadArtifactByCanonical(
       .map((r) => ({ ...r, json: jsonOf(r.raw_json) }))
       .filter((r) => r.json)
       .map((r) => ({ ...r, version: typeof r.json!.version === "string" ? (r.json!.version as string) : null }));
-    const best = rankHl7Current(canonical, parsed)[0];
+    const best = rankHl7Current(canonical, parsed, (r) => r.json)[0];
     return best ? (opts.packageFix ? opts.packageFix(best.json!, best.package_id) : best.json!) : null;
   }
   const ranked = rankCandidates(canonical, cands);

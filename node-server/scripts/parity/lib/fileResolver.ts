@@ -92,7 +92,7 @@ export class ResourceStore {
       return pickCanonicalVersion(pool.map((c) => ({ json: c.res, version: c.version })), version)?.json ?? null;
     }
     if (loose.length) return loose[0].res;
-    return rankHl7Current(url, cands)[0]?.res ?? null;
+    return rankHl7Current(url, cands, (e) => e.res)[0]?.res ?? null;
   }
 
   has(url: string, version?: string): boolean {
@@ -162,6 +162,18 @@ export class FileValidatorResolver implements ValidatorResolver {
     return this.store.resolve("ValueSet", url);
   }
 
+  async fetchSearchParameter(url: string): Promise<Res | null> {
+    return this.store.resolve("SearchParameter", url);
+  }
+
+  async fetchCanonical(resourceType: "Measure" | "Library", url: string): Promise<Res | null> {
+    return this.store.resolve(resourceType, url);
+  }
+
+  async fetchQuestionnaire(url: string): Promise<Res | null> {
+    return this.store.resolve("Questionnaire", url);
+  }
+
   async valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
     const { url: canonical, version } = splitCanonicalVersion(url);
     const deps = this.terminologyDeps();
@@ -185,7 +197,7 @@ export class FileValidatorResolver implements ValidatorResolver {
    */
   async checkCode(system: string, code: string, display: string | null, version?: string | null, langs?: string[]): Promise<CodeCheck> {
     // the bundled tx.fhir.org table, as DbValidatorResolver
-    if (system === "http://hl7.org/fhir/sid/cvx") return judgeCvx(code, display);
+    if (system === "http://hl7.org/fhir/sid/cvx") return judgeCvx(code, display, langs);
     let idx = this.codeSystem(system);
     if (idx && idx.url && idx.url.split("|")[0] !== system) idx = null;
     if (idx && version && idx.version !== version) {
@@ -246,6 +258,7 @@ export class FileValidatorResolver implements ValidatorResolver {
   }
 
   async definitionVersionExists(url: string, version: string): Promise<boolean> {
+    if (this.testFetcher && !url.includes("example.org") && !url.startsWith("http://hl7.org/fhir/invalid")) return true;
     return this.store.has(url, version);
   }
 }
