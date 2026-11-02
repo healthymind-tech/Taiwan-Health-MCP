@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fixPackageResource } from "./fhirPackageHacker.js";
+import { validateStructureDefinition } from "./fhirSdValidator.js";
 import { generateSnapshotAsync, makeBaseDefinition, SnapshotGenerator } from "./fhirSnapshotGenerator.js";
 import { checkUcumCode, ucumDisplayIssue, ucumDisplays } from "./fhirUcum.js";
 import { completenessOf, InstanceValidator, type Issue } from "./fhirValidator.js";
@@ -448,4 +449,32 @@ test("reference sub-validation: an imposeProfile dependency's errors fail the ma
   };
   const issues = errors(await new InstanceValidator(new R()).validate(b));
   assert.ok(issues.some((i) => /^Unable to find a profile match for Patient\/p1/.test(i.message)), JSON.stringify(issues));
+});
+
+// ------------------------------------------------------------------------------------------- StructureDefinitionValidator
+
+test("StructureDefinitionValidator: path, root slicing, snapshot failures, specialisation, binding, type profile", async () => {
+  const f = fetchMini([mini("Count", "complex-type", [e("Count", 0, "*")], { baseDefinition: C + "Element" }), mini("Quantity", "complex-type", [e("Quantity", 0, "*")])]);
+  const deps = { fetch: async (u: string): Promise<Json | null> => f(u), hashSet: (v: string[]): string => `[${v.join(", ")}]` };
+  const run = async (sdx: Json): Promise<string[]> => (await validateStructureDefinition(sdx, "StructureDefinition", deps)).map((i) => `${i.path} | ${i.message}`);
+  const P = "http://ex.org/StructureDefinition/p";
+  assert.deepEqual(await run(profile(P, "Patient", [{ id: "Foo", path: "Foo" }, { id: "Patient", path: "Patient", slicing: { rules: "open" } }])).then((r) => r.filter((x) => /^StructureDefinition\.differential/.test(x))), [
+    "StructureDefinition.differential.element[0] | The path Foo must start with the type of the structure Patient",
+    "StructureDefinition.differential.element[1] | Slicing is not allowed at the root of a profile",
+  ]);
+  assert.ok((await run(profile(P, "Patient", [{ id: "Patient", path: "Patient" }, { id: "Patient...x", path: "Patient...x" }]))).includes(`StructureDefinition | Error generating Snapshot: Invalid path 'Patient...x' in differential in ${P}: name portion missing ('..') (this usually arises from a problem in the differential)`));
+  assert.ok((await run(profile(P, "Patient", [{ id: "Patient", path: "Patient" }, { id: "Patient.birthDate", path: "Patient.birthDate", slicing: { discriminator: [{ type: "expression", path: "x" }], rules: "open" } }]))).includes("StructureDefinition | Error generating Snapshot: Unknown DiscriminatorType code 'expression' (this usually arises from a problem in the differential)"));
+  assert.ok((await run({ ...profile(P, "Patient", []), derivation: "specialization" })).some((x) => /must not be the same as the type in the base structure Patient/.test(x)));
+  assert.ok((await run(profile(P, "Patient", [{ id: "Patient", path: "Patient" }, { id: "Patient.birthDate", path: "Patient.birthDate", type: [{ code: "boolean" }], binding: { strength: "required", valueSet: "http://ex.org/vs" } }]))).includes("StructureDefinition.differential.element[1] | This element has a Binding but the types [boolean] do not make this kind of constraint relevant"));
+  assert.ok((await run(profile(P, "Patient", [{ id: "Patient", path: "Patient" }, { id: "Patient.x", path: "Patient.x", type: [{ code: "Quantity", profile: [C + "Count"] }] }]))).some((x) => x.startsWith(`StructureDefinition.differential.element[1].type[0].profile[0] | Profile ${C}Count is for type StructureDefinition[`) && x.endsWith("but the Patient.x element has type Quantity")));
+});
+
+test("matchetype: the extension is an error unless allowed, a $placeholder$ is not checked (IV:9034-9042, 3284)", async () => {
+  const res = { resourceType: "Patient", birthDate: "$date$", extension: [{ url: "http://hl7.org/fhir/tools/StructureDefinition/matchetype", valueCode: "complete" }] };
+  const msg = "This resource is not allowed to be a matchetype resource (extension http://hl7.org/fhir/tools/StructureDefinition/matchetype is true)";
+  const base = errors(await new InstanceValidator(new FakeResolver()).validate(res));
+  assert.ok(base.some((i) => i.message === msg), JSON.stringify(base));
+  assert.ok(!base.some((i) => /date/i.test(i.message) && i.path.endsWith("birthDate")), JSON.stringify(base));
+  const req = errors(await new InstanceValidator(new FakeResolver()).validate({ resourceType: "Patient" }, { matchetypeStatus: "required" }));
+  assert.ok(req.some((i) => /required to be a matchetype resource/.test(i.message)), JSON.stringify(req));
 });

@@ -214,7 +214,9 @@ export async function executeRun(run: TestRun, base: { store: ResourceStore; ids
       const allowExamples = run.raw.examples !== false;
       // "noHtmlInMarkdown": true → htmlInMarkdownCheck ERROR (ValidationTests); validator_cli default WARNING
       const htmlInMarkdown: "warning" | "error" = run.raw.noHtmlInMarkdown === true ? "error" : "warning";
-      const opts = { profiles, languages, displayWarnings, allowExamples, htmlInMarkdown, assumeValidRestReferences: run.options.includes("assumeValidRestReferences"), bundleRules: bundleRulesOf(run.raw), implementationGuides: igs, validateReference: referencePolicyOf(run.raw) };
+      // ValidationTests: a primitive "matchetype" in the case → MatchetypeStatus.Required
+      const matchetypeStatus: "required" | undefined = typeof run.raw.matchetype === "boolean" && run.raw.matchetype ? "required" : undefined;
+      const opts = { profiles, languages, displayWarnings, allowExamples, matchetypeStatus, htmlInMarkdown, assumeValidRestReferences: run.options.includes("assumeValidRestReferences"), bundleRules: bundleRulesOf(run.raw), implementationGuides: igs, validateReference: referencePolicyOf(run.raw) };
       const v = new InstanceValidator(resolver);
       const issues = isXml
         ? [...parseIssues, ...(await withTimeout(v.validate(resource!, { ...opts, format: "xml" }), timeoutMs))]

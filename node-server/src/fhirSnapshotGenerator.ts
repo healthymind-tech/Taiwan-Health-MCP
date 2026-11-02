@@ -500,6 +500,8 @@ export class SnapshotGenerator {
       const p = ed.path;
       if (typeof p !== "string") throw new SnapshotError(`No path on element in differential in ${url}`);
       if (!((first && t === p) || p.startsWith(t + "."))) throw new SnapshotError(`Illegal path '${p}' in differential in ${url}: must start with ${t}.`);
+      // PU:1462-1473
+      if (p.includes(".") && p.replace(/\.+$/, "").split(".").some((part) => part.length < 1)) throw new SnapshotError(`Invalid path '${p}' in differential in ${url}: name portion missing ('..')`);
       first = false;
     }
   }
@@ -654,7 +656,7 @@ export class SnapshotGenerator {
         if (!hasContentReference(outcome) && !hasType(outcome) && String(outcome.path).includes(".")) throw new SnapshotError("Not done yet");
         if (this.hasInnerDiffMatches(pp.differential, currentBasePath, cursors.diffCursor, pp.diffLimit, false)) {
           if (this.baseHasChildren(cursors.base, currentBase)) {
-            if (cursors.diffCursor === 0) throw new SnapshotError(`The profile has slicing at the root ('${currentBase.path}'), which is illegal`);
+            if (cursors.diffCursor === 0) throw new SnapshotError(`Error: The profile has slicing at the root ('${currentBase.path}'), which is illegal`);
             throw new SnapshotError(`This situation is not yet handled (constrain slicing to 1..1 and fix base slice for inline structure) @ ${currentBasePath}`);
           }
           const dt = this.getTypeForElement(pp.differential, cursors.diffCursor, diffMatches, outcome);
@@ -728,7 +730,7 @@ export class SnapshotGenerator {
     } else {
       const t1 = currentBasePath.slice(currentBasePath.lastIndexOf(".") + 1);
       const t2 = path.slice(path.lastIndexOf(".") + 1);
-      if (t1 !== t2) throw new SnapshotError(`Error in path: expected ${path.replace(t2, t1)} but found ${path}`);
+      if (t1 !== t2) throw new SnapshotError(`The path must be '${path.replace(t2, t1)}' not '${path}' when the type list is not constrained`); // PPP:643
     }
     let newDiffLimit = this.findEndOfElement(pp.differential, newDiffCursor);
     this.checkTypeSlicing(diffMatches[0], currentBasePath, pp.url);

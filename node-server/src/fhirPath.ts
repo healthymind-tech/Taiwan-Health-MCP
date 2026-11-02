@@ -719,6 +719,17 @@ if (loaded.engine) {
       return { namespace: "System", name: m[1], is: () => false, toString: () => node.text, isValid: () => false };
     }
   };
+  // opAs (l. 2021-2048): compareTypeNames ignores case while doNotEnforceAsCaseSensitive (R4), and takes the type as written
+  const asOp = table.asOp;
+  if (asOp) {
+    table.asOp = {
+      ...asOp,
+      fn: function (this: any, left: any[], typeInfo: any): any {
+        const name = String(typeInfo?.name ?? "").toLowerCase();
+        return (left || []).filter((v) => javaFhirType(v).type.toLowerCase() === name);
+      },
+    };
+  }
   // opContains: every right item must be in left (no singleton rule); opIn: the left operand must be single
   const contains = table.containsOp;
   table.containsOp = {

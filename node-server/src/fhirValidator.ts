@@ -38,6 +38,7 @@ import { createHash } from "node:crypto";
 import { evaluateConstraint, evaluateExpression, fhirPathBase, invariantExpression, primitiveValueAlias, type FhirPathEnv } from "./fhirPath.js";
 import { fixedPattern } from "./fhirSnapshot.js";
 import { generateSnapshotAsync } from "./fhirSnapshotGenerator.js";
+import { validateStructureDefinition } from "./fhirSdValidator.js";
 import { pushAll } from "./arrayUtils.js";
 import { UCUM_SYSTEM, checkUcumCode, convertUcum, ucumDisplayIssue, ucumUnknownCodeMessage } from "./fhirUcum.js";
 import { XVER_SOURCE, xverDefinition, xverElementId, xverMatchingUrl, xverStatus, xverVersion } from "./fhirXver.js";
@@ -292,6 +293,8 @@ export interface ValidateOptions {
    * URLs are accepted (no TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE, references / canonicals / extensions there pass).
    */
   allowExamples?: boolean;
+  /** InstanceValidator.matchetypeStatus (default disallowed). */
+  matchetypeStatus?: "disallowed" | "required" | "optional";
   /**
    * ValidatorSettings.displayWarningMode (validator_cli -display-issues-are-warnings; default false): a wrong
    * display (tx-issue-type invalid-display) is a warning instead of an error, and does not fail a binding.
@@ -1531,6 +1534,9 @@ export class InstanceValidator {
   private languages: string[] = ["en"];
   /** Working language of the resource being validated (its `language`), null = ValidateOptions.languages. */
   private workingLang: string[] | null = null;
+  private matchetypeStatus: "disallowed" | "required" | "optional" = "disallowed";
+  /** ValidationContext.isMatchetype of the resource being validated. */
+  private inMatchetype = false;
   /** ValidateOptions.allowExamples of the running validation. */
   private allowExamples = false;
   /** ValidateOptions.displayWarnings of the running validation. */
@@ -1553,6 +1559,7 @@ export class InstanceValidator {
     const langs = (opts.languages ?? []).map((l) => String(l || "").trim()).filter((l) => l !== "");
     this.languages = langs.length ? langs : ["en"];
     this.allowExamples = opts.allowExamples === true;
+    this.matchetypeStatus = opts.matchetypeStatus ?? "disallowed";
     this.displayWarnings = opts.displayWarnings === true;
     this.htmlInMarkdown = opts.htmlInMarkdown ?? "warning";
     this.workingLang = null;
@@ -2422,10 +2429,31 @@ export class InstanceValidator {
     const saved = this.workingLang;
     const lang = typeof rctx.resource?.language === "string" ? rctx.resource.language.trim() : "";
     if (lang) this.workingLang = [lang];
+    // validateResource, IV:9034-9042: the matchetype extension and its status
+    const savedMt = this.inMatchetype;
+    const mt = (Array.isArray(rctx.resource?.extension) ? rctx.resource.extension : []).find((x: any) => isObject(x) && x.url === "http://hl7.org/fhir/tools/StructureDefinition/matchetype");
+    if (mt) {
+      const mv = mt.valueCode ?? mt.valueString ?? mt.valueBoolean;
+      this.inMatchetype = ["partial", "complete", "true", true].includes(mv);
+      if (this.matchetypeStatus === "disallowed") {
+        issues.push({ severity: "error", path, code: "invalid", message: "This resource is not allowed to be a matchetype resource (extension http://hl7.org/fhir/tools/StructureDefinition/matchetype is true)" });
+      }
+    } else {
+      this.inMatchetype = false;
+      if (this.matchetypeStatus === "required") {
+        issues.push({ severity: "error", path, code: "invalid", message: "This resource is required to be a matchetype resource (extension http://hl7.org/fhir/tools/StructureDefinition/matchetype must be true)" });
+      }
+    }
     try {
       await this.validateResourceBody(rctx, path, extraProfiles, issues, depth);
+      // checkSpecials: StructureDefinitionValidator (InstanceValidator l. 7252)
+      if (rctx.resource?.resourceType === "StructureDefinition") {
+        const sdDeps = { fetch: (u: string) => this.resolver.fetchStructureDefinition(u), hashSet: javaHashSetToString };
+        pushAll(issues, (await validateStructureDefinition(rctx.resource, path, sdDeps)) as Issue[]);
+      }
     } finally {
       this.workingLang = saved;
+      this.inMatchetype = savedMt;
     }
   }
 
@@ -4634,6 +4662,7 @@ export class InstanceValidator {
    * `profile` is the StructureDefinition the element definition comes from (isCoreDefinition).
    */
   private checkPrimitiveValue(s: string, item: Item, typeCode: string, el: Record<string, any>, profile: Record<string, any> | null, issues: Issue[]): void {
+    if (this.inMatchetype && s.startsWith("$")) return; // checkPrimitive, IV:3284: a matchetype placeholder
     const path = item.path;
     const hasChildren = item.ext !== undefined && item.ext !== null;
     const rule = (pass: boolean, message: string, code = "invalid"): boolean => {
@@ -5501,7 +5530,7 @@ export class InstanceValidator {
     const basePath = isObject(el.base) && typeof el.base.path === "string" ? el.base.path : String(el.path || "");
     if (uriResolutionExempt(basePath)) return;
     if (!this.resolver.definitionExists || !hl7UrlMustResolve(v)) return;
-    const u = v.includes("|") ? v.slice(0, v.lastIndexOf("|")) : v;
+    const u = (v.includes("|") ? v.slice(0, v.lastIndexOf("|")) : v).replace(/#.*$/, "");
     if (await this.defExists(u)) {
       // (v17.5) `url|version`: the HL7 validator resolves that version (Coding.system 'http://…/v2-0360|2.7' → not found)
       if (!v.includes("|") || !this.resolver.definitionVersionExists) return;
@@ -6380,6 +6409,19 @@ export class InstanceValidator {
     }
   }
 
+  /** InstanceValidator.determineId (l. 8948-8966): INV_FAILED_ID's ` at <id>` of a StructureDefinition element / SearchParameter. */
+  private invariantId(path: string, rctx: ResourceCtx): string {
+    if (rctx.root !== rctx.resource) return ""; // determineId matches the literal path of a root resource
+    const r = rctx.resource;
+    const rel = path.startsWith(ROOT_TOKEN) ? path.slice(ROOT_TOKEN.length) : path.replace(/^[A-Z][A-Za-z]+/, "");
+    const m = r?.resourceType === "StructureDefinition" ? /^\.(snapshot|differential)\.element\[(\d+)\]/.exec(rel) : null;
+    if (m) {
+      const p = r[m[1]]?.element?.[Number(m[2])]?.path;
+      return typeof p === "string" ? ` at ${p}` : "";
+    }
+    return r?.resourceType === "SearchParameter" && typeof r.code === "string" ? ` at ${r.code}` : "";
+  }
+
   private async checkConstraints(
     sdx: SdIndex,
     el: Record<string, any>,
@@ -6438,7 +6480,7 @@ export class InstanceValidator {
         severity,
         path: item.path,
         code: "invariant",
-        message: `Constraint failed: ${c.key}: '${c.human || c.expression}'${c.source ? ` (defined in ${stripVersion(c.source)})` : ""}${log}`,
+        message: `Constraint failed: ${c.key}: '${c.human || c.expression}'${this.invariantId(item.path, rctx)}${c.source ? ` (defined in ${stripVersion(c.source)})` : ""}${log}`,
         element: el.id,
         profile: sdx.url,
       });
