@@ -43,8 +43,6 @@ import { compareIssues, isError, lenientMessage, normMessage, normPath, type Com
 import { FileValidatorResolver, ResourceStore } from "../lib/fileResolver.js";
 import { minimize, type Target } from "../lib/minimize.js";
 import { findPackage, packageClosure, type Res } from "../lib/packages.js";
-import { registerLosslessLiterals } from "../../../src/fhirJsonLiterals.js";
-import { parseLossless } from "../../../src/losslessJson.js";
 import { pickLoader, type CorpusItem } from "./loaders.js";
 import { ResultWriter, readResults } from "./results.js";
 
