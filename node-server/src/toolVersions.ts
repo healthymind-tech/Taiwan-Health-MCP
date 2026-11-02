@@ -268,7 +268,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.87.0 (parity v3 tx-validator-wiring, round 11): Coding has no code only for what the server answers that way (urn:ietf / urn:iso, a version not held).
   // 1.88.0 (parity v3 tx-validator-wiring, round 11, on the jar alone): Coding.system as isSystemReferenceValid when no binding check ran; Coding has no code as a warning for LOINC / SNOMED CT.
   // 1.93.0 (parity v3 round 11, jar): a package resource is known by its .index.json url, not the url inside the file; wrong choice round 3 (bindings in the profile's package, leftovers).
-  fhir_validate_bundle: "1.93.0",
+  // 1.94.0: additional bindings with a testable purpose are checked (usage-scoped ones: rules_unchecked).
+  fhir_validate_bundle: "1.94.0",
   // 1.87.0: JSON array findings of the parser do not fail a sub-validation; a complex list written as an object is its one child.
   // 1.88.0: hasValue() of a number element; a number for Reference.reference is checked as its text; `{}` on a type slice of a choice fails ele-1, parser path on [x].
   // 1.89.0: ele-1 on an empty choice element; a slice discriminator ignores an array on a single element (the parser dropped it).
@@ -354,7 +355,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.84.0: validation as fhir_validate_bundle 1.87.0.
   // 1.85.0: validation as fhir_validate_bundle 1.88.0.
   // 1.90.0: validation as fhir_validate_bundle 1.93.0.
-  fhir_validate_resource: "1.90.0",
+  // 1.91.0: validation as fhir_validate_bundle 1.94.0.
+  fhir_validate_resource: "1.91.0",
   // 1.86.0: validation as fhir_validate_bundle 1.89.0.
   // 1.77.0: validation as fhir_validate_bundle 1.80.0.
   // 1.78.0: validation as fhir_validate_bundle 1.81.0.

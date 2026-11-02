@@ -404,6 +404,10 @@ const CORE = "http://hl7.org/fhir/StructureDefinition/";
 const FHIR_TYPE_EXT = "http://hl7.org/fhir/StructureDefinition/structuredefinition-fhir-type";
 const BEST_PRACTICE_EXT = "http://hl7.org/fhir/StructureDefinition/elementdefinition-bestpractice";
 const MAX_VALUESET_EXT = "http://hl7.org/fhir/StructureDefinition/elementdefinition-maxValueSet";
+const ADDITIONAL_BINDING_EXT = "http://hl7.org/fhir/tools/StructureDefinition/additional-binding";
+const ADDITIONAL_BINDING_EXT_R5 = "http://hl7.org/fhir/5.0/StructureDefinition/extension-ElementDefinition.binding.additional";
+/** convertPurposeToStrength (IV:1729-1737). */
+const ADDITIONAL_PURPOSE_STRENGTH: Record<string, string> = { maximum: "required", required: "required", extensible: "extensible", preferred: "preferred" };
 
 const YEAR = "([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)";
 const MONTH = "(0[1-9]|1[0-2])";
@@ -6093,7 +6097,41 @@ export class InstanceValidator {
     }
   }
 
-  private async checkBinding(
+  /**
+   * The element's binding, then its additional bindings (checkTerminologyCodeableConcept l. 1493, checkTerminologyCoding
+   * l. 2058 / 2104, checkCodedElement l. 2426, checkPrimitiveBinding l. 4503): the R4 extension is
+   * ElementDefinition.binding.additional in the jar's model (ElementDefinition40_N). Only the purposes with a strength are
+   * tested (isTestableBinding); the value set is then checked like the element's own, and described as
+   * BINDING_ADDITIONAL_D.
+   */
+  private async checkBinding(el: Record<string, any>, v: any, typeCode: string, item: Item, issues: Issue[], sourceSd: SdIndex | null): Promise<void> {
+    await this.checkOneBinding(el, v, typeCode, item, issues, sourceSd);
+    const list = Array.isArray(el.binding?.extension) ? el.binding.extension.filter((x: any) => x?.url === ADDITIONAL_BINDING_EXT || x?.url === ADDITIONAL_BINDING_EXT_R5) : [];
+    for (const x of list) {
+      const part = (name: string): any[] => (Array.isArray(x.extension) ? x.extension.filter((y: any) => y?.url === name) : []);
+      const purpose = part("purpose")[0]?.valueCode;
+      const valueSet = part("valueSet")[0]?.valueCanonical;
+      const strength = ADDITIONAL_PURPOSE_STRENGTH[String(purpose)];
+      if (!strength || typeof valueSet !== "string" || !valueSet) continue;
+      if (part("usage").length) {
+        // isInScope (l. 1541-1590): the scope comes from -usage or from the resource's content, which is not ported
+        issues.push({ severity: "information", path: item.path, code: "rule-unchecked", message: `The additional binding to ${valueSet} has a usage scope, which is not evaluated; not a conformance failure`, unchecked: { kind: "rule", canonical: "InstanceValidator.isInScope" } });
+        continue;
+      }
+      const known = this.boundValueSets.has(stripVersion(valueSet));
+      const found: Issue[] = [];
+      await this.checkOneBinding({ ...el, binding: { strength, valueSet } }, v, typeCode, item, found, sourceSd);
+      if (!known) this.boundValueSets.delete(stripVersion(valueSet));
+      const vs = await this.vsHeader(valueSet);
+      const names = vs ? [`'${vs.title || vs.name || valueSet}' (${vs.url}${vs.version ? `|${vs.version}` : ""})`, `'${vs.title || vs.name || valueSet}' (${valueSet})`] : [`'${valueSet}'`];
+      for (const i of found) {
+        const name = names.find((n) => i.message.includes(n));
+        issues.push(name ? { ...i, message: i.message.split(name).join(`${name} specified in an additional binding`) } : i);
+      }
+    }
+  }
+
+  private async checkOneBinding(
     el: Record<string, any>,
     v: any,
     typeCode: string,

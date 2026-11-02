@@ -644,3 +644,37 @@ test("hasValue() of a number written for a date: the text is there, new DateTime
   const expr = "start.hasValue().not() or end.hasValue().not() or (start <= end)";
   assert.deepEqual(evaluateConstraint(v, "Period", expr, { resource: r, rootResource: r }), { status: "fail", error: "Invalid date/time format: \"1672531200\": Expected character '-' at index 4 but found 5" });
 });
+
+test("additional bindings: a testable purpose is checked like the binding and named as additional (jar: profile3, Patient.gender)", async () => {
+  const P = "http://ex.org/ab";
+  const V = "http://ex.org/vs";
+  const orig = SDS[CORE + "Patient"];
+  const ab = (purpose: string) => ({
+    url: "http://hl7.org/fhir/tools/StructureDefinition/additional-binding",
+    extension: [{ url: "purpose", valueCode: purpose }, { url: "valueSet", valueCanonical: V }],
+  });
+  const profile = (purpose: string): Record<string, any> => ({
+    ...orig,
+    url: P,
+    derivation: "constraint",
+    snapshot: { element: orig.snapshot.element.map((e: Record<string, any>) => (e.path === "Patient.gender" ? { ...e, binding: { strength: "example", valueSet: V, extension: [ab(purpose)] } } : e)) },
+  });
+  class R extends FakeResolver {
+    constructor(private readonly pr: Record<string, any>) {
+      super();
+    }
+    override async fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
+      return url.split("|")[0] === P ? this.pr : super.fetchStructureDefinition(url);
+    }
+    override async fetchValueSet(url: string): Promise<Record<string, any> | null> {
+      return url.split("|")[0] === V ? { resourceType: "ValueSet", url: V, version: "1", title: "T", status: "active", compose: { include: [{ system: "http://ex.org/cs", concept: [{ code: "a" }] }] } } : super.fetchValueSet(url);
+    }
+    override async valueSetContains(url: string): Promise<boolean | undefined> {
+      return url.split("|")[0] === V ? false : undefined;
+    }
+  }
+  const run = async (purpose: string): Promise<Issue[]> => new InstanceValidator(new R(profile(purpose))).validate({ resourceType: "Patient", meta: { profile: [P] }, gender: "male" });
+  const found = (await run("required")).filter((i) => i.path === "Patient.gender" && i.severity === "error");
+  assert.ok(found.some((i) => i.message.includes("'T' (http://ex.org/vs|1) specified in an additional binding, and a code is required from this value set")), JSON.stringify(found));
+  assert.ok(!(await run("candidate")).some((i) => /additional binding/.test(i.message)), "isTestableBinding: candidate has no strength");
+});
