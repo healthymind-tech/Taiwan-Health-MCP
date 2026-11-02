@@ -417,3 +417,8 @@ test("a resource the parser left with an empty element (ele-1) does not match a 
   const issues = errors(await new InstanceValidator(new R()).validate(b));
   assert.ok(issues.some((i) => /^Unable to find a profile match for Patient\/p1/.test(i.message)), JSON.stringify(issues));
 });
+
+test("JsonParser.checkObject: an empty _x is reported once and the primitive stays", async () => {
+  const issues = errors(await new InstanceValidator(new FakeResolver()).validate({ resourceType: "Patient", gender: "male", _gender: {} }));
+  assert.deepEqual(issues.map((i) => [i.path, i.message]), [["Patient.gender", "Object must have some content"]]);
+});

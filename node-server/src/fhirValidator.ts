@@ -1155,6 +1155,11 @@ function dropBadPrimitiveForks(node: any, path: string, issues: Issue[]): any {
         out ??= { ...node };
         delete out[k];
         delete out[name];
+      } else if (isObject(v) && !Object.keys(v).length && main !== undefined) {
+        // JsonParser.checkObject (JsonParser.java:229-236) on the fork: the element itself stays
+        issues.push({ severity: "error", path: `${path}.${name}`, code: "invalid", message: "Object must have some content" });
+        out ??= { ...node };
+        delete out[k];
       }
       continue;
     }
