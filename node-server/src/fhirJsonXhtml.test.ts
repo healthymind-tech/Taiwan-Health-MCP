@@ -268,6 +268,7 @@ test("invariants see the tree the parser built: a dropped value is gone, an obje
     el("Basic", 0, "*", [], { constraint: [EXISTS] }),
     el("Basic.note", 0, "1", ["string"]),
     el("Basic.items", 0, "*", ["Identifier"]),
+    el("Basic.value[x]", 0, "1", ["Identifier", "string"]),
   ]);
   const ID = sd(CORE + "Identifier", "Identifier", "complex-type", [el("Identifier", 0, "*"), el("Identifier.value", 0, "1", ["string"])]);
   class R extends FakeResolver {
@@ -282,6 +283,10 @@ test("invariants see the tree the parser built: a dropped value is gone, an obje
   assert.ok(m.some((x) => /^Basic \| Constraint failed: tst-1/.test(x)), JSON.stringify(m));
   assert.ok(!m.some((x) => /Object must have some content/.test(x)), JSON.stringify(m));
   assert.ok(m.some((x) => /^Basic.items\[0\] \| Constraint failed: ele-1/.test(x)), JSON.stringify(m));
+  // the same emptied object on a choice element: no checkObject message and, as for a source `{}` there, no ele-1
+  const c = errs(await new InstanceValidator(new R()).validate({ resourceType: "Basic", note: "n", valueIdentifier: { value: "a", _value: "bad" } }));
+  assert.ok(c.includes("Basic.value[x].value | This property must be an object, not a Primitive property (value at Basic.value[x].value)"), JSON.stringify(c));
+  assert.ok(!c.some((x) => /Object must have some content|ele-1/.test(x)), JSON.stringify(c));
 });
 
 test("fixed values: a blank primitive is not compared (checkPrimitive returns first), the pattern's Issues list prints ValidationMessage", async () => {

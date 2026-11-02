@@ -3086,7 +3086,7 @@ export class InstanceValidator {
       });
       return;
     }
-    if (Object.keys(v).length === 0 && !isResourceRoot && !this.parserEmptied.has(v)) {
+    if (Object.keys(v).length === 0 && !isResourceRoot) {
       // (parity v2) JsonParser.checkObject (7.0.1): OBJECT_MUST_HAVE_SOME_CONTENT, and the (empty) element is kept —
       // validation goes on, so its required children are reported as missing.
       // XML: XmlParser keeps the empty element (its parse error, if any, comes from fhirXml.ts) and ele-1 fails.
@@ -3095,6 +3095,8 @@ export class InstanceValidator {
       // property, and FHIRPathEngine.funcHasValue (l. 6208) reads such an element as having a value. Evaluator
       // corpus: every non-choice `{}` (extension, meta, text, code, subject, category[n] …) carries ele-1 in
       // validator_cli 7.0.1, no `value[x]` / `dose[x]` / `effective[x]` `{}` does.
+      // An object the parser emptied (dropBadPrimitivesIn) had content in the source: checkObject stays quiet, the
+      // element is the same empty element for ele-1.
       if (!this.xmlSource && !this.parserEmptied.has(v)) issues.push({ severity: "error", path: item.path, code: "invalid", message: "Object must have some content" });
       if (this.xmlSource || !/\[x\]$/u.test(String(el.path ?? ""))) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
     }
@@ -6642,7 +6644,7 @@ export class InstanceValidator {
         }
       }
     }
-    if (!isRoot && kept === 0 && (Object.keys(node).length > 0 || this.parserEmptied.has(node))) {
+    if (!isRoot && kept === 0 && Object.keys(node).length > 0) {
       issues.push({ severity: "error", path, code: "invariant", message: ELE1_MESSAGE });
     }
   }
