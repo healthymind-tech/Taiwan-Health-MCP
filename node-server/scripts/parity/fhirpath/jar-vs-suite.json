@@ -1,0 +1,142 @@
+{
+ "testBasics#3": {
+  "java": "FHIRLexer.java:552",
+  "reason": "backtick identifiers decode \\u with radix 32, so \\u006e is not \"n\" and the path finds nothing"
+ },
+ "testLiterals#70": {
+  "java": "FHIRLexer.java:502",
+  "reason": "Integer.parseInt('+041', 16) accepts the sign: no syntax error"
+ },
+ "testSubstring#13": {
+  "java": "FHIRPathEngine.java:6319 funcSubstring",
+  "reason": "an empty substring is not added, so substring(3, 0) is empty rather than ''"
+ },
+ "testSubstring#14": {
+  "java": "FHIRPathEngine.java:6302 funcSubstring",
+  "reason": "an empty length parameter returns empty"
+ },
+ "testSubstring#15": {
+  "java": "FHIRPathEngine.java:6302 funcSubstring",
+  "reason": "an empty length parameter returns empty"
+ },
+ "testEscapeUnescape#4": {
+  "java": "Utilities.java:494 unescapeJson",
+  "reason": "`\\\"` unescapes to the letter b"
+ },
+ "testEscapeUnescape#5": {
+  "java": "Utilities.java:518 unescapeJson",
+  "reason": "\\uXXXX reads the four hex digits without moving past them, so they stay in the output"
+ },
+ "testEscapeUnescape#6": {
+  "java": "Utilities.java:494 unescapeJson",
+  "reason": "`\\\"` unescapes to the letter b"
+ },
+ "testEquality#30": {
+  "java": "FHIRPathEngine.java:2321 removeTrailingZeros",
+  "reason": "decEqual (l. 2340) strips zeros from integers too: 100 and 1.0 both become 1"
+ },
+ "testEquality#31": {
+  "java": "FHIRPathEngine.java:2321 removeTrailingZeros",
+  "reason": "decEqual: 10 and 1.0 both become 1"
+ },
+ "testEquality#32": {
+  "java": "FHIRPathEngine.java:2321 removeTrailingZeros",
+  "reason": "decEqual: 10 becomes 1, 10.0 becomes 10"
+ },
+ "testEquality#34": {
+  "java": "FHIRPathEngine.java:2321 removeTrailingZeros",
+  "reason": "decEqual: 100 and 1.0 both become 1"
+ },
+ "testLessThan#28": {
+  "java": "FHIRPathEngine.java:2613 opLessThan",
+  "reason": "calendar units have no code: compareDeep of two empty code lists is true and the raw values 1 and 2 are compared"
+ },
+ "testLessThan#29": {
+  "java": "FHIRPathEngine.java:2620 opLessThan",
+  "reason": "different codes go to qtyToCanonicalDecimal, which drops the canonical unit, so kg and m are compared as plain numbers"
+ },
+ "testQuantityUnitComparison#0": {
+  "java": "FHIRPathEngine.java:2450 qtyEqual",
+  "reason": "code-less Quantities: `!left.hasUnit() || right.hasUnit()` reads the operands the wrong way round"
+ },
+ "testQuantityUnitComparison#4": {
+  "java": "FHIRPathEngine.java:2450 qtyEqual",
+  "reason": "code-less Quantities: `!left.hasUnit() || right.hasUnit()` reads the operands the wrong way round"
+ },
+ "testQuantityUnitComparison#6": {
+  "java": "FHIRPathEngine.java:2523 qtyEquivalent",
+  "reason": "code-less Quantities: `!left.hasUnit() || right.hasUnit()` reads the operands the wrong way round"
+ },
+ "testLessOrEqual#28": {
+  "java": "FHIRPathEngine.java:2720 opLessOrEqual",
+  "reason": "compares `unit`, which a quoted literal does not have: both null, so the raw values 1 and 999 are compared"
+ },
+ "testGreatorOrEqual#28": {
+  "java": "FHIRPathEngine.java:2770 opGreaterOrEqual",
+  "reason": "as opLessThan: the canonical values of different dimensions are compared as plain numbers"
+ },
+ "testPlus#22": {
+  "java": "FHIRPathEngine.java:2961 dateAdd",
+  "reason": "the fractional part of the seconds is added in milliseconds; the suite expects it dropped"
+ },
+ "testDivide#6": {
+  "java": "FHIRPathEngine.java:3263 opDivideBy",
+  "reason": "org.fhir.ucum.Decimal.divide of a zero numerator returns 0 and does not throw, so the \"return nothing\" branch is not taken"
+ },
+ "testDiv#5": {
+  "java": "FHIRPathEngine.java:3314 opDiv",
+  "reason": "same in Decimal.divInt: 0 div 0.0 is 0"
+ },
+ "testMod#7": {
+  "java": "FHIRPathEngine.java:3354 opMod",
+  "reason": "same in Decimal.modulo: 0.0 mod 0 is -0.0"
+ },
+ "testType#10": {
+  "java": "FHIRPathEngine.java:5670 funcType / :5513 funcIs",
+  "reason": "element model: ClassTypeInfo / System namespace only for elements with disallowExtensions (l. 5541); FHIR primitives are not System types here"
+ },
+ "testType#11": {
+  "java": "FHIRPathEngine.java:5670 funcType / :5513 funcIs",
+  "reason": "element model: ClassTypeInfo / System namespace only for elements with disallowExtensions (l. 5541); FHIR primitives are not System types here"
+ },
+ "testType#13": {
+  "java": "FHIRPathEngine.java:5670 funcType / :5513 funcIs",
+  "reason": "element model: ClassTypeInfo / System namespace only for elements with disallowExtensions (l. 5541); FHIR primitives are not System types here"
+ },
+ "testType#15": {
+  "java": "FHIRPathEngine.java:5670 funcType / :5513 funcIs",
+  "reason": "element model: ClassTypeInfo / System namespace only for elements with disallowExtensions (l. 5541); FHIR primitives are not System types here"
+ },
+ "testType#16": {
+  "java": "FHIRPathEngine.java:5670 funcType / :5513 funcIs",
+  "reason": "element model: ClassTypeInfo / System namespace only for elements with disallowExtensions (l. 5541); FHIR primitives are not System types here"
+ },
+ "testType#23": {
+  "java": "FHIRPathEngine.java:5670 funcType / :5513 funcIs",
+  "reason": "element model: ClassTypeInfo / System namespace only for elements with disallowExtensions (l. 5541); FHIR primitives are not System types here"
+ },
+ "LowBoundary#27": {
+  "java": "Utilities.java:1688 lowBoundaryForDecimal",
+  "reason": "digit-string arithmetic on primitiveValue(): an exponent form or a carry gives a wrong number or a malformed string"
+ },
+ "LowBoundary#30": {
+  "java": "Utilities.java:1688 lowBoundaryForDecimal",
+  "reason": "digit-string arithmetic on primitiveValue(): an exponent form or a carry gives a wrong number or a malformed string"
+ },
+ "HighBoundary#23": {
+  "java": "Utilities.java:1754 highBoundaryForDecimal",
+  "reason": "digit-string arithmetic on primitiveValue(): an exponent form or a carry gives a wrong number or a malformed string"
+ },
+ "HighBoundary#25": {
+  "java": "Utilities.java:1754 highBoundaryForDecimal",
+  "reason": "digit-string arithmetic on primitiveValue(): an exponent form or a carry gives a wrong number or a malformed string"
+ },
+ "HighBoundary#26": {
+  "java": "Utilities.java:1754 highBoundaryForDecimal",
+  "reason": "digit-string arithmetic on primitiveValue(): an exponent form or a carry gives a wrong number or a malformed string"
+ },
+ "testInheritance#20": {
+  "java": "FHIRPathEngine.java:5584 funcAs",
+  "reason": "the singleton rule is off for R4: InstanceValidator.java:602 setDoNotEnforceAsSingletonRule(!isR5Plus)"
+ }
+}

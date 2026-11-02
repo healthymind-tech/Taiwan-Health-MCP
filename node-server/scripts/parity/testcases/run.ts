@@ -13,6 +13,11 @@
  *   systemd-run --user --scope -q -p MemoryMax=2G -p CPUQuota=80% nice -n 15 \
  *     node --max-old-space-size=1800 --import tsx scripts/parity/testcases/run.ts \
  *       [--only name[,name]] [--module tx,profile] [--format xml|json] [--json out.json] [--timeout ms] [-v] [--show-skipped]
+ *       [--oracle jar.jsonl]
+ *
+ * --oracle (scripts/parity/oracle/oracle.sh suite): validator_cli 7.0.1 is the judge, the suite's expected files are
+ * reference only. Each run is compared with the jar's own outcome and the report adds agreement with the jar over the
+ * env-excluded denominator of parity_v3/progress.md; a run that fails the suite but matches the jar is `jar-agrees`.
  *
  * Output: a summary per module on stdout and per-run JSON (default scripts/parity/testcases/results.json, ignored by
  * git). Exit code 0 always (a report, not a gate) unless the suite cannot be read.
@@ -23,7 +28,7 @@ import { fileURLToPath } from "node:url";
 import { InstanceValidator, type Issue } from "../../../src/fhirValidator.js";
 import { parseFhirXml } from "../../../src/fhirXml.js";
 import { errorClass } from "../classify.js";
-import { compareIssues, type Comparison, type SimpleIssue } from "../lib/compare.js";
+import { compareIssues, issuesOfOutcome, type Comparison, type SimpleIssue } from "../lib/compare.js";
 import { FileValidatorResolver, ResourceStore } from "../lib/fileResolver.js";
 import { findPackage, packageClosure, type Res } from "../lib/packages.js";
 import { loadRuns, SUITE_DIR, type TestRun } from "./manifest.js";
@@ -38,6 +43,7 @@ const outFile = opt("--json") ?? join(HERE, "results.json");
 const timeoutMs = Number(opt("--timeout") ?? 60_000);
 const verbose = args.includes("-v");
 const showSkipped = args.includes("--show-skipped");
+const oracleFile = opt("--oracle");
 
 export interface RunResult {
   id: string;
@@ -60,6 +66,85 @@ export interface RunResult {
   ms?: number;
   error?: string;
   actual?: SimpleIssue[];
+  /** With --oracle: this run against the jar's outcome. */
+  oracle?: OracleVerdict;
+}
+
+/** agree: our errors equal the jar's. jar-agrees: same, and the run fails the suite. no-outcome: the jar gave none. */
+export type OracleClass = "agree" | "jar-agrees" | "disagree" | "no-outcome" | "not-run";
+export interface OracleVerdict {
+  class: OracleClass;
+  /** Our issues vs the jar's. */
+  comparison?: Comparison;
+  /** The jar's issues vs the suite's expected file: false = the suite's expectation is not what this jar does. */
+  jarMatchesSuite?: boolean;
+  jarErrors?: number;
+  jarStatus?: string;
+  jarError?: string;
+  /** Requests that missed the bundled tx cache (the jar's outcome depended on the live server). */
+  txRequests?: number;
+}
+
+export interface OracleRow {
+  id: string;
+  status: string;
+  outcome?: Res;
+  error?: string;
+  txRequests?: number;
+}
+
+/** The jar's record: one JSON object per line (oracle/java/oracle/SuiteOracle.java); a re-run's later line wins. */
+export function readOracle(file: string): Map<string, OracleRow> {
+  const rows = new Map<string, OracleRow>();
+  for (const line of readFileSync(file, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    const row = JSON.parse(line) as OracleRow;
+    rows.set(row.id, row);
+  }
+  return rows;
+}
+
+export function judgeWithOracle(r: RunResult, row: OracleRow | undefined, expected: SimpleIssue[]): OracleVerdict {
+  if (r.status === "skipped") return { class: "not-run" };
+  if (!row || row.status !== "ok") return { class: "no-outcome", jarStatus: row?.status ?? "missing", jarError: row?.error, txRequests: row?.txRequests };
+  const jarIssues = issuesOfOutcome(row.outcome);
+  // our crash / timeout has no issue list: it can only disagree
+  const comparison = compareIssues(jarIssues, r.actual ?? [{ severity: "fatal", path: "", message: `harness ${r.status}` }]);
+  return {
+    class: comparison.strict ? (r.status === "pass" ? "agree" : "jar-agrees") : "disagree",
+    comparison,
+    jarMatchesSuite: compareIssues(expected, jarIssues).strict,
+    jarErrors: comparison.expectedErrors,
+    jarStatus: row.status,
+    txRequests: row.txRequests,
+  };
+}
+
+/** parity_v3/progress.md: runs without tx-dependent / no-snapshot / missing-package / any option:* flag. */
+export function envExcluded(r: RunResult): boolean {
+  return r.status !== "skipped" && !r.flags.some((f) => f === "tx-dependent" || f === "no-snapshot" || f === "missing-package" || f.startsWith("option:"));
+}
+
+export function oracleReport(results: RunResult[]): string {
+  const lines: string[] = [];
+  const row = (label: string, rs: RunResult[]): string => {
+    const n = (c: OracleClass): number => rs.filter((r) => r.oracle?.class === c).length;
+    const judged = n("agree") + n("jar-agrees") + n("disagree");
+    const lenient = rs.filter((r) => r.oracle?.comparison?.lenient).length;
+    const verdict = rs.filter((r) => r.oracle?.comparison && (r.oracle.comparison.expectedErrors > 0) === (r.oracle.comparison.actualErrors > 0)).length;
+    return `${label.padEnd(26)} judged ${String(judged).padStart(4)}  agree-with-jar ${n("agree") + n("jar-agrees")} (${pct(n("agree") + n("jar-agrees"), judged)})  of which jar-agrees ${n("jar-agrees")}  disagree ${n("disagree")}  lenient ${lenient}  same-valid/invalid ${verdict}  no-jar-outcome ${n("no-outcome")}`;
+  };
+  const ran = results.filter((r) => r.status !== "skipped");
+  const excl = results.filter(envExcluded);
+  lines.push("agreement with validator_cli 7.0.1 (strict = same errors, path + message; suite figures above are reference only)");
+  lines.push(row("env-excluded", excl), row("all runs", ran));
+  lines.push(row("env-excl., failing suite", excl.filter((r) => r.status !== "pass")), row("env-excl., passing suite", excl.filter((r) => r.status === "pass")));
+  const js = ran.filter((r) => r.oracle?.jarMatchesSuite === false);
+  lines.push(`jar differs from the suite's expected file: ${js.length} runs (${excl.filter((r) => r.oracle?.jarMatchesSuite === false).length} env-excluded)`);
+  for (const r of excl.filter((x) => x.oracle?.class === "disagree")) lines.push(`  disagree ${r.id} [${r.module}] jar errors ${r.oracle!.comparison!.expectedErrors}, ours ${r.oracle!.comparison!.actualErrors}`);
+  for (const r of excl.filter((x) => x.oracle?.class === "jar-agrees")) lines.push(`  jar-agrees ${r.id} [${r.module}]`);
+  for (const r of ran.filter((x) => x.oracle?.class === "no-outcome")) lines.push(`  no jar outcome ${r.id}: ${r.oracle!.jarStatus} ${(r.oracle!.jarError ?? "").slice(0, 160)}`);
+  return lines.join("\n");
 }
 
 function loadJsonFile(p: string): Res | null {
@@ -311,10 +396,12 @@ async function main(): Promise<void> {
   if (base.missing.length) console.error(`base packages missing: ${base.missing.join(", ")}`);
   console.error(`base layer: ${base.store.packages.join(", ")}; ${runs.length} runs`);
   const results: RunResult[] = [];
+  const oracle = oracleFile ? readOracle(oracleFile) : null;
   let i = 0;
   for (const run of runs) {
     i++;
     const res = await executeRun(run, base, suite);
+    if (oracle) res.oracle = judgeWithOracle(res, oracle.get(run.id), run.expectation?.issues ?? []);
     results.push(res);
     if (verbose || (only && res.status !== "skipped") || (showSkipped && res.status === "skipped")) {
       const c = res.comparison;
@@ -328,6 +415,7 @@ async function main(): Promise<void> {
   }
   writeFileSync(outFile, JSON.stringify({ generated: new Date().toISOString(), suite, base: base.store.packages, results }, null, 1));
   console.log(summarise(results));
+  if (oracle) console.log(`\n${oracleReport(results)}`);
   console.log(`\nper-run JSON: ${outFile}`);
 }
 
