@@ -1151,6 +1151,9 @@ function describeJsonType(v: unknown): string {
  * slicing, invariants and every sub-validation (`identifier.system` with a bad `_system` is a missing system). Applied
  * to the instance before validation, copy-on-write. Only a scalar `x` next to `_x`: without one the walker decides.
  */
+/** Objects that only became empty when a bad primitive was dropped: the JSON object had content (checkObject stays quiet). */
+const PARSER_EMPTIED = new WeakSet<object>();
+
 function dropBadPrimitiveForks(node: any, path: string, issues: Issue[]): any {
   if (Array.isArray(node)) {
     let out: any[] | null = null;
@@ -1173,6 +1176,7 @@ function dropBadPrimitiveForks(node: any, path: string, issues: Issue[]): any {
         out ??= { ...node };
         delete out[k];
         delete out[name];
+        if (!Object.keys(out).length) PARSER_EMPTIED.add(out);
       } else if (isObject(v) && !Object.keys(v).length && main !== undefined) {
         // JsonParser.checkObject (JsonParser.java:229-236) on the fork: the element itself stays
         issues.push({ severity: "error", path: `${path}.${name}`, code: "invalid", message: "Object must have some content" });
@@ -3001,7 +3005,7 @@ export class InstanceValidator {
       // property, and FHIRPathEngine.funcHasValue (l. 6208) reads such an element as having a value. Evaluator
       // corpus: every non-choice `{}` (extension, meta, text, code, subject, category[n] …) carries ele-1 in
       // validator_cli 7.0.1, no `value[x]` / `dose[x]` / `effective[x]` `{}` does.
-      if (!this.xmlSource) issues.push({ severity: "error", path: item.path, code: "invalid", message: "Object must have some content" });
+      if (!this.xmlSource && !PARSER_EMPTIED.has(v)) issues.push({ severity: "error", path: item.path, code: "invalid", message: "Object must have some content" });
       if (this.xmlSource || !/\[x\]$/u.test(String(el.path ?? ""))) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
     }
 
@@ -6237,6 +6241,7 @@ export class InstanceValidator {
           out ??= { ...node };
           delete out[key];
           delete out[`_${key}`];
+          if (!Object.keys(out).length) PARSER_EMPTIED.add(out);
         }
         continue;
       }
