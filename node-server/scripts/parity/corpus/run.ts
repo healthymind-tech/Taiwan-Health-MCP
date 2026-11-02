@@ -261,7 +261,7 @@ async function main(): Promise<void> {
       if (item.raw?.error) r.error = item.raw.error;
     } else {
       try {
-        const v = await withTimeout(validate(item, item.instance), timeoutMs);
+        const v = await withTimeout(validate(item, item.instance as Res), timeoutMs);
         r.flags.push(...v.flags);
         if (v.unchecked && Object.keys(v.unchecked).length) r.unchecked = v.unchecked;
         const issues = v.issues.filter((i) => !isContentCheck(i));
@@ -282,7 +282,7 @@ async function main(): Promise<void> {
           }
         }
         for (const target of targets) {
-          const mm = await minimize(item.instance, target, (x) => ours(item, x), { maxSteps: Number(opt("--max-steps") ?? 250) });
+          const mm = await minimize(item.instance as Res, target, (x) => ours(item, x), { maxSteps: Number(opt("--max-steps") ?? 250) });
           if (!mm.reproduced) {
             r.flags.push(`repro-not-reproduced:${target.kind}`);
             continue;

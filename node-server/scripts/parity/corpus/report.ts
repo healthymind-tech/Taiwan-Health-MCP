@@ -23,9 +23,13 @@
  * none —, mutation family), with counts and example ids. --plan writes the top-N buckets' first examples as a
  * corpus/run.ts --repro-plan (class-level targets).
  *
- *   node --import tsx scripts/parity/corpus/report.ts <results.json>... [--md out.md] [--plan plan.json] [--top 30] [--cmd "<re-run command>"]
+ * Also: why items are not fully checked (`unchecked`, see classifyUnchecked; --held held.json from corpus/held.ts says
+ * what terminology this install holds), the all-corpus figures with the network bucket, and the items no tool call can
+ * carry (flag tool-boundary: outside the gate, measured through validateText, with what rejects them in the service).
+ *
+ *   node --import tsx scripts/parity/corpus/report.ts <results.json>... [--md out.md] [--plan plan.json] [--top 30] [--cmd "<re-run command>"] [--held held.json] [--commit <hash>]
  */
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { lenientMessage } from "../lib/compare.js";
 import { readResults } from "./results.js";
 
@@ -39,7 +43,7 @@ interface ErrKey {
 
 const args = process.argv.slice(2);
 const opt = (k: string): string | null => (args.includes(k) ? args[args.indexOf(k) + 1] ?? null : null);
-const valued = new Set(["--md", "--plan", "--top", "--cmd"]);
+const valued = new Set(["--md", "--plan", "--top", "--cmd", "--held", "--commit"]);
 const files = args.filter((a, i) => !a.startsWith("-") && !valued.has(args[i - 1] ?? ""));
 const top = Number(opt("--top") ?? 30);
 
@@ -51,6 +55,51 @@ const items: Res[] = [...byId.values()];
 const isNetwork = (it: Res): boolean => it.family === "profile-typo" || /(?:^|\+)profile-typo\//u.test(String(it.mutation ?? ""));
 const isScalar = (it: Res): boolean => /meta-profile-scalar/u.test(String(it.mutation ?? ""));
 const isOfficialCrash = (it: Res): boolean => !!it.officialCrash || it.skip === "official-crash";
+const isToolBoundary = (it: Res): boolean => (it.flags ?? []).includes("tool-boundary") || (it.flags ?? []).includes("tool-rejected");
+
+type UncheckedClass = "other" | "dependency" | "tx" | "local";
+/** Worst first: an item with several reasons counts under the first of these it has. */
+const UNCHECKED_ORDER: UncheckedClass[] = ["other", "dependency", "tx", "local"];
+const heldFile = opt("--held");
+const heldSystems: Record<string, number> = heldFile ? (JSON.parse(readFileSync(heldFile, "utf8")) as Res).systems : {};
+/** Code systems answered by code here, not by a table. */
+const LOCAL_ENGINES = new Set(["http://unitsofmeasure.org", "urn:ietf:bcp:47", "urn:ietf:bcp:13", "urn:ietf:rfc:3986", "urn:iso:std:iso:3166", "http://hl7.org/fhir/sid/cvx"]);
+const TERMINOLOGY_TABLES = new Set(["http://snomed.info/sct", "http://loinc.org", "http://www.nlm.nih.gov/research/umls/rxnorm", "http://hl7.org/fhir/sid/icd-10-cm", "http://www.cms.gov/Medicare/Coding/ICD10", "http://hl7.org/fhir/sid/icd-10"]);
+/** Installed CodeSystems are keyed by resource id: `<base>/CodeSystem/<id>`. */
+const holdsConcepts = (system: string): boolean => (heldSystems[system] ?? 0) > 0 || (heldSystems[system.split("/").pop() ?? ""] ?? 0) > 0;
+const systemIsLocal = (system: string): boolean => system === "" || LOCAL_ENGINES.has(system) || TERMINOLOGY_TABLES.has(system) || holdsConcepts(system);
+
+/** Each reason an item is not fully checked: (class, what). */
+export function classifyUnchecked(it: Res): Array<[UncheckedClass, string]> {
+  const u: Res = it.unchecked ?? {};
+  const out: Array<[UncheckedClass, string]> = [];
+  for (const d of u.deps_missing ?? []) out.push(["dependency", `package ${typeof d === "string" ? d : `${d.package_id ?? d.id ?? d.name ?? JSON.stringify(d)}`}`]);
+  if (u.lookups_failed) out.push(["other", "database lookups failed"]);
+  if (u.fallback_reason) out.push(["other", "official validator fallback"]);
+  for (const x of u.unverified ?? []) out.push(["other", `unverified ${String(x?.message ?? x).slice(0, 80)}`]);
+  for (const c of u.invariants_unchecked ?? []) out.push(["local", `invariant ${c}`]);
+  for (const c of u.profiles_unchecked ?? []) out.push(isNetwork(it) ? ["other", "instance names an unknown profile (mutation)"] : ["dependency", `profile ${c}`]);
+  for (const c of u.valuesets_unchecked ?? []) out.push(/terminology\.hl7\.org|hl7\.org\/fhir\/ValueSet/u.test(String(c)) ? ["tx", `ValueSet ${c}`] : ["dependency", `ValueSet ${c}`]);
+  const causes: string[] = u.undecided_causes ?? [];
+  const causedVs = new Set<string>();
+  for (const c of causes) {
+    const i = c.indexOf("|");
+    const system = c.slice(0, i);
+    const vs = c.slice(i + 1);
+    causedVs.add(vs);
+    out.push([systemIsLocal(system) ? "local" : "tx", `${system || "(bare code)"} in ${vs}`]);
+  }
+  for (const c of u.codes_unchecked ?? []) {
+    const url = String(c);
+    if (causedVs.has(url)) continue;
+    if (/\/ValueSet\//u.test(url)) out.push(["local", `ValueSet ${url}`]);
+    // a system named directly: the code check said undecided — only the tables / engines here can answer without tx
+    else out.push([LOCAL_ENGINES.has(url) || TERMINOLOGY_TABLES.has(url) ? "local" : "tx", `CodeSystem ${url}`]);
+  }
+  if (!causes.length) for (const c of u.slices_unchecked ?? []) out.push(["local", `slice without a terminology cause ${c}`]);
+  if (!out.length) out.push(["other", "checked_fully=false without a recorded reason"]);
+  return out;
+}
 const k = (e: ErrKey): string => `${e.path} | ${e.cls}`;
 
 /** normalised text for id-less (parse-layer) messages. */
@@ -125,6 +174,13 @@ interface IgStats {
   ocFailValid: number;
   ocFailThrow: number;
   ocNotReceivable: number;
+  /** gate + network: the whole corpus without crash / tool-boundary items */
+  allItems: number;
+  allVerdictMiss: number;
+  allVerdictExtra: number;
+  allOfficialKeys: number;
+  allMissing: number;
+  allExtra: number;
   /** items no tool call can carry (validateText measured the validator, flag tool-boundary) */
   toolBoundary: number;
   /** meta-profile-scalar items in the gate (flagged: batch vs standalone) and their verdict differences */
@@ -156,7 +212,7 @@ const buckets = new Map<string, Bucket>();
 const st = (ig: string): IgStats => {
   let s = stats.get(ig);
   if (!s) {
-    s = { ig, items: 0, compared: 0, officialCrash: 0, rawUnparseable: 0, rawUnparseableOfficialInvalid: 0, crash: 0, offInvalidOursValid: 0, offInvalidOursValidCheckedFully: 0, offValidOursInvalid: 0, notCheckedFully: 0, network: 0, networkVerdictDiff: 0, ocTotal: 0, ocPass: 0, ocFailValid: 0, ocFailThrow: 0, ocNotReceivable: 0, toolBoundary: 0, scalar: 0, scalarVerdictDiff: 0, officialKeys: 0, missing: 0, missingItems: 0, extra: 0, extraItems: 0, strict: 0, lenient: 0, classAgree: 0 };
+    s = { ig, items: 0, compared: 0, officialCrash: 0, rawUnparseable: 0, rawUnparseableOfficialInvalid: 0, crash: 0, offInvalidOursValid: 0, offInvalidOursValidCheckedFully: 0, offValidOursInvalid: 0, notCheckedFully: 0, network: 0, networkVerdictDiff: 0, ocTotal: 0, ocPass: 0, ocFailValid: 0, ocFailThrow: 0, ocNotReceivable: 0, allItems: 0, allVerdictMiss: 0, allVerdictExtra: 0, allOfficialKeys: 0, allMissing: 0, allExtra: 0, toolBoundary: 0, scalar: 0, scalarVerdictDiff: 0, officialKeys: 0, missing: 0, missingItems: 0, extra: 0, extraItems: 0, strict: 0, lenient: 0, classAgree: 0 };
     stats.set(ig, s);
   }
   return s;
@@ -177,12 +233,69 @@ const addBucket = (kind: "missing" | "extra", ig: string, it: Res, e: ErrKey): v
 
 const networkList: Res[] = [];
 const crashFails: Res[] = [];
+interface UncheckedRow {
+  items: number;
+  bundles: number;
+  by: Record<UncheckedClass, number>;
+  onlyLocal: number;
+  anyTx: number;
+  gateBlockedBundles: number;
+}
+const uncheckedRows = new Map<string, UncheckedRow>();
+const uncheckedDetail = new Map<string, { n: number; ex: string }>();
+/** What rejects an item in the service, and how the validator does on it through validateText. */
+interface BoundaryRow {
+  items: number;
+  verdictDiff: number;
+  miss: number;
+  extra: number;
+  officialKeys: number;
+  ex: string;
+}
+const boundary = new Map<string, BoundaryRow>();
+const rejecter = (it: Res): string => {
+  if (it.raw === "unparseable" && /array-root/u.test(String(it.mutation))) return "tool argument schema (z.record: the root is not an object)";
+  if (it.raw === "unparseable" && /empty-file/u.test(String(it.mutation))) return "no request can be formed (empty file)";
+  if (it.raw === "unparseable") return "HTTP body parser (express.json: 400, strict JSON) — the tool is never called";
+  return "the tool (INVALID_ARGUMENT: resource must include a resourceType)";
+};
 for (const it of items) {
   const ig = String(it.ig ?? "?");
   const s = st(ig);
   s.items++;
   const off: ErrKey[] = it.officialErrors ?? [];
   const ours: ErrKey[] = it.ourErrors ?? [];
+  if ((it.flags ?? []).includes("not-checked-fully")) {
+    const row = uncheckedRows.get(ig) ?? { items: 0, bundles: 0, by: { other: 0, dependency: 0, tx: 0, local: 0 }, onlyLocal: 0, anyTx: 0, gateBlockedBundles: 0 };
+    const reasons = classifyUnchecked(it);
+    const cls = new Set(reasons.map(([c]) => c));
+    const worst = UNCHECKED_ORDER.find((c) => cls.has(c))!;
+    row.items++;
+    if (it.kind === "bundle") row.bundles++;
+    row.by[worst]++;
+    if (worst === "local") row.onlyLocal++;
+    if (cls.has("tx")) row.anyTx++;
+    uncheckedRows.set(ig, row);
+    for (const [c, what] of new Map(reasons.map(([c0, w]) => [`${c0}\u0000${w}`, [c0, w] as const])).values()) {
+      const key = `${ig}\u0000${c}\u0000${what}`;
+      const v = uncheckedDetail.get(key) ?? { n: 0, ex: String(it.id) };
+      v.n++;
+      uncheckedDetail.set(key, v);
+    }
+  }
+  if (isToolBoundary(it) && !isOfficialCrash(it)) {
+    s.toolBoundary++;
+    const key = `${ig}\u0000${rejecter(it)}`;
+    const b = boundary.get(key) ?? { items: 0, verdictDiff: 0, miss: 0, extra: 0, officialKeys: 0, ex: String(it.id) };
+    b.items++;
+    if (!off.length !== !ours.length) b.verdictDiff++;
+    const r = matchErrors(off, ours);
+    b.miss += r.miss.length;
+    b.extra += r.extra.length;
+    b.officialKeys += off.length;
+    boundary.set(key, b);
+    continue;
+  }
   if (isOfficialCrash(it)) {
     s.ocTotal++;
     if (it.skip === "raw-unparseable") s.ocNotReceivable++;
@@ -205,7 +318,15 @@ for (const it of items) {
     s.crash++;
     continue;
   }
-  if ((it.flags ?? []).includes("tool-boundary")) s.toolBoundary++;
+  {
+    const r = matchErrors(off, ours);
+    s.allItems++;
+    if (off.length && !ours.length) s.allVerdictMiss++;
+    if (!off.length && ours.length) s.allVerdictExtra++;
+    s.allOfficialKeys += off.length;
+    s.allMissing += r.miss.length;
+    s.allExtra += r.extra.length;
+  }
   if (isNetwork(it)) {
     s.network++;
     if (!off.length !== !ours.length) {
@@ -242,7 +363,8 @@ const lines: string[] = [];
 const cmd = opt("--cmd");
 lines.push("# Differential corpus — TS validator vs validator_cli 7.0.1 (evaluator corpus)", "");
 if (cmd) lines.push("Re-run:", "", "```bash", cmd, "```", "");
-lines.push(`Generated ${new Date().toISOString()} from ${files.length} result file(s), ${items.length} items.`, "");
+const commit = opt("--commit");
+lines.push(`Generated ${new Date().toISOString()} from ${files.length} result file(s), ${items.length} items${commit ? `, code ${commit}` : ""}.`, "");
 lines.push("## Per-IG acceptance metrics", "");
 lines.push("| IG | items | gate items | verdict diff (miss + extra) | verdict miss: official invalid, ours valid | true miss (… and checked_fully) | verdict extra: official valid, ours invalid | official error keys | missing keys (items) | extra keys (items) | extra rate | official-crash bucket: PASS / total (FAIL valid, FAIL throw, not receivable) | network-dependent: items (verdict diff) | meta-profile-scalar flagged (verdict diff) | raw unparseable (official invalid) | harness crash | tool-boundary | ours checked_fully=false | strict agree | lenient agree | class agree |");
 lines.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
@@ -260,6 +382,33 @@ lines.push(
   "Errors only (error + fatal; MCP content checks dropped). An official error with a Java message_id matches ours by (normalised path, classify.errorClass); one without (parse layer) by (normalised path, normalised text). Gate items exclude official-crash, network-dependent (profile-typo) and raw-unparseable items. Acceptance: verdict differences 0, missing 0, extra rate < 0.1%.",
   "",
 );
+lines.push("## All corpus, network bucket included (gate + network; official-crash and tool-boundary items apart)", "");
+lines.push("| IG | items | verdict miss | verdict extra | official keys | missing keys | extra keys | extra rate | gate extra rate |", "|---|---|---|---|---|---|---|---|---|");
+const allRow = (s: IgStats): string => `| ${s.ig} | ${s.allItems} | ${s.allVerdictMiss} | ${s.allVerdictExtra} | ${s.allOfficialKeys} | ${s.allMissing} | ${s.allExtra} | ${pct(s.allExtra, s.allOfficialKeys)} | ${pct(s.extra, s.officialKeys)} |`;
+for (const s of all) lines.push(allRow(s));
+if (all.length > 1) lines.push(allRow(Object.fromEntries(Object.keys(all[0]).map((key) => [key, key === "ig" ? "**all**" : sum((s) => (s as any)[key])])) as unknown as IgStats));
+lines.push("");
+lines.push("## Items no tool call can carry (tool-boundary): what rejects them, and the validator on them through validateText", "");
+lines.push("Outside the gate. The rejection is the service's answer; the columns measure InstanceValidator.validateText over the same database resolver.", "");
+lines.push("| IG | rejected by | items | verdict diff | official keys | missing keys | extra keys | example |", "|---|---|---|---|---|---|---|---|");
+for (const [key, b] of [...boundary].sort((x, y) => x[0].localeCompare(y[0]))) {
+  const [ig, by] = key.split("\u0000");
+  lines.push(`| ${ig} | ${by} | ${b.items} | ${b.verdictDiff} | ${b.officialKeys} | ${b.miss} | ${b.extra} | \`${b.ex}\` |`);
+}
+lines.push("");
+lines.push("## Why items are not fully checked (checked_fully=false blocks the release gate)", "");
+lines.push("Each item counts under its worst reason: other > IG dependency missing > needs tx > locally decidable. `only local` = fixing local decisions frees the item (goal: 0 locally decidable). `any tx` = stays undecided in an intranet deployment for that reason; `undecided offline` = every item that is not only-local.", "");
+lines.push("| IG | not fully checked | of which Bundles | other | IG dependency missing | needs tx, not cached | locally decidable (only local) | any tx reason | undecided offline |", "|---|---|---|---|---|---|---|---|---|");
+const ur = [...uncheckedRows].sort((a, b) => a[0].localeCompare(b[0]));
+const urSum = (f: (r: UncheckedRow) => number): number => ur.reduce((a, [, r]) => a + f(r), 0);
+for (const [ig, r] of ur) lines.push(`| ${ig} | ${r.items} | ${r.bundles} | ${r.by.other} | ${r.by.dependency} | ${r.by.tx} | ${r.onlyLocal} | ${r.anyTx} | ${r.items - r.onlyLocal} |`);
+lines.push(`| **all** | ${urSum((r) => r.items)} | ${urSum((r) => r.bundles)} | ${urSum((r) => r.by.other)} | ${urSum((r) => r.by.dependency)} | ${urSum((r) => r.by.tx)} | ${urSum((r) => r.onlyLocal)} | ${urSum((r) => r.anyTx)} | ${urSum((r) => r.items - r.onlyLocal)} |`);
+lines.push("", "Top reasons (an item counts once per reason; example = a representative case):", "", "| IG | class | reason | items | example |", "|---|---|---|---|---|");
+for (const [key, v] of [...uncheckedDetail].sort((a, b) => b[1].n - a[1].n).slice(0, 80)) {
+  const [ig, c, what] = key.split("\u0000");
+  lines.push(`| ${ig} | ${c} | ${what.replace(/\|/g, "\\|").slice(0, 150)} | ${v.n} | \`${v.ex}\` |`);
+}
+lines.push("");
 lines.push("## Official-crash bucket: FAIL items (TS said valid, threw or timed out)", "");
 for (const it of crashFails.slice(0, 40)) lines.push(`- \`${it.id}\` (${it.ig}, ${it.family}/${it.mutation}): ${it.status === "crash" || !it.comparison ? `TS ${String(it.error ?? "not run").split("\n")[0].slice(0, 120)}` : "TS valid"}`);
 if (crashFails.length > 40) lines.push(`- ... ${crashFails.length - 40} more`);
