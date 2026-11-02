@@ -5,6 +5,7 @@
 #   oracle.sh setup                                     compile the drivers, create the work dir
 #   oracle.sh fhirpath [out.json]                       FHIRPath suite -> jar results (fhirpath/run.ts --oracle)
 #   oracle.sh suite [out.jsonl] [--only a,b]            official validator cases -> jar outcomes (testcases/run.ts --oracle)
+#   oracle.sh probe [SdProbe options]                   a definition as the jar loaded it, an expression on an element
 #   oracle.sh validate <input...> [validator_cli options]   the CLI itself on your files, e.g.
 #       oracle.sh validate my.json -ig tw.gov.mohw.twcore#1.0.0 -profile https://example.org/StructureDefinition/x
 #     prints the OperationOutcome (JSON) on stdout; the CLI's log goes to stderr; exit 3 = the CLI crashed, no outcome.
@@ -87,6 +88,15 @@ case "$cmd" in
     jvm -cp /work/classes:/oracle/validator_cli.jar oracle.SuiteOracle --tc /tc --tx-cache /work/txCache --out "/work/out/${ORACLE_OUT:-suite-jar.jsonl}" "$@"
     [ -z "$dest" ] || cp "$WORK/out/${ORACLE_OUT:-suite-jar.jsonl}" "$dest"
     echo "oracle: ${dest:-$WORK/out/${ORACLE_OUT:-suite-jar.jsonl}}"
+    ;;
+  probe)
+    # oracle/SdProbe: the loaded definition and an expression on an element, as the jar has them. Files under $WORK/in.
+    with_lock
+    mkdir -p "$WORK/classes-probe"
+    docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+      -v "$JAR:/oracle/validator_cli.jar:ro" -v "$HERE/java:/src:ro" -v "$WORK/classes-probe:/classes" \
+      --entrypoint javac "$JDK_IMAGE" -nowarn -cp /oracle/validator_cli.jar -d /classes /src/oracle/SdProbe.java
+    jvm -cp /work/classes-probe:/oracle/validator_cli.jar oracle.SdProbe --tx-cache "/work/$TX_DIR-fhirpath" "$@"
     ;;
   validate)
     with_lock
