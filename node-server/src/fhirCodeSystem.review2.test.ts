@@ -184,3 +184,13 @@ test("preferServerSide: SERVER_SIDE_LIST, then the capability list", () => {
   for (const c of ["http://standardterms.edqm.eu", "http://terminology.hl7.org/CodeSystem/icd-o-3", "http://id.who.int/icd/release/11/mms"]) assert.equal(serverPrefers(c), true, c);
   assert.equal(serverPrefers("http://hospital.example/cs"), false);
 });
+
+test("ROUND 11: Unknown code names the CodeSystem's own url; a string property filters by its value (USE = 1)", () => {
+  const cs = { ...CS, url: "http://x/ValueSet/own-url", version: "2", property: [{ code: "USE", type: "string" }], concept: [{ code: "A", property: [{ code: "USE", valueString: "0" }] }, { code: "B", property: [{ code: "USE", valueString: "1" }] }] };
+  const idx = indexCodeSystem(cs);
+  const r = judgeHeldCodeSystem(idx, "http://x/CodeSystem/index-url", "Z", null);
+  assert.equal(r && "message" in r && r.message, "Unknown code 'Z' in the CodeSystem 'http://x/ValueSet/own-url' version '2'");
+  const f = { property: "USE", op: "=", value: "1" };
+  assert.equal(codeInFilter(idx, f, findConcept(idx, "B")!), true);
+  assert.equal(codeInFilter(idx, f, findConcept(idx, "A")!), false);
+});

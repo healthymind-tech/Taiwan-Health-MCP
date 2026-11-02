@@ -257,11 +257,13 @@ export function judgeHeldCodeSystem(idx: CodeSystemIndex, system: string, code: 
   if (!c) {
     if (idx.content === "complete") {
       // REVIEW_port_2 G11: the validator judges a held complete CodeSystem (DICOM included) locally — an error
-      return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}'${ver}` };
+      // ValueSetValidator l. 1275 names cs.getUrl(), the CodeSystem's own url (jar: TW Core 0.3.2 icd-10-cm-2023-tw, found through
+      // the package index under …/CodeSystem/…, is reported as …/ValueSet/…)
+      return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${idx.url ? idx.url.split("|")[0] : system}'${ver}` };
     }
     // ValueSetValidator l. 1266-1270 UNKNOWN_CODE_IN_FRAGMENT
     if (idx.content === "fragment") {
-      return { status: "invalid-code", severity: "warning", message: `Unknown Code '${code}' in the CodeSystem '${system}' version '${idx.version ?? "null"}' - note that the code system is labeled as a fragment, so the code may be valid in some other fragment` };
+      return { status: "invalid-code", severity: "warning", message: `Unknown Code '${code}' in the CodeSystem '${idx.url ? idx.url.split("|")[0] : system}' version '${idx.version ?? "null"}' - note that the code system is labeled as a fragment, so the code may be valid in some other fragment` };
     }
     // ValueSetValidator l. 864-888: not judged on example content, the exception's warningMessage
     if (idx.content === "example") {
