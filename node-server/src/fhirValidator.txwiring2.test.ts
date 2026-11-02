@@ -311,3 +311,66 @@ test("a value of another type on a bound primitive, coding as an object, an empt
   await v.checkQuantity({ value: 2, system: "", code: "mg" }, { path: "X.valueQuantity" }, e);
   assert.ok(e.some((i) => i.path === "X.valueQuantity.system" && /absolute reference/.test(i.message)), JSON.stringify(e));
 });
+
+const CP = "http://x/StructureDefinition/cond-coding-ext";
+const SMALL = "http://x/ValueSet/small-gender";
+const UP = "http://x/StructureDefinition/pat-ucum";
+const UCUMVS = "http://x/ValueSet/units";
+const GENDER = "http://hl7.org/fhir/administrative-gender";
+class CodingBindingResolver extends FakeResolver {
+  async fetchStructureDefinition(url: string): Promise<Json | null> {
+    const u = url.split("|")[0];
+    if (u === CP) {
+      const base = JSON.parse(JSON.stringify(await super.fetchStructureDefinition(CORE + "Condition")));
+      base.url = CP;
+      base.derivation = "constraint";
+      const at = base.snapshot.element.findIndex((e: Json) => e.path === "Condition.code");
+      base.snapshot.element[at].binding = undefined;
+      base.snapshot.element.splice(at + 1, 0, { id: "Condition.code.coding", path: "Condition.code.coding", min: 0, max: "*", type: [{ code: "Coding" }], binding: { strength: "extensible", valueSet: SMALL } });
+      return base;
+    }
+    if (u === UP) {
+      const base = JSON.parse(JSON.stringify(await super.fetchStructureDefinition(CORE + "Patient")));
+      base.url = UP;
+      base.derivation = "constraint";
+      for (const e of base.snapshot.element) if (e.path === "Patient.gender") e.binding = { strength: "required", valueSet: UCUMVS };
+      return base;
+    }
+    return super.fetchStructureDefinition(url);
+  }
+  async fetchValueSet(url: string): Promise<Json | null> {
+    const u = url.split("|")[0];
+    if (u === SMALL) return { resourceType: "ValueSet", url: SMALL, version: "1.0", title: "Small", compose: { include: [{ system: GENDER, concept: [{ code: "male" }] }] } };
+    if (u === UCUMVS) return { resourceType: "ValueSet", url: UCUMVS, version: "1.0", title: "Units", compose: { include: [{ system: "http://unitsofmeasure.org" }] } };
+    return super.fetchValueSet(url);
+  }
+  async valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
+    const u = url.split("|")[0];
+    if (u === SMALL) return code === "male";
+    if (u === UCUMVS) return code === "mg";
+    return super.valueSetContains(url, system, code);
+  }
+}
+
+test("Terminology_TX_NoValid_13: a coding outside an extensible binding (IV tag 7.0.1:2530), the system's complaint in its {1}", async () => {
+  const run = async (coding: Json): Promise<Issue[]> => {
+    const r = await new InstanceValidator(new CodingBindingResolver()).validate({ resourceType: "Condition", id: "c", meta: { profile: [CP] }, code: { coding: [coding] }, subject: { reference: "Patient/p" } });
+    return r.filter((i) => i.path === "Condition.code.coding[0]" && i.severity === "warning");
+  };
+  const head = `The Coding provided (${GENDER}#female) was not found in the value set 'Small' (${SMALL}|1.0), and a code should come from this value set unless it has no suitable code (note that the validator cannot judge what is suitable).  (error message = `;
+  const plain = await run({ system: GENDER, code: "female" });
+  assert.deepEqual(plain.map((i) => i.message), [`${head}The provided code '${GENDER}#female' was not found in the value set '${SMALL}|1.0')`]);
+  const wrong = await run({ system: GENDER, code: "female", display: "nope" });
+  assert.deepEqual(wrong.map((i) => i.message), [`${head}The provided code '${GENDER}#female ('nope')' was not found in the value set '${SMALL}|1.0'; Wrong Display Name 'nope')`]);
+  assert.deepEqual(await run({ system: GENDER, code: "male" }), []);
+});
+
+test("systemForCodeInValueSet: a bare code UCUM's grammar rejects is UNABLE_TO_INFER_CODESYSTEM + Terminology_TX_NoValid_16 (jar: ucum-units, ZZZ-9)", async () => {
+  const run = async (gender: string): Promise<string[]> => errors(await new InstanceValidator(new CodingBindingResolver()).validate({ resourceType: "Patient", id: "p", meta: { profile: [UP] }, gender })).map((i) => i.message).filter((m) => m.includes(UCUMVS));
+  const infer = `The System URI could not be determined for the code 'ZZZ-9' in the ValueSet '${UCUMVS}|1.0'`;
+  assert.deepEqual(await run("ZZZ-9"), [
+    infer,
+    `The value provided ('ZZZ-9') was not found in the value set 'Units' (${UCUMVS}|1.0), and a code is required from this value set  (error message = ${infer}; The provided code '#ZZZ-9' was not found in the value set '${UCUMVS}|1.0')`,
+  ]);
+  assert.deepEqual(await run("mg"), []);
+});

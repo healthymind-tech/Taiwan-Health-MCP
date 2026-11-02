@@ -45,7 +45,7 @@ import { XVER_SOURCE, xverDefinition, xverElementId, xverMatchingUrl, xverStatus
 import { CANONICAL_RESOURCES, hl7UrlMustResolve, uriResolutionExempt, urlResolveMessage, urnSyntaxIssue } from "./fhirUriRules.js";
 import { codingVersionIssue } from "./fhirExternalTerminology.js";
 import { codingVersionIssues } from "./fhirCsVersion.js";
-import { isAbsoluteUrl, serverPrefers } from "./fhirSpecialSystems.js";
+import { isAbsoluteUrl, serverPrefers, specialSystemMember } from "./fhirSpecialSystems.js";
 import { validateCodeSystemResource } from "./fhirCodeSystemResource.js";
 import { validateConceptMapResource } from "./fhirConceptMapResource.js";
 import { validateValueSetResource } from "./fhirValueSetResource.js";
@@ -6030,7 +6030,8 @@ export class InstanceValidator {
   /** "; <code system message>" for a Coding its CodeSystem rejects (the {1} of Terminology_TX_NoValid_12). */
   private async codeProblem(c: any): Promise<string> {
     if (!isObject(c) || typeof c.system !== "string" || typeof c.code !== "string") return "";
-    const r = await this.codeCheck(c.system, c.code, null, typeof c.version === "string" ? c.version : null);
+    const r = await this.codeCheck(c.system, c.code, typeof c.display === "string" && c.display ? c.display : null, typeof c.version === "string" ? c.version : null);
+    if (r.status === "invalid-display" && r.severity === "error") return `; ${r.message}`;
     return r.status === "invalid-code" && !r.undecided ? `; ${r.message}` : "";
   }
 
@@ -6048,6 +6049,12 @@ export class InstanceValidator {
       const key = typeof inc.version === "string" && inc.version ? `${system}|${inc.version}` : system;
       if (Array.isArray(inc.concept) && inc.concept.length) {
         if (inc.concept.some((c: any) => isObject(c) && c.code === code)) found.add(key);
+        continue;
+      }
+      // a grammar system decides here as it does for membership (UCUM stays undecided in checkCode: fhirUcum judges it)
+      const special = specialSystemMember(system, code);
+      if (special !== undefined) {
+        if (special) found.add(key);
         continue;
       }
       const r = await this.codeCheck(system, code, null, null);
@@ -6364,6 +6371,9 @@ export class InstanceValidator {
         problem = "";
       }
     }
+    // The server's message in the {1} of Terminology_TX_NoValid_12 / _13: "(error message = ...)" (official jar text)
+    const codingNotFound = (c0: Record<string, unknown>): string =>
+      `The provided code '${shown}${typeof c0.display === "string" && c0.display ? ` ('${c0.display}')` : ""}' was not found in the value set '${vs.url}${vs.version ? `|${vs.version}` : ""}'${problem}`;
     if (strength === "required") {
       issues.push({
         severity: "error",
@@ -6378,7 +6388,7 @@ export class InstanceValidator {
                 // text)
                 (() => {
                   const c0 = isObject(list[0]) ? list[0] : {};
-                  const provided = `${unknownInVs}The provided code '${shown}${typeof c0.display === "string" && c0.display ? ` ('${c0.display}')` : ""}' was not found in the value set '${vs.url}${vs.version ? `|${vs.version}` : ""}'${problem}`;
+                  const provided = `${unknownInVs}${codingNotFound(c0)}`;
                   // Terminology_TX_Confirm_4a when the server answered with an error class (SNOMED CT, LOINC, an unknown system);
                   // Terminology_TX_NoValid_12 for a CodeSystem validated locally (official corpus, unknown-code family)
                   const server = !!unknownInVs || c0.system === "http://snomed.info/sct" || c0.system === "http://loinc.org";
@@ -6404,7 +6414,10 @@ export class InstanceValidator {
               : unknownSystemMember && typeCode === "Coding"
                 ? // Terminology_TX_Confirm_5 (validateBindingTerminologyCoding, IV tag 7.0.1:2518)
                   `The code provided (${shown}) is not in the value set ${vsRef}, and a code should come from this value set unless it has no suitable code (the validator cannot judge what is suitable)`
-                : `None of the codings provided are in the value set ${label}, and a coding should come from this value set unless it has no suitable code (codes = ${shown})`,
+                : typeCode === "Coding"
+                  ? // Terminology_TX_NoValid_13 (validateBindingTerminologyCoding, IV tag 7.0.1:2530)
+                    `The Coding provided (${shown}) was not found in the value set ${vsRef}, and a code should come from this value set unless it has no suitable code (note that the validator cannot judge what is suitable).  (error message = ${codingNotFound(isObject(list[0]) ? list[0] : {})})`
+                  : `None of the codings provided are in the value set ${label}, and a coding should come from this value set unless it has no suitable code (codes = ${shown})`,
         });
       }
       if (maxUrl) await this.checkMaxValueSet(maxUrl, codings, typeCode, item, issues);
