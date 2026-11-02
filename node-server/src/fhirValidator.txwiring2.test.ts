@@ -280,7 +280,7 @@ test("Coding.system: a number is read as its text, a value with whitespace only 
   await v.checkCoding({ system: 1, code: "a" }, { path: "X" }, a);
   assert.deepEqual(a.map((i) => i.message), ["Coding.system must be an absolute reference, not a local reference"]);
   const b: Issue[] = [];
-  await v.checkCoding({ system: "not a uri with spaces", code: "a" }, { path: "X" }, b);
+  await v.checkCoding({ system: "not a uri with spaces", code: "a" }, { path: "X" }, b, { path: "CodeableConcept.coding" });
   assert.ok(!b.some((i) => /absolute reference/.test(i.message)), JSON.stringify(b));
 });
 
@@ -294,6 +294,13 @@ test("a value of another type on a bound primitive, coding as an object, an empt
   const c: Issue[] = [];
   await v.checkCoding({ system: "", code: "a" }, { path: "X.sopClass" }, c);
   assert.deepEqual(c.filter((i) => i.severity === "error").map((i) => i.path), ["X.sopClass"]);
+  const ws: Issue[] = [];
+  await v.checkCoding({ system: " http://example.org", code: "a" }, { path: "X.sopClass" }, ws);
+  assert.deepEqual(ws.map((i) => i.path), ["X.sopClass"]);
+  const boundWs: Issue[] = [];
+  (v as any).vsHeader = async (u: string) => (u === "http://x/vs" ? { url: u } : null);
+  await v.checkCoding({ system: " http://example.org", code: "a" }, { path: "X.class" }, boundWs, { path: "X.class", binding: { strength: "extensible", valueSet: "http://x/vs" } });
+  assert.ok(!boundWs.some((i) => /absolute reference/.test(i.message)), JSON.stringify(boundWs));
   const q: Issue[] = [];
   await v.checkQuantity({ value: 2, system: "http://unitsofmeasure.org", code: "" }, { path: "X.valueQuantity" }, q);
   assert.deepEqual(q.map((i) => `${i.severity} ${i.message}`), ["warning Coding has no code for system http://unitsofmeasure.org and cannot be validated", "error Coding has no code for system http://unitsofmeasure.org and cannot be validated (for 'http://unitsofmeasure.org#')"]);

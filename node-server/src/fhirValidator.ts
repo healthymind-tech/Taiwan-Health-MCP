@@ -3550,8 +3550,12 @@ export class InstanceValidator {
     }
 
     if (!isObject(v)) {
-      // a value the parser accepted as its own (base) type, validated as the profile's type: no JSON shape error here
-      if (item.profileType) return;
+      // a value the parser accepted as its own (base) type, validated as the profile's type: no JSON shape error here, and
+      // to that type it has no content (jar alone: No code provided on a valueInteger bound as a CodeableConcept)
+      if (item.profileType) {
+        await this.checkBinding(el, {}, typeCode, item, issues, null);
+        return;
+      }
       issues.push({
         severity: "error",
         path: item.jpath ?? item.path,
@@ -6058,6 +6062,10 @@ export class InstanceValidator {
         else if (strength === "preferred") issues.push({ severity: "warning", path: item.path, code: "code-invalid", message: `None of the codings provided are in the value set ${desc}, and a coding is recommended to come from this value set (codes = ${shown})` });
         return;
       }
+      // checkPrimitive l. 3250: an empty value of a bound primitive
+      if (v === "" && strength === "required" && ["code", "string", "uri", "url", "canonical"].includes(typeCode) && !issues.some((i) => i.path === item.path && i.message === "No code provided, and a code is required from the value set")) {
+        issues.push({ severity: "error", path: item.path, code: "code-invalid", message: "No code provided, and a code is required from the value set" });
+      }
       if (typeCode === "CodeableConcept" && strength === "required") {
         issues.push({ severity: "error", path: item.path, code: "code-invalid", message: `No code provided, and a code is required from the value set '${vs.title || vs.name || url}' (${vs.url}${vs.version ? `|${vs.version}` : ""})` });
       }
@@ -6509,9 +6517,15 @@ export class InstanceValidator {
     }
     // isSystemReferenceValid; a value with whitespace only gets the URI rule (official corpus), a number is read as its text
     const written = typeof system === "number" || typeof system === "boolean" ? String(system) : system;
-    // an empty system is one too (a Coding on its own reports it on itself, official corpus: ImagingStudy…sopClass)
-    if (written === "" && !inCC) issues.push({ severity: "error", path: item.path, code: "code-invalid", message: "Coding.system must be an absolute reference, not a local reference" });
-    if (typeof written === "string" && written && !/\s/.test(written)) {
+    // checkCodedElement l. 2447-2448, only when no binding check ran: a Coding on its own reports it on itself, whatever the
+    // value (jar alone: ImagingStudy…sopClass, its value set is not found; official corpus: Encounter.class, bound, has none)
+    const bindingRan = !!el && isObject(el.binding) && !!el.binding.valueSet && el.binding.strength !== "example" && !!(await this.vsHeader(String(el.binding.valueSet)));
+    if (!inCC && typeof written === "string" && !bindingRan) {
+      if (!/^(?:https?|urn):/.test(written)) {
+        issues.push({ severity: "error", path: item.path, code: "code-invalid", message: "Coding.system must be an absolute reference, not a local reference" });
+        return;
+      }
+    } else if (typeof written === "string" && written && !/\s/.test(written)) {
       if (!/^[a-z][a-z0-9+.-]*:/i.test(written)) {
         issues.push({ severity: "error", path: `${item.path}.system`, code: "code-invalid", message: "Coding.system must be an absolute reference, not a local reference" });
         return;
@@ -6701,7 +6715,8 @@ export class InstanceValidator {
       if (dp > Number(maxDp)) issues.push({ severity: "error", path, code: "structure", message: `Found ${dp} decimal places which exceeds the stated limit of ${maxDp} digits` });
     }
 
-    if (system === "") err("Coding.system must be an absolute reference, not a local reference", "code-invalid"), (issues[issues.length - 1].path = `${path}.system`);
+    // jar alone: `.system` as well as the Quantity itself when the unit check runs
+    if (system !== null && !/\s/.test(system) && !/^(?:https?|urn):/.test(system)) issues.push({ severity: "error", path: `${path}.system`, code: "code-invalid", message: "Coding.system must be an absolute reference, not a local reference" });
     if (system && code === "") {
       // the server's answer to a unit without a code; Terminology_PassThrough_TX_Message names system#code
       const message = `Coding has no code for system ${system} and cannot be validated`;
