@@ -283,6 +283,12 @@ export interface ValidatorResolver {
    * null when that version is not installed in the package closure.
    */
   fetchStructureDefinition(url: string): Promise<Record<string, any> | null>;
+  /**
+   * BaseWorkerContext.fetchResource with a sourceForReference (l. 2531-2533, populatePVList l. 2685-2702): the version of
+   * `url` seen from the package of `source`: that package, then its dependencies breadth-first. Null when none of them holds
+   * it, or `source` comes from no package, or from a core one (ProfileUtilities.findProfile "switch the extension pack in").
+   */
+  scopedDefinitionVersion?(url: string, source: Record<string, any>): Promise<string | null>;
   /** ValueSet header (url/title) or null when the ValueSet is not held (`|version` honoured as above). */
   fetchValueSet(url: string): Promise<Record<string, any> | null>;
   /** Membership; system null for bare `code` values. undefined = cannot decide locally. `|version` honoured. */
@@ -1972,6 +1978,13 @@ export class InstanceValidator {
       this.sdCache.set(key, p);
     }
     return p;
+  }
+
+  /** ProfileUtilities.findProfile(url, source): an unversioned reference made by a profile resolves in its package first. */
+  private async scopedSdx(url: string, from: SdIndex): Promise<SdIndex | null> {
+    if (url.includes("|") || !this.resolver.scopedDefinitionVersion) return this.sdx(url);
+    const version = await this.resolver.scopedDefinitionVersion(url, from.sd);
+    return version ? ((await this.sdx(`${url}|${version}`)) ?? this.sdx(url)) : this.sdx(url);
   }
 
   /** The installed StructureDefinition for `url` when it exists but has no (generated) snapshot, else null. */
@@ -3677,7 +3690,7 @@ export class InstanceValidator {
         if (typeCode === "Extension" && !typeProfile) {
           tsdx = await this.extensionDefinition(sdx, item, issues);
         } else {
-          tsdx = typeProfile ? await this.sdx(typeProfile) : null;
+          tsdx = typeProfile ? await this.scopedSdx(typeProfile, sdx) : null;
           if (typeProfile && !tsdx) {
             // Port of InstanceValidator.checkChildByDefinition (7.0.1) l. 8104-8113: a type profile that cannot be
             // resolved — with or without a version — is Validation_VAL_Unknown_Profile (error). The value is still
@@ -3722,7 +3735,7 @@ export class InstanceValidator {
       const tr = (el.type || []).find((t: any) => typeCodeOf(t) === typeCode);
       const profs: string[] = tr && Array.isArray(tr.profile) ? tr.profile.map(String) : [];
       if (profs.length === 1 && !((el.type || []).length > 1 && typeCode === "Reference")) {
-        const psdx = await this.sdx(profs[0]);
+        const psdx = await this.scopedSdx(profs[0], sdx);
         if (!psdx) {
           issues.push({ severity: "error", path: item.path, code: "structure", message: `Unknown profile ${profs[0]}`, unchecked: { kind: "profile", canonical: profs[0] } });
         } else {
@@ -3905,7 +3918,7 @@ export class InstanceValidator {
     if (absolute) {
       // checkExtension l. 2584-2618: the definition is looked up without the version; a '|' in the url is then judged
       const pipe = url.indexOf("|");
-      const unversioned = pipe >= 0 ? await this.sdx(url.slice(0, pipe)) : await this.sdx(url);
+      const unversioned = await this.scopedSdx(pipe >= 0 ? url.slice(0, pipe) : url, parentSdx);
       if (unversioned) {
         if (pipe >= 0) {
           const at = `${item.path}[url='${url}']`;

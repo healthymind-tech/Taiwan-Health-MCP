@@ -545,6 +545,35 @@ test("wrong choice: a value of another type, validated as the extension's (jar o
   assert.ok(!q.some(([, m]) => m.includes("definition allows for the types")), JSON.stringify(q));
 });
 
+test("findProfile(url, source): an unversioned extension reference from a package's profile takes the version of that package's closure (jar: 4.0.1 and 5.4.0)", async () => {
+  const E = "http://example.org/fhir/StructureDefinition/scoped-ext";
+  const def = (version: string, type: string) => sd(E, "Extension", "complex-type", [
+    el("Extension", 0, "*", []),
+    el("Extension.url", 1, "1", ["uri"], { fixedUri: E }),
+    el("Extension.value[x]", 1, "1", [type]),
+  ], { baseDefinition: CORE + "Extension", derivation: "constraint", version, context: [{ type: "element", expression: "Element" }] });
+  EXTRA[E] = def("5.0.0", "string");
+  EXTRA[`${E}|4.0.0`] = def("4.0.0", "integer");
+  const P = "http://example.org/fhir/StructureDefinition/scoped-profile";
+  EXTRA[P] = sd(P, "Patient", "resource", SDS[CORE + "Patient"].snapshot.element, { baseDefinition: CORE + "Patient", derivation: "constraint" });
+  const asked: string[] = [];
+  class R5 extends Resolver {
+    override async fetchStructureDefinition(url: string): Promise<Json | null> {
+      return EXTRA[url] ?? super.fetchStructureDefinition(url);
+    }
+    async scopedDefinitionVersion(url: string, source: Json): Promise<string | null> {
+      asked.push(`${source.url} -> ${url}`);
+      return source.url === P && url === E ? "4.0.0" : null;
+    }
+  }
+  const go = (profiles: string[]) => new InstanceValidator(new R5()).validate({ resourceType: "Patient", extension: [{ url: E, valueString: "x" }] }, { profiles });
+  const scoped = await go([P]);
+  assert.ok(scoped.some((i) => i.severity === "error" && i.message.includes("definition allows for the types [integer] but found type string")), JSON.stringify(scoped));
+  assert.ok(asked.includes(`${P} -> ${E}`), JSON.stringify(asked));
+  const unscoped = await go([]);
+  assert.ok(!unscoped.some((i) => i.severity === "error" && i.message.includes("definition allows for the types")), JSON.stringify(unscoped));
+});
+
 test("F10 invariants with memberOf() / conformsTo() are evaluated (FHIRPathEngine.funcMemberOf, funcConformsTo)", async () => {
   const NEED = "http://example.org/fhir/StructureDefinition/pat-need-birth";
   EXTRA[NEED] = sd(NEED, "Patient", "resource", [

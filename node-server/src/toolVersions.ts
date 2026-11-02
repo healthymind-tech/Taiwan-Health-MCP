@@ -263,7 +263,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.79.0 (parity v3 tx-validator-wiring, round 9): SERVER_SIDE_LIST before the capability list, a value of another type on a bound primitive, coding as an object, an empty system, a unit without a code.
   // 1.79.0: a whitespace-only display is ignored only where the terminology server answers; a CodeSystem held complete judges it (jar, one item per JVM).
   // 1.81.0 (parity v3 wrong choice, jar): parser shape by the written type, children of a value of another type against the profile's type, slices on the written type, core Extension pass.
-  fhir_validate_bundle: "1.83.0",
+  // 1.84.0 (parity v3 wrong choice round 2, jar): references from the parser's tree, extension and type profiles resolved in the referring profile's package (findProfile), NotSlice beside an unknown type, the parser's tree of a value of another type, discriminator text as ExpressionNode.toString.
+  fhir_validate_bundle: "1.84.0",
   // 1.80.0 (parity v3 tx-validator-wiring, ROUND 9): a system neither held nor preferred by the server is fully checked: the validator's warning, no-local-data in extended_findings.
   // 1.81.0 (parity v3 tx-validator-wiring, ROUND 10, each checked on the jar alone): No code provided on a value of another type and on an empty bound primitive; Coding.system of a Coding on its own and of a Quantity.
   // 1.75.0 (parity v3 tx-validator-wiring, round 9): a coding without a code is a coding (NoValid_*_CC, NO_CODE_PROVIDED_VERSION, the server's Coding has no code); Coding.system of a number or with whitespace as the validator.
@@ -340,7 +341,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.66.0: validation as fhir_validate_bundle 1.69.0 (parity v3 review-structure, checked on the jar).
   // 1.76.0: validation as fhir_validate_bundle 1.79.0.
   // 1.78.0: validation as fhir_validate_bundle 1.81.0.
-  fhir_validate_resource: "1.80.0",
+  // 1.81.0: validation as fhir_validate_bundle 1.84.0.
+  fhir_validate_resource: "1.81.0",
   // 1.77.0: validation as fhir_validate_bundle 1.80.0.
   // 1.78.0: validation as fhir_validate_bundle 1.81.0.
   // 1.72.0: validation as fhir_validate_bundle 1.75.0.

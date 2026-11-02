@@ -273,6 +273,39 @@ export function rankHl7Current<T extends ArtifactCandidate & { version?: string 
   return [...ranked].sort(cmp);
 }
 
+/** The version `url` has in the first package of `source`'s own dependency closure that holds it (populatePVList). */
+export async function packageScopedVersion(
+  resourceType: string,
+  url: string,
+  source: Record<string, any>,
+  pkg: PackageRow,
+  closureOf: (packageId: string, version: string) => Promise<Array<[string, string]>>,
+): Promise<string | null> {
+  if (typeof source.url !== "string") return null;
+  const [pids, pvers] = closureArrays(pkg);
+  const holders = (canonical: string) =>
+    query<{ package_id: string; package_version: string; version: string | null; ord: number }>(
+      "SELECT a.package_id, a.package_version, a.raw_json->>'version' AS version, dep.ord FROM fhir.artifacts a " +
+        "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) ON a.package_id = dep.pid AND a.package_version = dep.pver " +
+        "WHERE a.resource_type = $3 AND a.canonical_url = $4 ORDER BY dep.ord",
+      [pids, pvers, resourceType, canonical],
+    ).then((r) => r.rows);
+  const own = (await holders(source.url)).find((r) => (r.version ?? null) === (source.version ?? null));
+  if (!own || isCorePackage(own.package_id)) return null;
+  const rows = await holders(url);
+  if (!rows.length) return null;
+  for (const [pid, pver] of await closureOf(own.package_id, own.package_version)) {
+    const hit = rows.find((r) => r.package_id === pid && r.package_version === pver);
+    if (hit) return hit.version ?? null;
+  }
+  return null;
+}
+
+/** VersionUtilities.isCorePackage (7.0.1, l. 365-373). */
+export function isCorePackage(id: string): boolean {
+  return ["hl7.fhir.core", "hl7.fhir.r2.core", "hl7.fhir.r2b.core", "hl7.fhir.r3.core", "hl7.fhir.r4.core", "hl7.fhir.r4b.core", "hl7.fhir.r5.core", "hl7.fhir.r6.core"].includes(id);
+}
+
 /** Load a conformance/terminology resource by canonical across the package closure (best candidate). */
 export async function loadArtifactByCanonical(
   resourceType: string,

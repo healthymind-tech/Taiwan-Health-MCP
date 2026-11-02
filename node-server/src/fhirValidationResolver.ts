@@ -20,7 +20,7 @@
  * "display not checked", never an error.
  */
 
-import type { PackageRow } from "./fhirIg.js";
+import { packageClosure, type PackageRow } from "./fhirIg.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "./fhirValidator.js";
 import { variantsOf, type HeldVerdict } from "./extendedFindings/index.js";
 import { conceptInactive, conceptStatus, findConcept, type CodeSystemIndex, type CsConcept, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains } from "./fhirCodeSystem.js";
@@ -469,6 +469,7 @@ const VERDICT_TTL_MS = 10 * 60 * 1000;
 const VERDICT_CACHE_MAX = 20000;
 const codeCheckMemo = new TtlMemo<CodeCheck>(VERDICT_TTL_MS, VERDICT_CACHE_MAX);
 const membershipMemo = new TtlMemo<boolean | undefined>(VERDICT_TTL_MS, VERDICT_CACHE_MAX);
+const scopedVersionMemo = new TtlMemo<string | null>(SD_TTL_MS, SD_CACHE_MAX);
 
 async function memoised<V>(memo: TtlMemo<V>, key: string, compute: () => Promise<V>): Promise<V> {
   const hit = memo.peek(key);
@@ -543,6 +544,12 @@ export class DbValidatorResolver implements ValidatorResolver {
 
   fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
     return this.loadStructureDefinition(url, []);
+  }
+
+  scopedDefinitionVersion(url: string, source: Record<string, any>): Promise<string | null> {
+    return memoised(scopedVersionMemo, `${this.closure}\0${url}\0${source.url}|${source.version}`, () =>
+      guarded(() => terminology.packageScopedVersion("StructureDefinition", url, source, this.pkg, packageClosure)),
+    );
   }
 
   /**

@@ -13,6 +13,7 @@
  * UCUM, THO, urn:…) are not decidable offline and stay silent — every such lookup is counted in `txLookups` so a
  * harness can flag results that depend on the terminology server.
  */
+import { isCorePackage } from "../../../src/fhirTerminology.js";
 import { indexCodeSystem, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains, type CodeSystemIndex, type TerminologyDeps } from "../../../src/fhirCodeSystem.js";
 import { SNOMED_TX_VERSION, judgeCvx, loincUnknownMessage } from "../../../src/fhirExternalTerminology.js";
 import { serverPrefers, terminologyServerKnows } from "../../../src/fhirSpecialSystems.js";
@@ -37,6 +38,7 @@ interface Entry {
 /** Canonical resources by URL; a store can sit on a parent (a shared base layer, e.g. R4 core + THO + extensions). */
 export class ResourceStore {
   private byUrl = new Map<string, Entry[]>();
+  private deps = new Map<string, string[]>();
   private seq: number;
   readonly packages: string[] = [];
 
@@ -53,8 +55,27 @@ export class ResourceStore {
     else this.byUrl.set(url, [e]);
   }
 
+  /** populatePVList: the package of the entry for `url|version`, then its dependencies breadth-first; the version `target` has there. */
+  scopedVersion(target: string, source: Res): string | null {
+    const own = this.candidates(String(source.url), source.resourceType).find((e) => e.version === (source.version ?? null));
+    if (!own || own.loose || isCorePackage(own.packageId)) return null;
+    const cands = this.candidates(target, "StructureDefinition");
+    const seen = [`${own.packageId}#${own.packageVersion}`];
+    for (let i = 0; i < seen.length; i++) {
+      const hit = cands.find((e) => `${e.packageId}#${e.packageVersion}` === seen[i]);
+      if (hit) return hit.version;
+      for (const d of this.dependenciesOf(seen[i])) if (!seen.includes(d)) seen.push(d);
+    }
+    return null;
+  }
+
+  private dependenciesOf(vid: string): string[] {
+    return this.deps.get(vid) ?? this.parent?.dependenciesOf(vid) ?? [];
+  }
+
   addPackage(ref: PackageRef): void {
     this.packages.push(`${ref.id}#${ref.version}`);
+    this.deps.set(`${ref.id}#${ref.version}`, Object.entries(ref.dependencies).map(([d, v]) => `${d}#${v}`));
     const fv = ref.fhirVersions[0] ?? null;
     for (const r of packageResources(ref)) {
       // PackageHackerRN.fixRegisteredResource on registration from a package (BaseWorkerContext:424); idempotent
@@ -121,6 +142,10 @@ export class FileValidatorResolver implements ValidatorResolver {
   private csIndex = new Map<string, CodeSystemIndex | null>();
 
   constructor(readonly store: ResourceStore) {}
+
+  async scopedDefinitionVersion(url: string, source: Res): Promise<string | null> {
+    return this.store.scopedVersion(url, source);
+  }
 
   private codeSystem(url: string): CodeSystemIndex | null {
     const key = url;
