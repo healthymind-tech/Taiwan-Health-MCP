@@ -749,6 +749,16 @@ const USER_FUNCTIONS: Record<string, any> = {
       return x === null ? [] : [narrativeHtmlOk(x)];
     },
   },
+  // FHIRPathEngine.funcHasValue (l. 6201): one item, primitive, !Utilities.noString(value) — a "" has no value, a
+  // complex item never has one (per-1 on a Period whose end is "" short-circuits on end.hasValue().not())
+  hasValue: {
+    internalStructures: true,
+    fn: function (coll: any[]): any[] {
+      if (!coll || coll.length !== 1) return [false];
+      const v = fpUtil.valData(coll[0]);
+      return [v !== null && v !== undefined && typeof v !== "object" && String(v) !== ""];
+    },
+  },
   htmlChecks2: {
     internalStructures: true,
     fn: function (coll: any[]): any[] {

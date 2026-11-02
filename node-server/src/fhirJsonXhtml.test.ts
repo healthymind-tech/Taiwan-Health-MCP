@@ -227,3 +227,32 @@ test("markdown with an unescaped HTML tag: warning by default, error with htmlIn
   assert.ok(w.includes(msg), JSON.stringify(w));
   assert.deepEqual(errs(await new InstanceValidator(new R()).validate(res, { htmlInMarkdown: "error" })), [msg]);
 });
+
+test("JsonParser wording for primitives: _x shadows, null entries / scalars, empty arrays (evaluator corpus primitive-ext, null-in-array)", async () => {
+  const BASIC = sd(CORE + "Basic", "Basic", "resource", [
+    el("Basic", 0, "*"),
+    el("Basic.one", 0, "1", ["string"]),
+    el("Basic.many", 0, "*", ["string"]),
+    el("Basic.choice[x]", 0, "1", ["string", "boolean"]),
+    el("Basic.items", 0, "*", ["Coding"]),
+  ]);
+  class R extends FakeResolver {
+    override async fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
+      return url.split("|")[0] === CORE + "Basic" ? BASIC : super.fetchStructureDefinition(url);
+    }
+  }
+  const run = async (f: Record<string, any>): Promise<string[]> => errs(await new InstanceValidator(new R()).validate({ resourceType: "Basic", ...f }));
+  // an empty shadow, at the parser's path ([x] name of a choice)
+  assert.deepEqual(await run({ one: "a", _one: {} }), ["Basic.one | Object must have some content"]);
+  assert.deepEqual(await run({ choiceString: "a", _choiceString: {} }), ["Basic.choice[x] | Object must have some content"]);
+  // a shadow that is not an object drops the whole property
+  assert.deepEqual(await run({ one: "a", _one: "x" }), ["Basic.one | This property must be an object, not a Primitive property (one at Basic.one)"]);
+  assert.deepEqual(await run({ one: "a", _one: ["x"] }), ["Basic.one | This property must be an object, not an Array (one at Basic.one)"]);
+  // null scalars and entries
+  assert.deepEqual(await run({ one: null }), ["Basic.one | This property must be a simple value, not a Null (one at Basic.one)"]);
+  assert.deepEqual(await run({ many: ["a", null] }), ["Basic.many | The JSON array for '1' is invalid at index {1} - must have at least one valid value"]);
+  assert.ok((await run({ items: [null, { code: "a" }] })).includes("Basic.items[0] | The property items must be an Array, not a Null (at Basic.items[0])"));
+  // ARRAY_CANNOT_BE_EMPTY is parseChildComplex only
+  assert.deepEqual(await run({ many: [] }), []);
+  assert.deepEqual(await run({ items: [] }), ["Basic.items | Array cannot be empty - the property should not be present if it has no values"]);
+});

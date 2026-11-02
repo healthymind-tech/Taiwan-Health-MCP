@@ -2757,7 +2757,7 @@ export class InstanceValidator {
     if (isPrimitive(typeCode)) {
       this.checkPrimitive(v, item, typeCode, el, issues, sdx.sd);
       if (item.ext !== undefined && item.ext !== null) {
-        await this.validatePrimitiveExtensions(item, rctx, issues, depth);
+        await this.validatePrimitiveExtensions(item, el, rctx, issues, depth);
         // InstanceValidator.checkChildByDefinition l. 8164-8176: when the profile constrains the element's children
         // inline (extension slices on a primitive …) the element is validated against those too, after its type
         if (sdx.hasChildren(el) && isObject(item.ext)) {
@@ -2770,10 +2770,18 @@ export class InstanceValidator {
         // Practitioner.name.prefix[1], Patient.name.given[1] …; for meta.profile validator_cli 7.0.1 throws instead
         // (InstanceValidator.validateResource reads the null url), where an error is required all the same)
         const ext = item.ext;
-        if (isObject(ext) && Object.keys(ext).length > 0 && !(Array.isArray(ext.extension) && ext.extension.length > 0) && !this.xmlSource) {
-          issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
+        // xhtml has no extension element: an extension on `_div` is not a child of the element
+        const xhtml = typeCode === "xhtml";
+        if (isObject(ext) && !this.xmlSource) {
+          const hasExtensions = !xhtml && Array.isArray(ext.extension) && ext.extension.length > 0;
+          if (!hasExtensions) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
+          // checkPrimitive l. 3238 (TYPE_SPECIFIC_CHECKS_DT_PRIMITIVE_VALUEEXT): e.hasChildren() — an id is a child
+          if (!hasExtensions && typeof ext.id !== "string") issues.push({ severity: "error", path: item.path, code: "invalid", message: PRIMITIVE_VALUEEXT_MESSAGE });
+          // IV:9029: isValidId(null) is false; the message prints the null
+          if (isObject(el.base) && el.base.path === "Resource.id") issues.push({ severity: "error", path: item.path, code: "invalid", message: "Invalid Resource id: Invalid Characters ('null')" });
         }
-        await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
+        // funcHtmlChecks1 / 2 on an element without an xhtml node: both fail (txt-1, txt-2); "" parses to no node
+        await this.checkConstraints(sdx, el, xhtml ? { ...item, value: "" } : item, typeCode, rctx, issues);
         return;
       }
       if (typeof v === "string") {
@@ -3258,7 +3266,7 @@ export class InstanceValidator {
     return this.sdx(CORE + "Extension");
   }
 
-  private async validatePrimitiveExtensions(item: Item, rctx: ResourceCtx, issues: Issue[], depth: number): Promise<void> {
+  private async validatePrimitiveExtensions(item: Item, el: Record<string, any>, rctx: ResourceCtx, issues: Issue[], depth: number): Promise<void> {
     const ext = item.ext;
     const path = item.path;
     if (!isObject(ext)) {
@@ -3268,13 +3276,8 @@ export class InstanceValidator {
     }
     // JsonParser.parseChildPrimitiveInstance → checkObject(fork): OBJECT_MUST_HAVE_SOME_CONTENT for an empty `_x`
     if (Object.keys(ext).length === 0 && !this.xmlSource) issues.push({ severity: "error", path: item.parserPath ?? path, code: "invalid", message: "Object must have some content" });
-    // xhtml has no extension element: an extension on `_div` is an unknown property (and is not a child), so a shadow
-    // alone leaves no value and no children (PRIMITIVE_VALUE_ALTERNATIVES_MESSAGE + ele-1)
+    // xhtml has no extension element: an extension on `_div` is an unknown property
     const xhtml = item.typeCode === "xhtml";
-    if (!this.xmlSource && xhtml && (item.value === null || item.value === undefined) && Object.keys(ext).length > 0) {
-      issues.push({ severity: "error", path, code: "invalid", message: PRIMITIVE_VALUEEXT_MESSAGE });
-      issues.push({ severity: "error", path, code: "invariant", message: ELE1_MESSAGE });
-    }
     for (const k of Object.keys(ext)) {
       if (k !== "id" && (k !== "extension" || xhtml)) {
         issues.push({ severity: "error", path, code: "structure", message: `Unrecognized property '${k}'` });
@@ -3286,6 +3289,10 @@ export class InstanceValidator {
     if (!Array.isArray(list)) {
       issues.push({ severity: "error", path, code: "structure", message: "The property extension must be a JSON Array" });
       return;
+    }
+    // checkExtension l. 2733: FHIR_RESOURCE_ID_CANT_BE_EXTENDED, per extension, at the id
+    if (isObject(el.base) && el.base.path === "Resource.id") {
+      for (const x of list) if (isObject(x) && typeof x.url === "string") issues.push({ severity: "error", path, code: "business-rule", message: `Extensions are not allowed on Resource.id ('${x.url}')` });
     }
     const extSdx = await this.sdx(CORE + "Extension");
     if (!extSdx) return;
@@ -3423,7 +3430,8 @@ export class InstanceValidator {
           const arr = Array.isArray(raw) ? raw : [];
           const exts = Array.isArray(rawExt) ? rawExt : [];
           if (arr.length === 0 && exts.length === 0 && raw !== undefined) {
-            issues.push({ severity: "error", path: npath, code: "structure", message: `Array cannot be empty - the property should not be present if it has no values` });
+            // ARRAY_CANNOT_BE_EMPTY is JsonParser.parseChildComplex only: an empty primitive array is silently no element
+            if (!primitiveType || this.xmlSource) issues.push({ severity: "error", path: npath, code: "structure", message: `Array cannot be empty - the property should not be present if it has no values` });
             return;
           }
           const n = Math.max(arr.length, exts.length);
@@ -3440,7 +3448,7 @@ export class InstanceValidator {
                 issues.push({ severity: "error", path, code: "invalid", message: `The JSON array for '${i}' is invalid at index {1} - must have at least one valid value` });
               } else {
                 // parseChildComplexInstance on a JsonNull: THIS_PROPERTY_MUST_BE__NOT_
-                issues.push({ severity: "error", path: `${npath}[${i}]`, code: "invalid", message: `The property ${key} must be an Array, not a Null (at ${npath}[${i}])` });
+                issues.push({ severity: "error", path: `${npath}[${i}]`, code: "structure", message: `The property ${key} must be an Array, not a Null (at ${npath}[${i}])` });
               }
               continue;
             }
@@ -4821,6 +4829,10 @@ export class InstanceValidator {
    * codings in order; a fixed value without extensions bans extensions on the instance (Extension_EXT_Fixed_Banned).
    */
   private checkFixedPattern(el: Record<string, any>, v: any, item: Item, sdx: SdIndex, issues: Issue[]): void {
+    // A "" gets no _DT_Fixed_Wrong from validator_cli (evaluator corpus, family empty-string, every fixed element:
+    // only ele-1 / "value cannot be empty"). Observed behaviour: the Java branch that skips it is not identified
+    // (IV:3049 / 7725 read as if it should fire). The verdict is unaffected: those two errors are always reported.
+    if (v === "") return;
     const [fixed, pattern] = fixedPattern(el);
     const source = `${sdx.url}${sdx.sd?.version ? `|${sdx.sd.version}` : ""}`;
     const context = `${source}#${el.id ?? el.path}`;
@@ -4829,7 +4841,7 @@ export class InstanceValidator {
     };
     if (fixed) {
       const out: Issue[] = [];
-      this.fixedValuePort(out, item.path, v, fixed.value, fixed.field.replace(/^fixed/u, ""), source, String(el.sliceName ?? ""), false, context);
+      this.fixedValuePort(out, item.path, v, fixed.value, fixed.field.replace(/^fixed/u, ""), source, String(el.sliceName ?? ""), false, context, isObject(item.ext) ? item.ext : undefined);
       tag(out);
     }
     if (pattern) {
@@ -4839,7 +4851,7 @@ export class InstanceValidator {
     }
   }
 
-  private fixedValuePort(issues: Issue[], path: string, focus: any, fixed: any, type: string, source: string, propName: string, pattern: boolean, context: string): void {
+  private fixedValuePort(issues: Issue[], path: string, focus: any, fixed: any, type: string, source: string, propName: string, pattern: boolean, context: string, shadow?: any): void {
     const empty = (x: any): boolean => x === undefined || x === null || (isObject(x) && Object.keys(x).length === 0) || (Array.isArray(x) && x.length === 0);
     if (empty(fixed) && (focus === undefined || focus === null)) return;
     if (empty(fixed)) {
@@ -4853,6 +4865,10 @@ export class InstanceValidator {
     if (!isObject(fixed)) {
       const value = isObject(focus) || Array.isArray(focus) ? null : String(focus);
       if (value !== String(fixed)) issues.push({ severity: "error", path, code: "value", message: `Value is '${value ?? ""}' but is fixed to '${String(fixed)}' in the profile ${context}` });
+      // checkFixedValue, end: a primitive's extensions (its `_x` shadow), which a primitive fixed value here never has
+      if (shadow && Array.isArray(shadow.extension) && shadow.extension.length > 0 && !pattern) {
+        issues.push({ severity: "error", path, code: "value", message: "No extensions allowed, as the specified fixed value doesn't contain any extensions" });
+      }
       return;
     }
     if (!isObject(focus)) {
@@ -5495,7 +5511,8 @@ export class InstanceValidator {
       }
       return;
     }
-    const display = typeof v.display === "string" ? v.display : null;
+    // a "" display is no display (validator_cli reports its ele-1 / "value cannot be empty", never a wrong display)
+    const display = typeof v.display === "string" && v.display !== "" ? v.display : null;
     const version = typeof v.version === "string" && v.version ? v.version : null;
     const r = await this.codeCheck(system, code, display, version);
     for (const n of r.extra ?? []) {

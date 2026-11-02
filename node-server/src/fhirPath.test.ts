@@ -217,3 +217,12 @@ test("htmlChecks: xhtml div ok, script rejected", () => {
     { status: "pass" },
   );
 });
+
+test("hasValue(): FHIRPathEngine.funcHasValue — a \"\" has no value, a complex item never has one", () => {
+  const r = { resourceType: "Patient", gender: "", birthDate: "2020-01-01", active: false, name: [{ family: "x" }] };
+  const ev = (e: string): any[] => evaluateExpression(r, "Patient", e, env(r));
+  assert.deepEqual(ev("gender.hasValue()"), [false]);
+  assert.deepEqual(ev("birthDate.hasValue()"), [true]);
+  assert.deepEqual(ev("active.hasValue()"), [true]);
+  assert.deepEqual(ev("name.first().hasValue()"), [false]);
+});
