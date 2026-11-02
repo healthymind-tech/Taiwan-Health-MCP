@@ -288,10 +288,19 @@ function javaComparison(orig: any): any {
     ...orig,
     fn: function (this: any, a: any[], b: any[]): any {
       if (a.length > 1 || b.length > 1) return [];
-      if (a.length === 1 && b.length === 1 && quantityCodeDiffers(a[0], b[0])) {
-        // one side has only the unit text: comparable when the text is the same unit
-        if (quantityUnitText(a[0]) === null || quantityUnitText(a[0]) !== quantityUnitText(b[0])) return [];
-        return orig.fn.call(this, [quantityNumber(a[0])], [quantityNumber(b[0])]);
+      if (a.length === 1 && b.length === 1) {
+        // opLessThan, FHIRPathEngine.java:2611-2627 (opGreater etc. alike): the same `code` children (or none) compare the
+        // values; otherwise qtyToCanonicalDecimal (l. 2471-2474) is null for a Quantity outside UCUM, and the null in the
+        // list is a NullPointerException in hasNoPrimitiveValue (l. 1713) — the invariant fails with no message
+        const l = plainQuantity(a[0]);
+        const r = plainQuantity(b[0]);
+        if ((l || r) && (l ?? stockQuantity(a[0])) && (r ?? stockQuantity(b[0]))) {
+          const lq = (l ?? stockQuantity(a[0]))!;
+          const rq = (r ?? stockQuantity(b[0]))!;
+          if (lq.code !== rq.code) throw new JavaFhirPathError("null");
+          if (lq.value === undefined || rq.value === undefined) return [];
+          return orig.fn.call(this, [Number(lq.value)], [Number(rq.value)]);
+        }
       }
       return orig.fn.call(this, a, b);
     },
@@ -316,28 +325,18 @@ function boundaryApplyPrecision(v: string, p: number, down: boolean): string {
   else {
     let ld = v.length + d;
     if (dp > -1) ld--;
-    out = nv.slice(0, ld);
-    if (nv[ld] >= "5" && !down) {
-      // Java adds one to the last char only (`9` becomes `:`); the suite's carry tests want a real carry
-      const c = [...out];
-      let i = c.length - 1;
-      for (; i >= 0; i--) {
-        if (c[i] === "9") c[i] = "0";
-        else {
-          c[i] = String.fromCharCode(c[i].charCodeAt(0) + 1);
-          break;
-        }
-      }
-      out = c.join("");
-      if (i < 0) {
-        out = `1${out}`;
-        if (dp > -1) dp++;
-      }
-    }
+    // Utilities.java:1728-1732: the last kept char + 1, no carry — `9` becomes `:`, which new DecimalType then rejects
+    out = nv[ld] >= "5" && !down ? nv.slice(0, ld - 1) + String.fromCharCode(nv.charCodeAt(ld - 1) + 1) : nv.slice(0, ld);
   }
   if (out.endsWith(".")) out = out.slice(0, -1);
-  const r = dp === -1 || dp >= out.length ? out : `${out.slice(0, dp)}.${out.slice(dp)}`;
-  return r.replace(/^(-?)0+(?=\d)/, "$1"); // minusOne of 10 is 09
+  return dp === -1 || dp >= out.length ? out : `${out.slice(0, dp)}.${out.slice(dp)}`;
+}
+
+/** new DecimalType(text) (DecimalType.java:133-135, 218-226): BigDecimal rejects it, else the text is kept as written (`09.50`). */
+function javaDecimalText(text: string): string {
+  const bad = /[^0-9.-]/.exec(text);
+  if (bad) throw new JavaFhirPathError(`Character ${bad[0]} is neither a decimal digit number, decimal point, nor "e" notation exponential mark.`);
+  return text;
 }
 
 function boundaryMinusOne(value: string): string {
@@ -416,7 +415,7 @@ function javaBoundary(high: boolean): (this: any, coll: any[], precision?: any) 
     const p: number | undefined = precision === undefined || precision === null ? undefined : Number(Array.isArray(precision) ? fpUtil.valData(precision[0]) : fpUtil.valData(precision));
     const Dec = this.getDecimal(0).constructor;
     if (v instanceof fpTypes.FP_Quantity) {
-      const text = decimalBoundary(String(v.value), p ?? 8, high);
+      const text = javaDecimalText(decimalBoundary(String(v.value), p ?? 8, high));
       return [new fpTypes.FP_Quantity(this, new Dec(text), v.unit)];
     }
     if (v instanceof fpTypes.FP_Time) {
@@ -431,36 +430,53 @@ function javaBoundary(high: boolean): (this: any, coll: any[], precision?: any) 
     }
     if (typeof v === "number" || typeof v === "bigint" || v instanceof Dec || (v && typeof v.toFixed === "function")) {
       if (p !== undefined && (p < 0 || p >= 17)) return [];
-      return [new Dec(decimalBoundary(String(v), p ?? 8, high))];
+      return [new Dec(javaDecimalText(decimalBoundary(String(v), p ?? 8, high)))];
     }
     throw new JavaFhirPathError(`Error evaluating FHIRPath expression: The parameter type for function sqrt is not valid for ${name}`);
   };
 }
 
-/** A Quantity operand's `code` (stock fhirpath.js leaves a Quantity without system + code a plain object); undefined: not a Quantity. */
-function quantityCode(item: any): string | null | undefined {
-  const v = fpUtil.valData(item);
-  if (v instanceof fpTypes.FP_Quantity) return String(v.unit ?? "");
-  if (v !== null && typeof v === "object" && javaFhirType(item).type === "Quantity") return typeof v.code === "string" ? v.code : null;
-  return undefined;
+interface QtyParts {
+  value: string | undefined;
+  code: string | null;
+  unit: string | null;
 }
 
-function quantityUnitText(item: any): string | null {
+/** A Quantity stock fhirpath.js leaves a plain object (no UCUM system + code); null for anything else. */
+function plainQuantity(item: any): QtyParts | null {
   const v = fpUtil.valData(item);
-  if (v instanceof fpTypes.FP_Quantity) return String(v.unit ?? "").replace(/^'|'$/g, "");
-  return v !== null && typeof v === "object" ? (typeof v.unit === "string" ? v.unit : typeof v.code === "string" ? v.code : null) : null;
+  if (v === null || typeof v !== "object" || v instanceof fpTypes.FP_Type || javaFhirType(item).type !== "Quantity") return null;
+  return { value: v.value === undefined ? undefined : String(v.value), code: typeof v.code === "string" ? v.code : null, unit: typeof v.unit === "string" ? v.unit : null };
 }
 
-function quantityNumber(item: any): number {
+function stockQuantity(item: any): QtyParts | null {
   const v = fpUtil.valData(item);
-  return Number(v instanceof fpTypes.FP_Quantity ? String(v.value) : v?.value);
+  if (!(v instanceof fpTypes.FP_Quantity)) return null;
+  const code = String(v.unit ?? "").replace(/^'|'$/g, "");
+  return { value: String(v.value), code, unit: null };
 }
 
-/** Two Quantities of which only one has a code: qtyEqual is null (FHIRPathEngine l. 2446-2449), and they are not comparable. */
-function quantityCodeDiffers(a: any, b: any): boolean {
-  const l = quantityCode(a);
-  const r = quantityCode(b);
-  return l !== undefined && r !== undefined && (l === null) !== (r === null);
+/**
+ * FHIRPathEngine.qtyEqual (FHIRPathEngine.java:2428-2456) when a side is outside UCUM (no canonical pair): with a code on
+ * either side both must have the same code, else null; `else if (!left.hasUnit() || right.hasUnit())` — the units must
+ * both exist and match, else null (so two unit-less quantities are null, and a left unit with no right unit skips the
+ * check). undefined: not such a comparison.
+ */
+function javaQtyEqual(a: any, b: any): boolean | null | undefined {
+  const lp = plainQuantity(a);
+  const rp = plainQuantity(b);
+  if (!lp && !rp) return undefined;
+  const l = lp ?? stockQuantity(a);
+  const r = rp ?? stockQuantity(b);
+  if (!l || !r) return undefined;
+  if (l.value === undefined && r.value === undefined) return true;
+  if (l.value === undefined || r.value === undefined) return null;
+  if (l.code !== null || r.code !== null) {
+    if (l.code === null || r.code === null || l.code !== r.code) return null;
+  } else if (l.unit === null || r.unit !== null) {
+    if (l.unit === null || r.unit === null || l.unit !== r.unit) return null;
+  }
+  return Number(l.value) === Number(r.value);
 }
 
 // ------------------------------------------------------------ dates and times
@@ -655,13 +671,9 @@ if (loaded.engine) {
       ...orig,
       fn: function (this: any, a: any[], b: any[]): any {
         if (a.length === 1 && b.length === 1) {
-          if (quantityCodeDiffers(a[0], b[0])) return [];
-          // qtyEqual l. 2449-2453 (suite testQuantityUnitComparison): no codes: the unit texts must be the same
-          if (quantityCode(a[0]) === null && quantityCode(b[0]) === null) {
-            const lu = quantityUnitText(a[0]);
-            const ru = quantityUnitText(b[0]);
-            if ((lu === null) !== (ru === null) || lu !== ru) return [];
-          }
+          const qe = javaQtyEqual(a[0], b[0]);
+          if (qe === null) return [];
+          if (qe !== undefined) return [not ? !qe : qe];
           const eq = javaDateEqualsMixedZone(a[0], b[0]);
           if (eq === null) return [];
           if (eq !== undefined) return [not ? !eq : eq];
@@ -672,7 +684,9 @@ if (loaded.engine) {
   }
   Object.assign(table, JAVA_OPERATORS);
   for (const op of ["<", ">", "<=", ">="]) table[op] = javaComparison(table[op]);
-  // opEquivalent on Quantities (qtyEquivalent l. 2501-2530): the canonical values, equivalentNumber (the coarser scale)
+  // opEquivalent on Quantities: an APPROXIMATION of qtyEquivalent (FHIRPathEngine.java:2501-2530), which compares
+  // getCanonicalForm values with Utilities.equivalentNumber (l. 1258-1273). This converts right into left's unit with
+  // ucum-lhc instead of ucum-java's Converter and Decimal, so the scale compared is not always the Java one.
   const equiv = table["~"];
   table["~"] = {
     ...equiv,
