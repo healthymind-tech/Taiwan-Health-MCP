@@ -19,7 +19,7 @@ const deps = (q: Record<string, any>): QuestionnaireDeps => ({
 const run = async (q: Record<string, any>, qr: Record<string, any>): Promise<string[]> =>
   (await validateQuestionnaireResponse({ resourceType: "QuestionnaireResponse", questionnaire: URL, status: "completed", ...qr }, "QuestionnaireResponse", deps(q))).filter((i) => i.severity === "error").map((i) => `${i.path}: ${i.message}`);
 
-test("Questionnaire: an enableWhen cannot point inside its own item, at nothing, or at itself", () => {
+test("Questionnaire: an enableWhen cannot point inside its own item, at nothing, or at itself", async () => {
   const q = {
     item: [
       { linkId: "a", type: "group", enableWhen: [{ question: "a1" }], item: [{ linkId: "a1", type: "string" }] },
@@ -29,7 +29,7 @@ test("Questionnaire: an enableWhen cannot point inside its own item, at nothing,
       { linkId: "e", type: "string" },
     ],
   };
-  const got = validateQuestionnaire(q, "Questionnaire");
+  const got = await validateQuestionnaire(q, "Questionnaire", { fetchQuestionnaire: async () => null, fetchValueSet: async () => null });
   assert.deepEqual(
     got.map((i) => [i.severity, i.path, i.message]),
     [
@@ -101,6 +101,46 @@ test("maxDecimalPlaces on decimal and Quantity answers; repeats; occurs", async 
     "QuestionnaireResponse.item[2]: The maximum number of answers is 1 but this has 2 answers",
     "QuestionnaireResponse.item[3]: Only one response answer item with this linkId allowed",
   ]);
+});
+
+test("Questionnaire: derivedFrom marks the run only when the items would be compared", async () => {
+  const parent = { url: URL };
+  const statics = { fetchQuestionnaire: async (u: string) => (u === URL ? parent : null), fetchValueSet: async () => null };
+  const derivation = (code: string): Record<string, any> => ({ extension: [{ url: "http://hl7.org/fhir/StructureDefinition/questionnaire-derivationType", valueCoding: { system: "http://hl7.org/fhir/questionnaire-derivationType", code } }] });
+  const unchecked = async (q: Record<string, any>): Promise<unknown[]> => (await validateQuestionnaire(q, "Questionnaire", statics)).filter((i) => i.unchecked).map((i) => i.unchecked?.canonical);
+  assert.deepEqual(await unchecked({ derivedFrom: [URL], _derivedFrom: [derivation("extends")] }), ["QuestionnaireValidator.validateQuestionnaireElementDerivation"]);
+  assert.deepEqual(await unchecked({ derivedFrom: [URL], _derivedFrom: [derivation("inspiredBy")] }), []);
+  assert.deepEqual(await unchecked({ derivedFrom: ["http://acme-test.fhir.test/none"] }), []);
+});
+
+test("Questionnaire: answerValueSet parameters against the ValueSet's", async () => {
+  const vs = { url: "http://acme-test.fhir.test/vs", version: "1", extension: [{ url: "http://hl7.org/fhir/tools/StructureDefinition/valueset-parameter", extension: [{ url: "name", valueCode: "p" }] }] };
+  const statics = { fetchQuestionnaire: async () => null, fetchValueSet: async () => vs };
+  const got = await validateQuestionnaire({ item: [{ linkId: "1", type: "choice", answerValueSet: vs.url }] }, "Questionnaire", statics);
+  assert.deepEqual(got.map((i) => [i.severity, i.message]), [["error", "The ValueSet 'http://acme-test.fhir.test/vs|1' has a parameter 'p' but there is no matching binding parameter"]]);
+});
+
+test("enableWhenExpression: a variable nobody supplies warns as Java does; a declared one marks the run", async () => {
+  const expr = { url: "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-questionnaire-enableWhenExpression", valueExpression: { language: "text/fhirpath", expression: "%patient.gender = 'female'" } };
+  const q = { item: [{ linkId: "1", type: "boolean", extension: [expr] }] };
+  const qr = { resourceType: "QuestionnaireResponse", questionnaire: URL, status: "completed", item: [{ linkId: "1", answer: [{ valueBoolean: true }] }] };
+  const out = await validateQuestionnaireResponse(qr, "QuestionnaireResponse", deps(q));
+  assert.deepEqual(out.map((i) => [i.severity, i.message]), [["warning", "The enableWhen expression for the item 1 could not be evaluated (it refers to %patient, which is not available when validating a QuestionnaireResponse on its own), so the item is treated as enabled, and its answers have not been checked against it"]]);
+  const declared = { ...q, extension: [{ url: "http://hl7.org/fhir/StructureDefinition/variable", valueExpression: { name: "patient" } }] };
+  const marked = await validateQuestionnaireResponse(qr, "QuestionnaireResponse", deps(declared));
+  assert.deepEqual(marked.map((i) => i.unchecked?.canonical), ["EnableWhenEvaluator.collectVariables"]);
+});
+
+test("a value set answer local terminology cannot decide marks the run", async () => {
+  const q = { item: [{ linkId: "1", type: "choice", answerValueSet: "http://acme-test.fhir.test/vs" }] };
+  const out = await validateQuestionnaireResponse({ questionnaire: URL, status: "completed", item: [{ linkId: "1", answer: [{ valueCoding: { system: "http://s", code: "a" } }] }] }, "QuestionnaireResponse", deps(q));
+  assert.deepEqual(out.map((i) => i.unchecked), [{ kind: "code", canonical: "http://acme-test.fhir.test/vs" }]);
+});
+
+test("the authored date outside the Questionnaire's period warns, with a text that is not the jar's", async () => {
+  const q = { effectivePeriod: { end: "2020-01-01" }, item: [] };
+  const out = await validateQuestionnaireResponse({ questionnaire: URL, status: "completed", authored: "2021-01-01" }, "QuestionnaireResponse", deps(q));
+  assert.deepEqual(out.map((i) => [i.severity, i.unchecked?.canonical]), [["warning", "QuestionnaireValidator.checkAuthoringDate"]]);
 });
 
 test("an unresolved questionnaire stops the check: a warning, a hint for example.org", async () => {

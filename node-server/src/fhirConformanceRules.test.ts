@@ -33,7 +33,9 @@ test("expression: a type name opening a union leg must be a base or an ancestor 
   );
   const second = await validateSearchParameter({ base: ["Patient"], type: "string", expression: "Patient.name | Organization.alias" }, "SearchParameter", deps);
   assert.match(second[0].message, /\(@char 16\)$/);
-  assert.deepEqual(await validateSearchParameter({ base: ["Patient"], type: "string", expression: "Patient.name | (DomainResource.id) | name.where(use = 'a|b')" }, "SearchParameter", deps), []);
+  // no entry error: the deeper type check of the jar was not done, and the result says so
+  const good = await validateSearchParameter({ base: ["Patient"], type: "string", expression: "Patient.name | (DomainResource.id) | name.where(use = 'a|b')" }, "SearchParameter", deps);
+  assert.deepEqual(good.map((i) => [i.severity, i.unchecked?.canonical]), [["information", "SearchParameterValidator.checkExpression"]]);
 });
 
 test("an unknown derivedFrom is a warning, a composite needs two components", async () => {
@@ -52,7 +54,7 @@ test("a base for another FHIR version is skipped", async () => {
     "SearchParameter",
     deps,
   );
-  assert.deepEqual(out, []);
+  assert.deepEqual(out.map((i) => i.unchecked?.canonical), ["SearchParameterValidator.checkExpression"]);
 });
 
 test("HL7 implementation guides state their status and workgroup; other guides do not have to", () => {
@@ -68,7 +70,8 @@ test("dependsOn: the rules that read only the resource", () => {
   );
   assert.ok(out.every((i) => i.path === "ImplementationGuide.dependsOn[0]"));
   assert.deepEqual(
-    out.map((i) => i.message.split(" ").slice(0, 3).join(" ")),
+    out.filter((i) => i.severity === "error").map((i) => i.message.split(" ").slice(0, 3).join(" ")),
     ["The canonical URL", "The URL should", "The packageId bad"],
   );
+  assert.deepEqual(out.filter((i) => i.unchecked).map((i) => i.unchecked?.canonical), ["ImplementationGuideValidator.checkDependency"]);
 });

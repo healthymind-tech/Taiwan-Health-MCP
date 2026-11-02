@@ -80,10 +80,11 @@ export interface Issue {
    * `limit`: a validator limit stopped a check (canonical = the limit's name, see VALIDATOR_LIMITS);
    * `invariant`: an invariant that could not be evaluated (canonical = profile#key);
    * `lookup`: definition / terminology lookups failed, some checks are unverified (canonical = the first failed lookup);
-   * `run`: a definition could not be loaded, so the run has no verdict at all.
+   * `run`: a definition could not be loaded, so the run has no verdict at all;
+   * `rule`: the input reached a check of validator_cli that is not ported (canonical = the Java rule).
    */
   /** `causes`: what could not be decided, as `system|valueSet` (a slicing or a binding names the terminology behind it). */
-  unchecked?: { kind: "profile" | "valueSet" | "code" | "slice" | "limit" | "invariant" | "lookup" | "run"; canonical: string; causes?: string[] };
+  unchecked?: { kind: "profile" | "valueSet" | "code" | "slice" | "limit" | "invariant" | "lookup" | "run" | "rule"; canonical: string; causes?: string[] };
 }
 
 /** The validator's checking limits (`unchecked.kind: "limit"`): exceeding one reports it and `checked_fully: false`. */
@@ -122,6 +123,8 @@ export interface Completeness {
   limits_exceeded?: string[];
   /** (parity v3) Invariants (profile#key) that could not be evaluated. Present only when non-empty. */
   invariants_unchecked?: string[];
+  /** Rules of validator_cli this input reached that are not ported. Present only when non-empty; `checked_fully` is then false. */
+  rules_unchecked?: string[];
   /** What the undecided codes and slices depended on: `system|valueSet` (an empty system: a bare code). */
   undecided_causes?: string[];
 }
@@ -174,6 +177,7 @@ export function completenessOf(issues: Array<Record<string, any>>, depsMissing: 
   const slices = new Set<string>();
   const limits = new Set<string>();
   const invariants = new Set<string>();
+  const rules = new Set<string>();
   const causes = new Set<string>();
   let lookupsFailed = 0;
   for (const i of issues) {
@@ -184,10 +188,10 @@ export function completenessOf(issues: Array<Record<string, any>>, depsMissing: 
     const u = i && i.unchecked;
     if (!u || typeof u.canonical !== "string" || u.kind === "lookup" || u.kind === "run") continue;
     for (const c of Array.isArray(u.causes) ? u.causes : []) causes.add(String(c));
-    (u.kind === "valueSet" ? valueSets : u.kind === "code" ? codes : u.kind === "slice" ? slices : u.kind === "limit" ? limits : u.kind === "invariant" ? invariants : profiles).add(u.canonical);
+    (u.kind === "rule" ? rules : u.kind === "valueSet" ? valueSets : u.kind === "code" ? codes : u.kind === "slice" ? slices : u.kind === "limit" ? limits : u.kind === "invariant" ? invariants : profiles).add(u.canonical);
   }
   return {
-    checked_fully: profiles.size === 0 && valueSets.size === 0 && codes.size === 0 && slices.size === 0 && limits.size === 0 && invariants.size === 0 && lookupsFailed === 0 && !(Array.isArray(depsMissing) && depsMissing.length),
+    checked_fully: profiles.size === 0 && valueSets.size === 0 && codes.size === 0 && slices.size === 0 && limits.size === 0 && invariants.size === 0 && rules.size === 0 && lookupsFailed === 0 && !(Array.isArray(depsMissing) && depsMissing.length),
     profiles_unchecked: [...profiles],
     valuesets_unchecked: [...valueSets],
     ...(lookupsFailed > 0 ? { lookups_failed: lookupsFailed } : {}),
@@ -195,6 +199,7 @@ export function completenessOf(issues: Array<Record<string, any>>, depsMissing: 
     ...(slices.size ? { slices_unchecked: [...slices] } : {}),
     ...(limits.size ? { limits_exceeded: [...limits] } : {}),
     ...(invariants.size ? { invariants_unchecked: [...invariants] } : {}),
+    ...(rules.size ? { rules_unchecked: [...rules] } : {}),
     ...(causes.size ? { undecided_causes: [...causes].sort() } : {}),
   };
 }
@@ -2352,11 +2357,20 @@ export class InstanceValidator {
       count++;
     }
     if (isObject(b.bundle.signature)) this.checkSignatureData(b.bundle.signature, path, issues);
+    // l. 247-258, ElementModelUtilities.findSignatures: the R6 form, a Provenance with target `#/`
+    for (const e of entries) {
+      const res = isObject(e?.resource) ? e.resource : null;
+      if (res?.resourceType !== "Provenance" || !(Array.isArray(res.target) ? res.target : []).some((t: any) => t?.reference === "#/")) continue;
+      for (const sig of Array.isArray(res.signature) ? res.signature : []) {
+        if (isObject(sig) && typeof sig.data === "string" && (sig.sigFormat === "application/jose" || sig.sigFormat === "application/pkcs7-signature")) this.checkSignatureData(sig, path, issues);
+      }
+    }
   }
 
   /**
    * BundleValidator.validateSignature l. 1009-1088, the shape of Signature.data only. validateSignatureJose /
-   * DigSig (the signed bytes, the canonical form, the certificate) are not ported: no signature is verified here.
+   * DigSig (the signed bytes, the canonical form, the certificate) are not ported: no signature is verified here, and
+   * a signature the jar would verify marks the run `rules_unchecked`.
    */
   private checkSignatureData(sig: Record<string, any>, path: string, issues: Issue[]): void {
     const data = sig.data;
@@ -2373,12 +2387,16 @@ export class InstanceValidator {
         // l. 1035: "nothing"
       }
     }
-    if (format === "application/pkcs7-signature" && !base64) {
-      issues.push({ severity: "warning", path, code: "invalid", message: "The signature data is not valid base64 content, so the signature cannot be checked" });
-    } else if (format === "application/jose" && !base64) {
+    let verified: string | null = null;
+    if (format === "application/pkcs7-signature") {
+      if (base64) verified = "BundleValidator.validateSignatureDigSig";
+      else issues.push({ severity: "warning", path, code: "invalid", message: "The signature data is not valid base64 content, so the signature cannot be checked" });
+    } else if (format === "application/jose") {
       const jws = data.split(".").length === 3;
-      issues.push({ severity: "error", path, code: "invalid", message: jws ? "The signature data is not valid base64 content, but it looks like native application/jose, so it will be checked anyway" : "The signature data is not valid base64 content, so the signature cannot be checked" });
+      if (base64 || jws) verified = "BundleValidator.validateSignatureJose";
+      if (!base64) issues.push({ severity: "error", path, code: "invalid", message: jws ? "The signature data is not valid base64 content, but it looks like native application/jose, so it will be checked anyway" : "The signature data is not valid base64 content, so the signature cannot be checked" });
     }
+    if (verified) issues.push({ severity: "information", path, code: "rule-unchecked", message: `The ${format} signature was not verified: ${verified} is not ported; not a conformance failure`, unchecked: { kind: "rule", canonical: verified } });
   }
 
   /** Port of BundleValidator.validateLink and its per-type variants (7.0.1). */
@@ -2776,7 +2794,13 @@ export class InstanceValidator {
       for (const x of await (rt === "Measure" ? validateMeasure(resource, path, deps) : validateMeasureReport(resource, path, deps))) issues.push(x);
     }
     // InstanceValidator.checkSpecials l. 7229-7232
-    if (rt === "Questionnaire") for (const x of validateQuestionnaire(resource, path)) issues.push(x);
+    if (rt === "Questionnaire") {
+      const deps = {
+        fetchQuestionnaire: async (u: string) => (this.resolver.fetchQuestionnaire ? await this.resolver.fetchQuestionnaire(u) : null),
+        fetchValueSet: (u: string) => this.vsHeader(u),
+      };
+      for (const x of await validateQuestionnaire(resource, path, deps)) issues.push(x);
+    }
     if (rt === "QuestionnaireResponse") {
       const deps = {
         fetchQuestionnaire: async (u: string) => (this.resolver.fetchQuestionnaire ? await this.resolver.fetchQuestionnaire(u) : null),
@@ -2903,8 +2927,8 @@ export class InstanceValidator {
       }
     }
     // start l. 6946-6949: VersionUtilities.parseVersionUrl(null) throws for a meta.profile without a value, and
-    // validator_cli gives no outcome for such a resource. It is not accepted here either; the text is the JVM's own
-    // exception message, not a Messages.properties entry.
+    // validator_cli gives no outcome for such a resource. It is not accepted here either.
+    // NON-OFFICIAL TEXT: the JVM's NullPointerException message, not a Messages.properties entry.
     const shadow = isObject(resource.meta) && Array.isArray(resource.meta._profile) ? resource.meta._profile : [];
     shadow.forEach((x: unknown, i: number) => {
       const own = Array.isArray(resource.meta.profile) ? resource.meta.profile[i] : undefined;

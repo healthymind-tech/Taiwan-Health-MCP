@@ -18,6 +18,8 @@ export interface SdIssue {
   path: string;
   code: string;
   message: string;
+  /** The jar's check of this input is not ported: `checked_fully` is false. */
+  unchecked?: { kind: "rule"; canonical: string };
 }
 
 export interface SdValidatorDeps {
@@ -125,10 +127,16 @@ async function discriminatorRules(out: SdIssue[], ed: Json, path: string, at: st
   const tsd = await deps.fetch(CORE + tn);
   if (!(tsd?.snapshot?.element || []).some((e: Json) => e.path === path)) return; // ted == null
   const codes = ((Array.isArray(ed.type) ? ed.type : []) as Json[]).map(workingCode).filter(Boolean);
-  if (!codes.length || codes.some((c) => !/^[A-Z]/.test(c) || c === "BackboneElement" || c === "Element")) return;
+  if (!codes.length) return; // getTypesForElement empty: Java does not check either
+  const judged = !codes.some((c) => !/^[A-Z]/.test(c) || c === "BackboneElement" || c === "Element");
   for (let i = 0; i < discriminators.length; i++) {
     const name = discriminators[i]?.path;
-    if (typeof name !== "string" || !/^[a-z][A-Za-z0-9]*$/.test(name)) continue;
+    if (typeof name !== "string" || name === "$this") continue;
+    if (!judged || !/^[a-z][A-Za-z0-9]*$/.test(name)) {
+      const canonical = "StructureDefinitionValidator.checkOnTypes";
+      out.push({ severity: "information", path: `${at}.slicing.discriminator[${i}]`, code: "rule-unchecked", message: `The discriminator path '${name}' was not type-checked: ${canonical} is not ported; not a conformance failure`, unchecked: { kind: "rule", canonical } });
+      continue;
+    }
     let selects = false;
     for (const c of codes) {
       const elements: Json[] = (await deps.fetch(CORE + c))?.snapshot?.element ?? [];

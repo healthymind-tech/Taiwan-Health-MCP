@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { InstanceValidator, type Issue } from "./fhirValidator.js";
+import { completenessOf, InstanceValidator, type Issue } from "./fhirValidator.js";
 import { CORE, FakeResolver, el, sd } from "./fhirTestKit.test.js";
 
 const EXT = "http://acme-test.fhir.test/StructureDefinition/ext";
@@ -97,6 +97,16 @@ test("checkMinMaxValueDate: a duration before / after now, the limit printed unl
 test("checkInvariant: fpe.forLog follows a failed invariant (trace())", async () => {
   const got = errors(await run({ resourceType: "Patient", birthDate: "1990-01-01" }, [TRACE]));
   assert.ok(got.some((m) => m.startsWith("Constraint failed: tr-1: 'Traced'") && m.endsWith(" (seen: 1990-01-01) (log:  (seen: 1990-01-01))")), got.join("\n"));
+});
+
+test("a signature the jar would verify marks the run: rules_unchecked, checked_fully false", async () => {
+  const header = Buffer.from(JSON.stringify({ alg: "RS256" })).toString("base64url");
+  const bundle = { resourceType: "Bundle", type: "collection", signature: { sigFormat: "application/jose", data: Buffer.from(`${header}..sig`).toString("base64") } };
+  const c = completenessOf(await run(bundle));
+  assert.equal(c.checked_fully, false);
+  assert.deepEqual(c.rules_unchecked, ["BundleValidator.validateSignatureJose"]);
+  const image = completenessOf(await run({ ...bundle, signature: { sigFormat: "image/png", data: "AAAA" } }));
+  assert.equal(image.rules_unchecked, undefined);
 });
 
 test("checkInvariants: profiles sharing an expression share the message object, which collects both tags", async () => {

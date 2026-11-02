@@ -7,9 +7,12 @@
  * (or the code branch) decides. Measure.scoring reaches Java as the cross-version extension of the conversion; here it
  * is read directly.
  *
- * Not ported: checkShareableMeasure (only with for-publication). An ELM that is not well-formed XML
- * (MEASURE_M_CRITERIA_CQL_ERROR with the XML parser's text) is treated as ELM with no statements.
+ * Not ported: checkShareableMeasure, which runs only with for-publication, a setting this validator does not have, so
+ * no input reaches it.
+ *
+ * NON-OFFICIAL TEXT: {1} of MEASURE_M_CRITERIA_CQL_ERROR is the XML parser's message; Java's parser words it otherwise.
  */
+import { parseXmlDocument } from "./fhirXml.js";
 
 type Json = Record<string, any>;
 
@@ -128,8 +131,16 @@ function criteriaIssues(crit: Json, at: string, libs: Json[], out: MeasureIssue[
   }
   if (!lib) return;
   const elm = elmOf(lib);
+  let elmError: string | null = null;
+  try {
+    if (elm !== undefined) parseXmlDocument(elm);
+  } catch (e) {
+    elmError = e instanceof Error ? e.message : String(e);
+  }
   if (elm === undefined) {
     out.push({ severity: "warning", path: at, code: "invalid", message: `Warning in ${lib.url}: No compiled version of CQL found` });
+  } else if (elmError !== null) {
+    rule(`Error in ${lib.url}: '${elmError}'`);
   } else if (!isValidElm(elm)) {
     rule(`= Error in ${lib.url}: Compiled version of CQL is not valid`);
   } else if (!hasCqlTarget(elm, cqlRef)) {

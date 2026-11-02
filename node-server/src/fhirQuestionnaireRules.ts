@@ -6,13 +6,16 @@
  *
  * R4 item types arrive in the Java model converted: choice -> coding, open-choice -> coding + optionsOrString.
  *
- * Not ported:
- *  - Questionnaire.derivedFrom (checkDerivations, validateQuestionnaireElementDerivation) and the answerValueSet
- *    parameters of validateQuestionnaireElement.
- *  - checkAuthoringDate (warnings only).
- *  - launch contexts and x-fhir-query variables of an enableWhenExpression (collectVariables): an expression naming a
- *    variable is left enabled, as Java does for a variable it cannot supply; the Uncheckable warning is not raised.
- *  - {3} of Questionnaire_QR_Item_BadOption is the terminology server's text; here it is the local "not found" wording.
+ * Not ported; an input that reaches one of these carries `unchecked`, so the result says `checked_fully: false`:
+ *  - validateQuestionnaireElementDerivation (the items against an extends / compliesWith Questionnaire).
+ *  - the variables an enableWhenExpression's Questionnaire declares (collectVariables): the item is left enabled.
+ * Launch contexts need the -launch-context setting, which this validator does not have: the name is then simply
+ * unavailable, as it is in Java without the setting.
+ *
+ * NON-OFFICIAL TEXT:
+ *  - {3} of Questionnaire_QR_Item_BadOption is the terminology server's text; here it is a local "not found" wording.
+ *  - checkAuthoringDate prints vdt.toHumanDisplay() (locale dependent) and the period; here the source values, and
+ *    the warning carries `unchecked` because its text is not the jar's.
  */
 
 type Json = Record<string, any>;
@@ -22,6 +25,13 @@ export interface QuestionnaireIssue {
   path: string;
   code: string;
   message: string;
+  /** A jar check this input reached and that is not done here: `checked_fully` is false (fhirValidator.completenessOf). */
+  unchecked?: { kind: "rule" | "code"; canonical: string };
+}
+
+export interface QuestionnaireStaticDeps {
+  fetchQuestionnaire(url: string): Promise<Json | null>;
+  fetchValueSet(url: string): Promise<Json | null>;
 }
 
 export interface QuestionnaireDeps {
@@ -55,6 +65,12 @@ const EXT_MIN_QUANTITY = "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-que
 const EXT_MAX_QUANTITY = "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-questionnaire-maxQuantity";
 const EXT_ENABLE_WHEN_EXPRESSION = "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-questionnaire-enableWhenExpression";
 const EXT_ENABLE_WHEN_FI = "http://phr.kanta.fi/StructureDefinition/fiphr-ext-questionnaire-enablewhen";
+const EXT_DERIVATION_TYPE = "http://hl7.org/fhir/StructureDefinition/questionnaire-derivationType";
+const EXT_VALUESET_PARAMETER = "http://hl7.org/fhir/tools/StructureDefinition/valueset-parameter";
+const EXT_BINDING_PARAMETER = "http://hl7.org/fhir/tools/StructureDefinition/binding-parameter";
+const EXT_VARIABLE = "http://hl7.org/fhir/StructureDefinition/variable";
+/** validateQuestionnaireElement l. 272-276: the $expand parameters a binding may set without the ValueSet declaring them. */
+const EXPANSION_PARAMETERS = new Set(["abstract", "activeOnly", "check-system-version", "check-valueset-version", "context", "contextDirection", "count", "date", "default-valueset-version", "designation", "displayLanguage", "exclude-system", "excludeNested", "excludeNotForUI", "excludePostCoordinated", "filter", "filterProperty", "force-system-version", "force-valueset-version", "includeDefinition", "includeDesignations", "inferSystem", "lenient-display-validation", "manifest", "offset", "property", "system-version", "useSupplement", "valueset-membership-only"]);
 const UCUM = "http://unitsofmeasure.org";
 const SNOMED = "http://snomed.info/sct";
 
@@ -128,9 +144,68 @@ function findItem(items: unknown, linkId: string): Json | null {
 
 // ---------------------------------------------------------------------------------------------- Questionnaire
 
-/** QuestionnaireValidator.validateQuestionnaireElement l. 226-254: the enableWhen links. */
-export function validateQuestionnaire(q: Json, path: string): QuestionnaireIssue[] {
+const nameOf = (ext: Json): string | null => extensionPrimitive(firstExtension(ext, "name"));
+
+/** QuestionnaireValidator.checkDerivations l. 175-207. `compared`: an extends / compliesWith Questionnaire applies. */
+async function derivations(q: Json, path: string, deps: QuestionnaireStaticDeps, out: QuestionnaireIssue[]): Promise<boolean> {
+  let compared = false;
+  const warn = (at: string, severity: "warning" | "information", message: string): void => {
+    out.push({ severity, path: at, code: "business-rule", message });
+  };
+  const shadows = list(q._derivedFrom);
+  const urls = list(q.derivedFrom);
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
+    if (typeof url !== "string") continue;
+    const ns = `${path}.derivedFrom[${i}]`;
+    if (!(await deps.fetchQuestionnaire(url))) {
+      warn(ns, "warning", `The questionnaire '${url}' referred to in the derivation could not be found`);
+      continue;
+    }
+    const ext = isObject(shadows[i]) ? firstExtension(shadows[i], EXT_DERIVATION_TYPE) : null;
+    if (!ext) {
+      warn(ns, "warning", `The questionnaire '${url}' has no derivation type specified using the '${EXT_DERIVATION_TYPE}' extension, so derivation has not been checked`);
+      continue;
+    }
+    const v = isObject(ext.valueCoding) ? ext.valueCoding : null;
+    if (!v) {
+      warn(ns, "warning", "The derivation extension has no value");
+      continue;
+    }
+    const known = v.system === "http://hl7.org/fhir/questionnaire-derivationType";
+    if (known && (v.code === "extends" || v.code === "compliesWith")) compared = true;
+    else if (known && v.code === "inspiredBy") warn(`${ns}.extension[0].valueCoding`, "information", `The derivation type '${v.system}#${v.code}' means that no derivation checking has been performed against this questionnaire`);
+    else warn(`${ns}.extension[0].valueCoding`, "warning", `The derivation type '${v.system}#${v.code}' is unknown, which means that no derivation checking has been performed against this questionnaire`);
+  }
+  return compared;
+}
+
+/** validateQuestionnaireElement l. 255-284: the ValueSet's parameters against the binding-parameters of answerValueSet. */
+async function answerValueSetParameters(item: Json, ns: string, deps: QuestionnaireStaticDeps, out: QuestionnaireIssue[]): Promise<void> {
+  if (typeof item.answerValueSet !== "string") return;
+  const vs = await deps.fetchValueSet(item.answerValueSet);
+  const declared = vs ? extensionsOf(vs, EXT_VALUESET_PARAMETER) : [];
+  if (!vs || !declared.length) return;
+  const versioned = typeof vs.version === "string" ? `${vs.url}|${vs.version}` : String(vs.url);
+  const bindings = isObject(item._answerValueSet) ? extensionsOf(item._answerValueSet, EXT_BINDING_PARAMETER) : [];
+  const names = declared.map(nameOf).filter((n): n is string => n !== null);
+  for (const n of names) {
+    if (!bindings.some((b) => nameOf(b) === n)) out.push({ severity: "error", path: ns, code: "business-rule", message: `The ValueSet '${versioned}' has a parameter '${n}' but there is no matching binding parameter` });
+  }
+  for (const b of bindings) {
+    const n = nameOf(b);
+    if (n !== null && !names.includes(n) && !EXPANSION_PARAMETERS.has(n)) out.push({ severity: "warning", path: ns, code: "business-rule", message: ` The binding parameter '${n}' is not recognised as a standard parameter or a parameter on the ValueSet '${versioned}'` });
+  }
+}
+
+/** QuestionnaireValidator.validateQuestionannaire: checkDerivations + the items' enableWhen links, parameters. */
+export async function validateQuestionnaire(q: Json, path: string, deps: QuestionnaireStaticDeps): Promise<QuestionnaireIssue[]> {
   const out: QuestionnaireIssue[] = [];
+  const compared = await derivations(q, path, deps, out);
+  if (compared) {
+    const canonical = "QuestionnaireValidator.validateQuestionnaireElementDerivation";
+    out.push({ severity: "information", path, code: "rule-unchecked", message: `The items were not compared with the derivedFrom Questionnaire: ${canonical} is not ported; not a conformance failure`, unchecked: { kind: "rule", canonical } });
+  }
   const isBefore = (item: Json, tgt: Json, parents: Json[]): boolean => {
     if (parents.includes(tgt)) return true;
     const indexIn = (p: Json, d: Json): number => {
@@ -171,6 +246,14 @@ export function validateQuestionnaire(q: Json, path: string): QuestionnaireIssue
     });
   };
   walk(q, path, [q]);
+  const parameters = async (element: Json, at: string): Promise<void> => {
+    for (const [n, item] of list(element.item).entries()) {
+      if (!isObject(item)) continue;
+      await answerValueSetParameters(item, `${at}.item[${n}]`, deps, out);
+      await parameters(item, `${at}.item[${n}]`);
+    }
+  };
+  await parameters(q, path);
   return out;
 }
 
@@ -273,15 +356,47 @@ class ResponseValidator {
     return [];
   }
 
-  /** EnableWhenEvaluator.checkQuestionEnabled l. 234-262 (without collectVariables, see the module comment). */
-  private isEnabled(qitem: Json, qstack: StackEntry[]): boolean {
+  /** Once per item, at the item or (no answer item) its parent, as validateQuestionnaireResponseItem l. 906-918. */
+  private uncheckableSeen = new Set<Json>();
+
+  /** collectVariables l. 359-371: the variables declared on the Questionnaire and on the items of the stack. */
+  private declaresVariables(qitem: Json, qstack: StackEntry[]): boolean {
+    return [this.q, qitem, ...qstack.map((s) => s.q)].some((e) => extensionsOf(e, EXT_VARIABLE).length > 0);
+  }
+
+  /** EnableWhenEvaluator.checkQuestionEnabled l. 215-251: the expression form, without evaluating declared variables. */
+  private expressionEnabled(qitem: Json, expression: string, qstack: StackEntry[], at: string): boolean {
+    const seen = this.uncheckableSeen.has(qitem);
+    this.uncheckableSeen.add(qitem);
+    // findUnsuppliableVariables: the names the engine resolves for itself are not looked for (SYSTEM_VARIABLES)
+    const names = [...expression.matchAll(/%([A-Za-z][A-Za-z0-9_]*)/g)].map((m) => m[1]).filter((n) => !["sct", "loinc", "ucum", "resource", "rootResource", "context"].includes(n));
+    if (names.length && this.declaresVariables(qitem, qstack)) {
+      if (!seen) {
+        const canonical = "EnableWhenEvaluator.collectVariables";
+        this.out.push({ severity: "information", path: at, code: "rule-unchecked", message: `The enableWhen expression of the item ${qitem.linkId} was not evaluated: ${canonical} is not ported; not a conformance failure`, unchecked: { kind: "rule", canonical } });
+      }
+      return true;
+    }
+    if (names.length) {
+      const unique = [...new Set(names)];
+      const why = `it refers to ${unique.map((n) => `%${n}`).join(", ")}, ${unique.length === 1 ? "which is" : "which are"} not available when validating a QuestionnaireResponse on its own`;
+      if (!seen) this.warning(false, at, `The enableWhen expression for the item ${qitem.linkId} could not be evaluated (${why}), so the item is treated as enabled, and its answers have not been checked against it`);
+      return true;
+    }
+    const answer = this.deps.evaluate(expression, this.response);
+    if (answer === undefined && !seen) {
+      const canonical = "EnableWhenEvaluator.checkQuestionEnabled";
+      this.out.push({ severity: "information", path: at, code: "rule-unchecked", message: `The enableWhen expression of the item ${qitem.linkId} could not be evaluated here; not a conformance failure`, unchecked: { kind: "rule", canonical } });
+    }
+    return answer ?? true;
+  }
+
+  /** EnableWhenEvaluator.checkQuestionEnabled l. 215-251. */
+  private isEnabled(qitem: Json, qstack: StackEntry[], at: string): boolean {
     const fi = extensionPrimitive(firstExtension(qitem, EXT_ENABLE_WHEN_FI));
     const expr = firstExtension(qitem, EXT_ENABLE_WHEN_EXPRESSION);
     const expression = fi ?? (expr && isObject(expr.valueExpression) && expr.valueExpression.language === "text/fhirpath" ? expr.valueExpression.expression : null);
-    if (typeof expression === "string") {
-      if (/%(?!resource\b|rootResource\b|context\b|sct\b|loinc\b|ucum\b|`)/.test(expression)) return true;
-      return this.deps.evaluate(expression, this.response) ?? true;
-    }
+    if (typeof expression === "string") return this.expressionEnabled(qitem, expression, qstack, at);
     const conditions = list(qitem.enableWhen).filter(isObject);
     if (!conditions.length) return true;
     const results = conditions.map((c) => {
@@ -335,7 +450,7 @@ class ResponseValidator {
 
   /** validateQuestionnaireResponseItem l. 903-949. */
   private async itemGroup(qItem: Json, mapItem: Array<{ element: Json; index: number }> | null, element: Json, stack: string, qstack: StackEntry[]): Promise<void> {
-    const enabled = this.isEnabled(qItem, qstack);
+    const enabled = this.isEnabled(qItem, qstack, mapItem ? `${stack}.item[${mapItem[0].index}]` : stack);
     if (mapItem) {
       if (!enabled) {
         for (const e of mapItem) {
@@ -361,7 +476,7 @@ class ResponseValidator {
     const fulfilled = answers.length > 0 || qItem.required !== true || itemType(qItem) === "group";
     const missing = `No response answer found for required item '${qItem.linkId}'`;
     if (this.notCompleted) this.warning(fulfilled, stack, missing);
-    else if (this.isEnabled(qItem, qstack)) this.rule(fulfilled, stack, missing, "required");
+    else if (this.isEnabled(qItem, qstack, stack)) this.rule(fulfilled, stack, missing, "required");
     if (answers.length > 1) this.rule(qItem.repeats === true, stack, "Only one response answer item with this linkId allowed");
     if (firstExtension(qItem, EXT_MAXOCCURS)) {
       const mo = integerExtension(qItem, EXT_MAXOCCURS);
@@ -467,6 +582,11 @@ class ResponseValidator {
     }
   }
 
+  /** context.validateCode has an answer in Java; local terminology has none here. */
+  private undecided(at: string, valueSet: string): void {
+    this.out.push({ severity: "information", path: at, code: "rule-unchecked", message: `Membership in ${valueSet} could not be decided locally; not a conformance failure`, unchecked: { kind: "code", canonical: valueSet } });
+  }
+
   private options(qItem: Json): Json[] {
     return list(qItem.answerOption).filter(isObject);
   }
@@ -565,7 +685,11 @@ class ResponseValidator {
     this.warning(!(s.includes("\r") || s.includes("\n")), at, "The answer should not contain new line characters");
     if (typeof qItem.answerValueSet === "string") {
       if (!(await this.deps.valueSetKnown(qItem.answerValueSet))) this.warning(false, at, `The value set '${qItem.answerValueSet}' could not be found`);
-      else if ((await this.deps.member(qItem.answerValueSet, null, s)) === false) this.rule(false, at, `The value '${s}' is not in the list of allowed values (value set '${qItem.answerValueSet}')`, "invariant");
+      else {
+        const inSet = await this.deps.member(qItem.answerValueSet, null, s);
+        if (inSet === false) this.rule(false, at, `The value '${s}' is not in the list of allowed values (value set '${qItem.answerValueSet}')`, "invariant");
+        if (inSet === undefined) this.undecided(at, qItem.answerValueSet);
+      }
     }
     this.typedOptions(s, at, qItem, "valueString", "Option list has no option values of type string", `The string ${s} is not in the set of permitted values`);
   }
@@ -660,8 +784,10 @@ class ResponseValidator {
     const unitSet = extensionPrimitive(firstExtension(qItem, EXT_UNIT_VALUESET));
     if (unitSet !== null) {
       if (!(await this.deps.valueSetKnown(unitSet))) this.warning(false, at, `The unit value set '${unitSet}' could not be found`);
-      else if ((await this.deps.member(unitSet, typeof v.system === "string" ? v.system : null, String(v.code))) === false) {
-        this.rule(false, at, `The value ${this.displayQuantity(v)} has a unit that is not in the unit value set '${unitSet}'`, "invariant");
+      else {
+        const inSet = await this.deps.member(unitSet, typeof v.system === "string" ? v.system : null, String(v.code));
+        if (inSet === false) this.rule(false, at, `The value ${this.displayQuantity(v)} has a unit that is not in the unit value set '${unitSet}'`, "invariant");
+        if (inSet === undefined) this.undecided(at, unitSet);
       }
     }
   }
@@ -674,14 +800,23 @@ class ResponseValidator {
       this.codingOption(c, ns, qItem, open, answerCount);
     } else if (typeof qItem.answerValueSet === "string") {
       const vs = qItem.answerValueSet;
+      if (vs.startsWith("#") && list(this.q.contained).some((c) => isObject(c) && c.id === vs.slice(1))) {
+        // resolveBindingReference finds the Questionnaire's contained ValueSet, which membership here cannot read
+        if (constraint !== "optionsOrType") this.undecided(ns, vs);
+        return;
+      }
       if (!(await this.deps.valueSetKnown(vs))) {
         this.warning(false, ns, `The valueSet reference ${vs} could not be resolved`);
         return;
       }
       if (noString(c.code) && noString(c.system) && !noString(c.display) && open) return;
       // optionsOrType: any Coding is an answer, the value set is not the list (validateAnswerCode l. 1544)
-      if (constraint !== "optionsOrType" && typeof c.code === "string" && (await this.deps.member(vs, typeof c.system === "string" ? c.system : null, c.code)) === false) {
-        this.rule(false, ns, `The code '${c.code}' in the system '${c.system}' is not in the options value set (${vs}) specified by the questionnaire. Terminology Error: The provided code '${c.system}#${c.code}' was not found in the value set '${vs}'`, "code-invalid");
+      if (constraint !== "optionsOrType" && typeof c.code === "string") {
+        const inSet = await this.deps.member(vs, typeof c.system === "string" ? c.system : null, c.code);
+        // NON-OFFICIAL TEXT: the part after "Terminology Error:" is the terminology server's in Java ({3}), and the
+        // "({2})" is the ValueSet's presentation name
+        if (inSet === false) this.rule(false, ns, `The code '${c.code}' in the system '${c.system}' is not in the options value set (${vs}) specified by the questionnaire. Terminology Error: The provided code '${c.system}#${c.code}' was not found in the value set '${vs}'`, "code-invalid");
+        if (inSet === undefined) this.undecided(ns, vs);
       }
     } else {
       this.hint(ns, "Cannot validate options because no option or options are provided");
@@ -752,6 +887,17 @@ export async function validateQuestionnaireResponse(qr: Json, path: string, deps
     return [{ severity: example ? "information" : "warning", path, code: "required", message: `The questionnaire '${q}' could not be resolved, so no validation can be performed against the base questionnaire` }];
   }
   const v = new ResponseValidator(questionnaire, qr, !["completed", "amended"].includes(String(qr.status)), deps);
+  // checkAuthoringDate l. 569-585 (see the module comment)
+  const period = isObject(questionnaire.effectivePeriod) ? questionnaire.effectivePeriod : null;
+  if (period && typeof qr.authored === "string") {
+    const at = instantOf(qr.authored);
+    const canonical = "QuestionnaireValidator.checkAuthoringDate";
+    const warn = (message: string): void => {
+      v.out.push({ severity: "warning", path: `${path}.authored`, code: "business-rule", message, unchecked: { kind: "rule", canonical } });
+    };
+    if (typeof period.end === "string" && at > instantOf(period.end)) warn(`The authored date '${qr.authored}' is after the end of the permitted period defined in the Questionnaire ('${period.end}')`);
+    if (typeof period.start === "string" && at < instantOf(period.start)) warn(`The authored date '${qr.authored}' is before the start of the permitted period defined in the Questionnaire ('${period.start}')`);
+  }
   await v.items(list(questionnaire.item).filter(isObject), qr, path, []);
   return v.out;
 }

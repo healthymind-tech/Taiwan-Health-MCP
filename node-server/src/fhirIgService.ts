@@ -2510,6 +2510,7 @@ export class FHIRIGService {
       ...(core.slices_unchecked ? { slices_unchecked: core.slices_unchecked } : {}),
       ...(core.limits_exceeded ? { limits_exceeded: core.limits_exceeded } : {}),
       ...(core.invariants_unchecked ? { invariants_unchecked: core.invariants_unchecked } : {}),
+      ...(core.rules_unchecked ? { rules_unchecked: core.rules_unchecked } : {}),
       ...(core.lookups_failed ? { lookups_failed: core.lookups_failed } : {}),
       ...(core.undecided_causes ? { undecided_causes: core.undecided_causes } : {}),
       ...(core.official_verdict !== undefined ? { official_verdict: core.official_verdict } : {}),

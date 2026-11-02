@@ -56,4 +56,8 @@ test("Measure: a CQL criteria needs a library, the namespace to match, and the f
   assert.deepEqual(await errors("Lib.Here"), []);
   assert.deepEqual(await errors("Lib.Gone"), ["The function Gone does not exist in the library http://l"]);
   assert.deepEqual(await errors("Other.Here"), ["No matching Library found for the namespace Other"]);
+  const broken: MeasureDeps = { ...deps, fetchLibrary: async () => ({ url: "http://l", name: "Lib", content: [{ contentType: "application/elm+xml", data: Buffer.from("<library><open></library>").toString("base64") }] }) };
+  const bad = (await validateMeasure({ library: ["http://l"], ...cql("Lib.Here") }, "Measure", broken)).filter((i) => i.severity === "error");
+  assert.equal(bad.length, 1);
+  assert.match(bad[0].message, /^Error in http:\/\/l: '/);
 });

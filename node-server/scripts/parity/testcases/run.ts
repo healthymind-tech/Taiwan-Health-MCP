@@ -45,6 +45,14 @@ const timeoutMs = Number(opt("--timeout") ?? 60_000);
 const verbose = args.includes("-v");
 const showSkipped = args.includes("--show-skipped");
 const oracleFile = opt("--oracle");
+/**
+ * ValidationTests clones the engine per case (CLONE, l. 256), so a case's own `packages` do not outlive it. A
+ * "fetcher": "standalone" case is different: StandAloneValidatorFetcher.resolveURL installs the package that owns a url
+ * and loads it, and that survives into later cases. In a full run this happens at qr-bad-ref3 (hl7.fhir.uv.sdc#4.0.0,
+ * pulling hl7.fhir.uv.extensions.r4#5.3.0-ballot-tc1 over the manifest's 5.3.0-ballot; batch4.log, and a jar run of
+ * only that case and versioned-extension). Cases run in name order (ValidationTests.data), so every later case sees it.
+ */
+const STICKY_PACKAGES_FROM = "qr-bad-ref3";
 /** The jar's package cache: the manifest's 5.3.0-ballot exactly, which the validator's own caches do not hold. */
 const ORACLE_PACKAGES = join(homedir(), "tools", "validator-oracle", "home", ".fhir", "packages");
 
@@ -164,8 +172,7 @@ function loadJsonFile(p: string): Res | null {
 }
 
 /**
- * The shared base layer (built once). `extensions` overrides the extensions package version: ValidationTests keeps one
- * context per FHIR version and every case's packages stay in it, so the jar's copy depends on the cases before it.
+ * The shared base layer (built once). `extensions` overrides the extensions package version: see STICKY_PACKAGES_FROM.
  */
 function baseStore(suite: string, extensions?: string): { store: ResourceStore; ids: Set<string>; missing: string[] } {
   const manifest = loadJsonFile(join(suite, "manifest.json")) ?? {};
@@ -411,15 +418,10 @@ async function main(): Promise<void> {
   const results: RunResult[] = [];
   const oracle = oracleFile ? readOracle(oracleFile) : null;
   let tc1Base: ReturnType<typeof baseStore> | null = null;
-  const jarRows = [...(oracle?.values() ?? [])];
-  const jarOrder = new Map(jarRows.map((row, n) => [row.id, n]));
-  const firstTc1 = jarRows.findIndex((row) => JSON.stringify(row.outcome ?? "").includes("5.3.0-ballot-tc1"));
-  const tc1From = firstTc1 < 0 ? Infinity : firstTc1;
   let i = 0;
   for (const run of runs) {
     i++;
-    // the first jar outcome naming the later extensions package marks the case that brought it in (see baseStore)
-    const usesTc1 = (jarOrder.get(run.id) ?? -1) >= tc1From;
+    const usesTc1 = !!oracle && run.name > STICKY_PACKAGES_FROM;
     if (usesTc1 && !tc1Base) tc1Base = baseStore(suite, "5.3.0-ballot-tc1");
     const res = await executeRun(run, usesTc1 ? tc1Base! : base, suite);
     if (oracle) res.oracle = judgeWithOracle(res, oracle.get(run.id), run.expectation?.issues ?? []);

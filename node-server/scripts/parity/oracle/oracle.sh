@@ -11,6 +11,8 @@
 #
 # Env: ORACLE_WORK (default ~/tools/validator-oracle), VALIDATOR_JAR (default ~/tools/validator-cli/validator_cli.jar),
 # FHIR_TEST_CASES (default ~/ref/fhir-test-cases), HL7_CORE_SRC (default ~/ref/hl7-core-7.0.1), ORACLE_WAIT (lock wait, s),
+# ORACLE_TX (validate: the -tx value, default https://tx.fhir.org; n/a = no terminology server),
+# ORACLE_OUT (suite: the results file under out/, default suite-jar.jsonl; a side run must not touch the recorded one),
 # ORACLE_PACKAGES (a package cache to use instead of the work dir's: the first build of the OID indexes commits row by
 # row and takes minutes per package on this disk, seconds on tmpfs).
 set -euo pipefail
@@ -82,9 +84,9 @@ case "$cmd" in
     with_lock
     dest=""
     if [ -n "${1:-}" ] && [ "${1#--}" = "$1" ]; then dest=$1; shift; fi
-    jvm -cp /work/classes:/oracle/validator_cli.jar oracle.SuiteOracle --tc /tc --tx-cache /work/txCache --out /work/out/suite-jar.jsonl "$@"
-    [ -z "$dest" ] || cp "$WORK/out/suite-jar.jsonl" "$dest"
-    echo "oracle: ${dest:-$WORK/out/suite-jar.jsonl}"
+    jvm -cp /work/classes:/oracle/validator_cli.jar oracle.SuiteOracle --tc /tc --tx-cache /work/txCache --out "/work/out/${ORACLE_OUT:-suite-jar.jsonl}" "$@"
+    [ -z "$dest" ] || cp "$WORK/out/${ORACLE_OUT:-suite-jar.jsonl}" "$dest"
+    echo "oracle: ${dest:-$WORK/out/${ORACLE_OUT:-suite-jar.jsonl}}"
     ;;
   validate)
     with_lock
@@ -96,7 +98,7 @@ case "$cmd" in
         *) cp "$1" "$job/"; args+=("/work/in/$(basename "$job")/$(basename "$1")"); shift ;;
       esac
     done
-    jvm -jar /oracle/validator_cli.jar "${args[@]}" -version 4.0.1 -tx https://tx.fhir.org \
+    jvm -jar /oracle/validator_cli.jar "${args[@]}" -version 4.0.1 -tx "${ORACLE_TX:-https://tx.fhir.org}" \
       -output "/work/in/$(basename "$job")/outcome.json" >&2 || true
     rc=0
     if [ -f "$job/outcome.json" ]; then cat "$job/outcome.json"; else echo "oracle: the CLI gave no outcome (it crashed, see its log above)" >&2; rc=3; fi

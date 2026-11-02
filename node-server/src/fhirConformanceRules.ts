@@ -10,8 +10,10 @@
  *  - checkExpression runs FHIRPathEngine.checkOnTypes, a full static type checker. Only its entry check is ported:
  *    a type name that opens a union leg must be one of the bases (or an ancestor of one), executeType l. 3497, else
  *    FHIRPATH_UNKNOWN_NAME. Deeper paths are not type-checked here.
+ *  - canonicalise / SEARCHPARAMETER_EXP_WRONG (a warning on an expression that differs from derivedFrom's).
  *  - checkDependency's package lookups (FilesystemPackageCacheManager, the package registry) need the package cache of
  *    the host running the CLI. The rules that read only the resource are ported.
+ * An input that reaches one of these carries `unchecked`, so the result says `checked_fully: false`.
  */
 
 type Json = Record<string, any>;
@@ -21,7 +23,18 @@ export interface ConformanceIssue {
   path: string;
   code: string;
   message: string;
+  /** A jar check this input reached and that is not done here: `checked_fully` is false (fhirValidator.completenessOf). */
+  unchecked?: { kind: "rule" | "code"; canonical: string };
 }
+
+/** The jar runs `rule` on this input and it is not ported. */
+const notPorted = (path: string, rule: string, what: string): ConformanceIssue => ({
+  severity: "information",
+  path,
+  code: "rule-unchecked",
+  message: `${what}: ${rule} is not ported; not a conformance failure`,
+  unchecked: { kind: "rule", canonical: rule },
+});
 
 export interface ConformanceRuleDeps {
   fetchSearchParameter(url: string): Promise<Json | null>;
@@ -130,6 +143,7 @@ export async function validateSearchParameter(sp: Json, path: string, deps: Conf
     if (bases.length) {
       const bad = await expressionIssue(String(sp.expression), bases, deps);
       if (bad) out.push({ severity: "error", path: `${path}.expression`, code: "invalid", message: `Error in search expression '${sp.expression}': ${bad}` });
+      else out.push(notPorted(`${path}.expression`, "SearchParameterValidator.checkExpression", "The expression was not type-checked"));
     }
   }
   const master = typeof sp.derivedFrom === "string" && sp.derivedFrom ? sp.derivedFrom : null;
@@ -148,6 +162,9 @@ export async function validateSearchParameter(sp: Json, path: string, deps: Conf
       // SEARCHPARAMETER_TYPE_WRONG is called with (master, sp.type, cs.type): {1} is the parent's type, {0} the master url
       if (typeof sp.type === "string" && parent.type !== sp.type) {
         out.push({ severity: "error", path, code: "business-rule", message: `The type ${parent.type} is different to the type ${master} in the derivedFrom SearchParameter` });
+      }
+      if (typeof parent.expression === "string" && hasExpression && parent.expression !== sp.expression) {
+        out.push(notPorted(path, "SearchParameterValidator.canonicalise", "The expression was not compared with the derivedFrom SearchParameter's"));
       }
     }
   }
@@ -179,6 +196,7 @@ function checkDependency(dep: Json, at: string, out: ConformanceIssue[]): void {
   }
   rule(uri === null || uri.includes("/ImplementationGuide/"), "The URL should refer directly to the ImplementationGuide resource (e.g. include '/ImplementationGuide/')");
   rule(packageId === null || PACKAGE_REGEX.test(packageId), `The packageId ${packageId} is not valid`);
+  out.push(notPorted(at, "ImplementationGuideValidator.checkDependency", "The dependency was not checked against its package"));
 }
 
 /** ImplementationGuideValidator.validateImplementationGuide l. 39-60. */
