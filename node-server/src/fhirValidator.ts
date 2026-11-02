@@ -3640,17 +3640,14 @@ export class InstanceValidator {
       // (parity v2) JsonParser.checkObject (7.0.1): OBJECT_MUST_HAVE_SOME_CONTENT, and the (empty) element is kept —
       // validation goes on, so its required children are reported as missing.
       // XML: XmlParser keeps the empty element (its parse error, if any, comes from fhirXml.ts) and ele-1 fails.
-      // (parity v3 round 5) JSON: ele-1 (`hasValue() or (children().count() > id.count())`) fails on the kept empty
-      // element as well — except for a choice element: JsonParser.parseChildItem (l. 400-408) builds it on the [x]
-      // property, and FHIRPathEngine.funcHasValue (l. 6208) reads such an element as having a value. Evaluator
-      // corpus: every non-choice `{}` (extension, meta, text, code, subject, category[n] …) carries ele-1 in
-      // validator_cli 7.0.1, no `value[x]` / `dose[x]` / `effective[x]` `{}` does.
+      // (parity v3) JSON: ele-1 (`hasValue() or (children().count() > id.count())`) fails on the kept empty element, a
+      // choice element too (official and single jar runs: `value.ofType(Quantity)`, `dose.ofType(Quantity)`,
+      // `item.ofType(CodeableConcept)`), and checkObject reports at the parser's `[x]` path.
       // An object the parser emptied (dropBadPrimitivesIn) had content in the source: checkObject stays quiet, the
       // element is the same empty element for ele-1.
       const choice = /\[x\]$/u.test(String(el.path ?? ""));
       if (!this.xmlSource && !this.parserEmptied.has(v)) issues.push({ severity: "error", path: choice ? (item.jpath ?? item.path) : item.path, code: "invalid", message: "Object must have some content" });
-      // a type slice of the choice (dose[x]:doseQuantity) names the type, so there is no such reading (jar, single run)
-      if (this.xmlSource || !choice || el.sliceName) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
+      issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
     }
 
     // Port of InstanceValidator.checkChildByDefinition (7.0.1), several profiles on the element's one type: the
@@ -4840,12 +4837,18 @@ export class InstanceValidator {
       }
       const criteria = await this.sliceCriteria(sdx, slice, dpath, dtype === "profile");
       if (!criteria.length) anyUnlocated = true;
+      // JsonParser.parseChildComplex: an array where the base element is single creates no child, whatever it holds
+      const firstStep = dpath.split(".")[0];
+      const firstGroup = sdx.children(slice)?.get(firstStep);
+      const firstDef = firstGroup?.base ?? firstGroup?.slices[0];
+      const notParsed = isObject(it.value) && Array.isArray(it.value[firstStep]) && String(firstDef?.base?.max ?? firstDef?.max ?? "*") === "1";
+      const discriminated = (): any[] => (notParsed ? [] : this.discriminatorValues(it.value, dpath, rctx));
       let found = false;
       for (const c of criteria) {
         found = true;
         if (String(c.max) === "0") {
           clauses.push(`${rawPath}.empty()`);
-          and(this.discriminatorValues(it.value, dpath, rctx).length === 0);
+          and(discriminated().length === 0);
         } else if (dtype === "type") {
           const r = await this.typeClause(sdx, slice, c, rawPath, dpath, it, itemType, rctx);
           clauses.push(r.expression);
@@ -4865,16 +4868,16 @@ export class InstanceValidator {
         } else if (dtype === "exists") {
           if (typeof c.min === "number" && c.min >= 1) {
             clauses.push(`(${rawPath}.exists())`);
-            and(this.discriminatorValues(it.value, dpath, rctx).length > 0);
+            and(discriminated().length > 0);
           } else if (String(c.max) === "0") {
             clauses.push(`(${rawPath}.exists().not())`);
-            and(this.discriminatorValues(it.value, dpath, rctx).length === 0);
+            and(discriminated().length === 0);
           } else {
             throw new SlicingDefinitionError(`Discriminator (${rawPath}) is based on element existence, but slice ${slice.id} neither sets min>=1 or max=0`);
           }
         } else {
           const [fixed, pattern] = fixedPattern(c);
-          const values = this.discriminatorValues(it.value, dpath, rctx);
+          const values = discriminated();
           if (fixed) {
             const r = fixedClause(rawPath, fixed.value, valueTypeOf(fixed.field.slice(5)), String(slice.id), values);
             clauses.push(r.expression);
@@ -4898,7 +4901,7 @@ export class InstanceValidator {
         const exp = await this.discriminatorExpectation(sdx, slice, dpath);
         if (exp) {
           found = true;
-          const values = this.discriminatorValues(it.value, dpath, rctx);
+          const values = discriminated();
           if (exp.kind === "binding") {
             clauses.push(`(${rawPath} memberOf '${exp.valueSet}')`);
             and(await this.bindingClause(exp.valueSet, values));
