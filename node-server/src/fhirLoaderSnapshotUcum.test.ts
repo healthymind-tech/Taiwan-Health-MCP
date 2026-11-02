@@ -631,3 +631,9 @@ test("NodeStack literal path: a choice element on the way is <stem>.ofType(<type
   assert.equal(withChoiceLiterals("Patient.name[0]", "Patient.name"), "Patient.name[0]");
   assert.equal(withChoiceLiterals("Patient.name[0]", undefined), "Patient.name[0]");
 });
+
+test("parser findings do not fail a sub-validation; a complex list written as an object is still its one child", async () => {
+  const issues = await new InstanceValidator(new FakeResolver()).validate({ resourceType: "Observation", status: "final", code: { coding: { system: "http://x", code: "y" } } });
+  assert.ok(issues.some((i) => /The property coding must be a JSON Array, not an Object/.test(i.message)));
+  assert.ok(!issues.some((i) => /ele-1/.test(i.message)), "JsonParser.parseChildComplex parses the object: code is not empty");
+});

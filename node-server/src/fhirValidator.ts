@@ -7507,7 +7507,9 @@ export class InstanceValidator {
             ? Array.isArray(raw) && raw.some((x) => x !== null && primOk(x))
             : raw !== null && primOk(raw)
           : arr
-            ? Array.isArray(raw) && raw.some((x) => x !== null)
+            ? Array.isArray(raw)
+              ? raw.some((x) => x !== null)
+              : isObject(raw) // parseChildComplex (JsonParser.java:521-525): the error, then the object is parsed as the one child
             : raw !== null && !Array.isArray(raw);
         // (parity v3) a `_x` shadow that is not an object (scalar property) drops the whole property in
         // JsonParser.parseChildPrimitiveInstance: neither the value nor the shadow is a child
@@ -7988,7 +7990,7 @@ export function narrativeLinkProblems(div: string, anchors: ReadonlySet<string>)
  * (InstanceValidator.conformsToProfile, a fresh validateResource on the parsed tree) never sees them, so profile
  * matching — slices by profile, reference target profiles — ignores them here too.
  */
-const PARSE_ISSUE = /^Error parsing XHTML: |^Invalid entity in the XHTML \(|^Unrecognized property '|^The property \S+ must be (?:a JSON Array|an Array|an Object), not |^This property must be (?:a simple value|an object), not |^Error parsing JSON: |^Array cannot be empty|^Object must have some content$/u;
+const PARSE_ISSUE = /^Error parsing XHTML: |^Invalid entity in the XHTML \(|^Unrecognized property '|^The property \S+ must be (?:a JSON Array|an Array|an Object), not |^This property must be (?:a simple value|an object), not |^Error parsing JSON: |^Array cannot be empty|^Object must have some content$|^The JSON array for '\d+' is invalid at index |^This base property must be an Array, not /u;
 function isParseIssue(i: { message?: string }): boolean {
   return PARSE_ISSUE.test(String(i.message ?? ""));
 }
