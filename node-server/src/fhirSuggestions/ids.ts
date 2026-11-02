@@ -62,6 +62,8 @@ function suggestionFor(c: FinalizeChange): Suggestion {
       return { value: String(c.to), kind: "replace_bundle_type", confidence: 0.9, reason: `the Bundle profile fixes Bundle.type to '${c.to}'`, patch: { op: "replace", path: "Bundle.type", value: c.to } };
     case "document-order":
       return { value: "Bundle.entry[0]", kind: "move_entry", confidence: 0.9, reason: "a document Bundle's first entry must be the Composition (bdl-11)", patch: { op: "move", from: c.path, path: "Bundle.entry[0]" } };
+    case "meta-profile":
+      return { value: String(c.to), kind: "replace_reference", confidence: 0.9, reason: `meta.profile '${from}' names no StructureDefinition of the IG and maps to exactly this one`, patch: { op: "replace", path: c.path, value: c.to } };
   }
 }
 

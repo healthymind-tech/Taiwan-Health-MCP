@@ -123,7 +123,8 @@ test("meta.profile at a version that is not installed: warning, not checked, com
   const w = issues.find((i) => i.path === "Patient.meta.profile[0]");
   assert.equal(w?.severity, "warning");
   assert.equal(w?.message, `Profile reference '${PV}|9.9.9' has not been checked because it could not be found`);
-  assert.deepEqual(completenessOf(issues), { checked_fully: false, profiles_unchecked: [`${PV}|9.9.9`], valuesets_unchecked: [] });
+  // ROUND 9: validator_cli only warns here too (IV Validation_VAL_Profile_Unknown): every check it would do was done; the profile stays listed
+  assert.deepEqual(completenessOf(issues), { checked_fully: true, profiles_unchecked: [`${PV}|9.9.9`], valuesets_unchecked: [] });
   assert.deepEqual(completenessOf(await run(patNoSystem(`${PV}|1.0.0`), PV_VERSIONS)).profiles_unchecked, []);
   assert.equal(completenessOf([], [{ package_id: "x", version: "1" }]).checked_fully, false);
 });

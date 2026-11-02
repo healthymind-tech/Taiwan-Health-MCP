@@ -138,3 +138,34 @@ export function txDisplays(system: string, code: string, localEdition: string | 
 export function setTxDisplayTablesForTest(t: Record<string, { edition: string; codes: Record<string, string[]> }> | null): void {
   displayTables = t === null ? null : new Map(Object.entries(t).map(([s, v]) => [s, { edition: v.edition, codes: new Map(Object.entries(v.codes)) }]));
 }
+
+// ------------------------------------------------------------------------------------------------ server's code systems
+
+/**
+ * The CodeSystem URIs the validator's reference server publishes in its TerminologyCapabilities
+ * (data/terminology/tx-codesystems.json.gz, scripts/supplements/build-tx-systems.mts). validator_cli sends a system to
+ * the server exactly when this list has it (ValueSetValidator.preferServerSide → TerminologyClientManager.supportsSystem,
+ * standalone tag 7.0.1:1135-1148); for any other system it does not hold it only warns (UNKNOWN_CODESYSTEM).
+ */
+let txSystems: Set<string> | null | undefined;
+
+function loadTxSystems(): Set<string> | null {
+  try {
+    const raw = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(dataDir(), "terminology", "tx-codesystems.json.gz"))).toString("utf8"));
+    return Array.isArray(raw?.systems) && raw.systems.length ? new Set(raw.systems.map(String)) : null;
+  } catch (e) {
+    logWarning("bundled terminology-server capability list not readable", { error: String((e as Error).message) });
+    return null;
+  }
+}
+
+/** Is `system` a code system of the validator's terminology server? null: the bundled list is not available. */
+export function txKnowsSystem(system: string): boolean | null {
+  if (txSystems === undefined) txSystems = loadTxSystems();
+  return txSystems ? txSystems.has(system) : null;
+}
+
+/** Override the list (tests); null = no list available, undefined = reload from disk. */
+export function setTxSystemsForTest(list: string[] | null | undefined): void {
+  txSystems = list === undefined ? undefined : list === null ? null : new Set(list);
+}

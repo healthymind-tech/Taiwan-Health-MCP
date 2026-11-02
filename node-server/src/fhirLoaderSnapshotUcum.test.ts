@@ -181,7 +181,8 @@ test("G12 IV:7164 + CTU:265: a profile without a (generatable) snapshot is an er
   assert.ok(err, JSON.stringify(issues));
   assert.equal(err!.message, `StructureDefinition ${P}|1.0 has no snapshot - validation is against the snapshot, so it must be provided`);
   const c = completenessOf(issues);
-  assert.equal(c.checked_fully, false);
+  // ROUND 9: validator_cli stops at this error too (IV:7164-7180): nothing it would do is left undone; the profile stays listed
+  assert.equal(c.checked_fully, true);
   assert.deepEqual(c.profiles_unchecked, [P]);
   // an unknown profile stays the Validation_VAL_Profile_Unknown warning
   const unk = await new InstanceValidator(new R()).validate({ resourceType: "Patient", meta: { profile: ["http://ex.org/none"] } });

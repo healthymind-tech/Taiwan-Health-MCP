@@ -101,9 +101,13 @@ export function isValid(issues: Array<Record<string, any>>): boolean {
 
 /** Machine-readable completeness of one validation run (see completenessOf). */
 export interface Completeness {
-  /** false when a declared profile / required binding could not be checked, or IG dependencies are missing. */
+  /**
+   * Parity layer (ROUND 9): true when every check validator_cli would do was done here. A profile it cannot resolve
+   * either (it only warns) does not lower it; a missing IG dependency, an undecided code / slice / invariant, a failed
+   * lookup or an unresolved required ValueSet (the validator asks its terminology server for it) do.
+   */
   checked_fully: boolean;
-  /** Canonicals (as written, `|version` kept) of profiles that were not checked. */
+  /** Canonicals (as written, `|version` kept) of profiles that were not checked: reported, validator_cli warns on them too. */
   profiles_unchecked: string[];
   /** Required-binding ValueSets (as written) that could not be resolved, so the binding was not checked. */
   valuesets_unchecked: string[];
@@ -165,11 +169,13 @@ export function hasNoVerdict(issues: Array<Record<string, any>>): boolean {
 
 /**
  * Completeness of a validation from its issues (+ the IG closure's missing
- * dependencies). Decision (v6): `valid` keeps HL7 validator_cli semantics —
- * an unresolvable profile is a warning (Validation_VAL_Profile_Unknown), so a
- * resource can be `valid: true` without that profile having been checked —
- * and the incompleteness is reported separately: `checked_fully: false` plus
- * the canonicals in `profiles_unchecked` / `valuesets_unchecked`.
+ * dependencies). `valid` keeps HL7 validator_cli semantics, and `checked_fully`
+ * means exactly: every check the validator would do was done (evaluator, ROUND 9).
+ * An unresolvable profile is a warning there too (Validation_VAL_Profile_Unknown),
+ * so it stays listed in `profiles_unchecked` without lowering `checked_fully`;
+ * extended_findings (extendedFindings/) judges it. A ValueSet not found locally does
+ * lower it: the validator asks its terminology server (BaseWorkerContext.findTxResource,
+ * standalone tag 7.0.1:3948-3950), and the server's ValueSets are not known here.
  */
 export function completenessOf(issues: Array<Record<string, any>>, depsMissing: unknown[] = []): Completeness {
   const profiles = new Set<string>();
@@ -192,7 +198,7 @@ export function completenessOf(issues: Array<Record<string, any>>, depsMissing: 
     (u.kind === "rule" ? rules : u.kind === "valueSet" ? valueSets : u.kind === "code" ? codes : u.kind === "slice" ? slices : u.kind === "limit" ? limits : u.kind === "invariant" ? invariants : profiles).add(u.canonical);
   }
   return {
-    checked_fully: profiles.size === 0 && valueSets.size === 0 && codes.size === 0 && slices.size === 0 && limits.size === 0 && invariants.size === 0 && rules.size === 0 && lookupsFailed === 0 && !(Array.isArray(depsMissing) && depsMissing.length),
+    checked_fully: valueSets.size === 0 && codes.size === 0 && slices.size === 0 && limits.size === 0 && invariants.size === 0 && rules.size === 0 && lookupsFailed === 0 && !(Array.isArray(depsMissing) && depsMissing.length),
     profiles_unchecked: [...profiles],
     valuesets_unchecked: [...valueSets],
     ...(lookupsFailed > 0 ? { lookups_failed: lookupsFailed } : {}),
@@ -5033,7 +5039,6 @@ export class InstanceValidator {
           continue;
         }
         const m = await this.member(valueSet, system, code);
-        if (m === undefined && (system === null || (await this.systemResolvable(system)))) this.undecidedCauses?.add(`${system ?? ""}|${valueSet}`);
         if (m === true) {
           // FHIRPathEngine.opMemberOf (services, tag 7.0.1:2792): validateCode(…).isOk() — a wrong display (error) of
           // the member coding makes it not ok (REVIEW_port_1 F9; the operator form is "any value", not size == 1)
@@ -5051,7 +5056,10 @@ export class InstanceValidator {
         // member" (PAS Condition coding with TW Core 0.3.2's
         // …/CodeSystem/icd-10-cm-2023-tw, published under its ValueSet URL →
         // no slice matches).
-        if (m === undefined && (system === null || (await this.systemResolvable(system)))) unknown = true;
+        if (m === undefined && (system === null || (await this.systemResolvable(system)))) {
+          unknown = true;
+          this.undecidedCauses?.add(`${system ?? ""}|${valueSet}`);
+        }
       }
     }
     if (!hit) return unknown ? undefined : false;
@@ -5963,7 +5971,8 @@ export class InstanceValidator {
     }
     let anyMember = false;
     let anyUnknown = false;
-    let unknownSystemInVs = false;
+    let unknownSystemMember = false;
+    let otherMiss = false;
     // (parity v1) tx $validate-code checks the display too (ValueSetValidator: a wrong display makes the result not ok):
     // a member whose display the terminology rejects does not satisfy the binding
     let wrongDisplay: { system: string; code: string; message: string; index: number } | null = null;
@@ -5986,12 +5995,12 @@ export class InstanceValidator {
       } else if (m === undefined) {
         // a code its CodeSystem rejects is in no value set, whatever the (undecidable) filters say
         const r = system && (typeCode === "Coding" || typeCode === "CodeableConcept") ? await this.codeCheck(system, code!, null, null) : null;
-        // A system nobody holds (VSV inComponent null): a definite outcome, not an undecided one. CodeableConcept: UNKNOWN_CODESYSTEM
-        // alone, no binding issue (jar, required binding, value set listing that system); Coding: the code is not in the value set
-        // (Terminology_TX_Confirm_4a / _5, official corpus)
-        if (r?.status === "unknown-system") {
-          if (typeCode === "CodeableConcept") unknownSystemInVs = true;
-        } else if (!(r && r.status === "invalid-code" && r.severity === "error")) anyUnknown = true;
+        // A system neither held nor on the terminology server, included by the value set: the validator's check ends in
+        // UNKNOWN_CODESYSTEM and that is decided (see below).
+        if (r && r.status === "unknown-system") unknownSystemMember = true;
+        else if (!(r && r.status === "invalid-code" && r.severity === "error")) anyUnknown = true;
+      } else if (m === false) {
+        otherMiss = true;
       }
     }
     // ValueSetValidator.validateCode(CodeableConcept) (standalone tag 7.0.1:458 `info.hasErrors()`): any coding with an
@@ -6009,6 +6018,10 @@ export class InstanceValidator {
     }
     await this.pinnedUnknownCode(vs, list, typeCode, item, issues);
     if (anyMember && codingError === null) return;
+    // TerminologyServiceErrorClass.CODESYSTEM_UNSUPPORTED ("we've already handled the warnings / errors", IV tag 7.0.1:1800):
+    // the server's unknown system is all the validator reports, whatever the binding's strength (jar oracle: CodeableConcept
+    // required / extensible, Coding required: UNKNOWN_CODESYSTEM alone). Only an extensible Coding adds Terminology_TX_Confirm_5.
+    if (unknownSystemMember && !otherMiss && !anyUnknown && !wrongDisplay && codingError === null && (typeCode === "CodeableConcept" || (typeCode === "Coding" && strength === "required"))) return;
     if (wrongDisplay && strength === "required") {
       const vsDesc = `'${vs.title || vs.name || url}' (${vs.url}${vs.version ? `|${vs.version}` : ""})`;
       issues.push(
@@ -6025,7 +6038,6 @@ export class InstanceValidator {
       .filter((c: any) => isObject(c))
       .map((c: any) => `${typeof c.system === "string" ? c.system : "null"}#${typeof c.code === "string" ? c.code : "null"}`)
       .join(", ");
-    if (unknownSystemInVs && codingError === null) return;
     if (anyUnknown && codingError === null) {
       issues.push({
         severity: "information",
@@ -6105,7 +6117,10 @@ export class InstanceValidator {
           message:
             typeCode === "CodeableConcept"
               ? `None of the codings provided are in the value set ${vsRef}, and a coding should come from this value set unless it has no suitable code (note that the validator cannot judge what is suitable) (codes = ${ccSummary})`
-              : `None of the codings provided are in the value set ${label}, and a coding should come from this value set unless it has no suitable code (codes = ${shown})`,
+              : unknownSystemMember && typeCode === "Coding"
+                ? // Terminology_TX_Confirm_5 (validateBindingTerminologyCoding, IV tag 7.0.1:2518)
+                  `The code provided (${shown}) is not in the value set ${vsRef}, and a code should come from this value set unless it has no suitable code (the validator cannot judge what is suitable)`
+                : `None of the codings provided are in the value set ${label}, and a coding should come from this value set unless it has no suitable code (codes = ${shown})`,
         });
       }
       if (maxUrl) await this.checkMaxValueSet(maxUrl, codings, typeCode, item, issues);

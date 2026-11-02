@@ -62,6 +62,7 @@ import type { CodeAlternatives, ImplicitProfiles } from "./fhirSuggestions/types
 import { attachIdSuggestions, inInputPositions, isIdClassIssue, normalizationIssues } from "./fhirSuggestions/ids.js";
 import { BUNDLE_TYPES, bundleRules, finalizeBundle as runBundleFinalize, losslessFinalizedBundle, type FinalizeDeps, type FinalizeResult } from "./fhirBundleFinalize.js";
 import { restoreNumbers, stringifyLossless, toPlain } from "./losslessJson.js";
+import { extendedFindings, looksCanonical, mapProfile, repairMetaProfiles, type ExtendedDeps } from "./extendedFindings/index.js";
 import { bundleEnvelopeProblem, cloneTree, countByRule, DEFAULT_FINALIZE_REPAIR, repairBundle, repairBundleEnvelope, repairResource, siteTimezone, type RepairChange, type RepairIssue, type RepairMode, type RepairResult } from "./fhirRepair/index.js";
 import { repairDepsFor } from "./fhirRepair/dbDeps.js";
 
@@ -2252,7 +2253,59 @@ export class FHIRIGService {
       return this.ok(this.validationUnavailable(e, "fhir_validate_resource"), null);
     }
     const data = await this.coreOrFailure("fhir_validate_resource", () => this.validateCore(pkg, resource, profile));
+    await this.withExtended(pkg, resource, data);
     return this.ok(this.withDeps(data, pkg), pkg);
+  }
+
+  /** The closure's constraint profiles of a resource type, plus the core definition (extended_findings, profile repair). */
+  private async closureProfiles(pkg: PackageRow, resourceType: string): Promise<string[]> {
+    const [pids, pvers] = terminology.closureArrays(pkg);
+    const rows = (
+      await query<{ canonical_url: string }>(
+        `SELECT DISTINCT a.canonical_url FROM fhir.artifacts a
+         JOIN unnest($1::text[], $2::text[]) AS c(pid, pver) ON a.package_id = c.pid AND a.package_version = c.pver
+         WHERE a.resource_type = 'StructureDefinition' AND a.derivation = 'constraint' AND a.kind = 'resource' AND a.base_type = $3 AND a.canonical_url IS NOT NULL
+           AND COALESCE(a.raw_json ->> 'abstract', 'false') <> 'true'
+         ORDER BY a.canonical_url`,
+        [pids, pvers, resourceType],
+      )
+    ).rows;
+    return [...rows.map((r) => r.canonical_url), `http://hl7.org/fhir/StructureDefinition/${resourceType}`];
+  }
+
+  private extendedDeps(pkg: PackageRow): ExtendedDeps {
+    const resolver = new DbValidatorResolver(pkg);
+    const profiles = new Map<string, Promise<string[]>>();
+    return {
+      unknownToValidator: async (system, code, version) => (await resolver.checkCode(system, code, null, version)).status === "unknown-system",
+      held: (system, code, version) => resolver.heldVerdict(system, code, version),
+      profileResolves: async (canonical) => (await this.resolveProfileCanonical(pkg, canonical))[0] !== null,
+      profilesOf: (resourceType) => {
+        let p = profiles.get(resourceType);
+        if (!p) {
+          p = this.closureProfiles(pkg, resourceType);
+          profiles.set(resourceType, p);
+        }
+        return p;
+      },
+    };
+  }
+
+  /** ROUND 9: extended_findings on a validation result (nothing when there is nothing to report; no verdict, no findings). */
+  private async withExtended(pkg: PackageRow, resource: Record<string, any>, data: Record<string, any>): Promise<Record<string, any>> {
+    if (data.valid === null) return data;
+    const x = await extendedFindings(resource, this.extendedDeps(pkg));
+    if (x) data.extended_findings = x;
+    return data;
+  }
+
+  /** The unique replacement of a meta.profile value that resolves to nothing (extendedFindings.mapProfile), else null. */
+  private profileMapper(pkg: PackageRow): (resourceType: string, profile: string) => Promise<string | null> {
+    const deps = this.extendedDeps(pkg);
+    return async (resourceType, profile) => {
+      if (looksCanonical(profile) && (await deps.profileResolves(profile))) return null;
+      return mapProfile(profile, await deps.profilesOf(resourceType)).canonical;
+    };
   }
 
   /** validateCore's result; if it throws, a failure with failed queries behind it has no verdict, anything else is a crash. */
@@ -2411,6 +2464,7 @@ export class FHIRIGService {
       }
     }
     const core = await this.coreOrFailure("fhir_validate_bundle", () => this.validateCore(pkg, target, bundleProfile && bundleProfile.trim() ? bundleProfile.trim() : null));
+    await this.withExtended(pkg, target, core);
     const idBlock: Record<string, any> = {};
     if (fin) {
       pushAll(core.issues as Record<string, any>[], normalizationIssues(fin.changes));
@@ -2516,6 +2570,7 @@ export class FHIRIGService {
       ...(core.official_verdict !== undefined ? { official_verdict: core.official_verdict } : {}),
       ...(core.fallback_reason ? { fallback_reason: core.fallback_reason } : {}),
       ...(core.unverified ? { unverified: core.unverified } : {}),
+      ...(core.extended_findings ? { extended_findings: core.extended_findings } : {}),
       ...idBlock,
     };
     const warnings: string[] = [];
@@ -2653,7 +2708,7 @@ export class FHIRIGService {
         return { bundle: fin0.bundle, changes: [], map: new EntryMap(sentLength, [], [], sentLength), content: null, fin: fin0 };
       }
       const c = repair === "content" ? await this.contentRepairBundle(pkg, bundle, opts.lossless, tz.timezone, tz.source, { bundleProfile: profileCanonical, bundleType }, { disabled: off, autoFix: true }) : null;
-      const f = await runBundleFinalize(c ? c.bundle : bundle, deps, { bundleProfile: profileCanonical, bundleType, skipIds: off.steps.has("ids"), skipDocument: off.steps.has("document_order") });
+      const f = await runBundleFinalize(c ? c.bundle : bundle, deps, { bundleProfile: profileCanonical, bundleType, skipIds: off.steps.has("ids"), skipDocument: off.steps.has("document_order"), ...(pkg && !off.steps.has("meta_profile") ? { profileMapper: this.profileMapper(pkg) } : {}) });
       const contentCh = c ? c.result.changes : [];
       const map = new EntryMap(sentLength, contentCh, f.changes, Array.isArray(f.bundle.entry) ? f.bundle.entry.length : 0);
       return { bundle: f.bundle, changes: annotateChanges(contentCh, f.changes, map, sent), map, content: c, fin: f };
@@ -2691,6 +2746,7 @@ export class FHIRIGService {
         ids: count("resource-id"),
         bundle_type: count("bundle-type"),
         document_order: count("document-order"),
+        ...(count("meta-profile") ? { meta_profile: count("meta-profile") } : {}),
         unresolved: fin.unresolved.length,
         ...(repair === "content" ? { content: countByRule([...envelope, ...contentChanges]), repair_issues: content ? content.result.issues.length : 0 } : {}),
         // v19 R1
@@ -2701,6 +2757,7 @@ export class FHIRIGService {
         exposed_errors: exposedMode,
       },
     };
+    if (pkg) await this.withExtended(pkg, fin.bundle, data);
     if (!guard.checked) data.notes.push("the no-new-error check could not run (validator unavailable); changes were not verified against the whole Bundle");
     if (guard.gaveUp) data.notes.push("an error the finalized Bundle would add could not be traced to one change: no change was applied (see ambiguous)");
     if (repair === "content") {
@@ -2959,6 +3016,8 @@ export class FHIRIGService {
     if (coerced.length) {
       warnings.push("auto-wrapped repeating element(s) into arrays: " + coerced.map((c: any) => c.path).join(", "));
     }
+    // ROUND 9: a meta.profile that resolves to nothing and maps to exactly one profile, before the target is added
+    const profileChanges = await repairMetaProfiles(resource, this.profileMapper(pkg));
     authoring.ensureMetaProfile(resource, canonical);
     // Explicit `_slice` tags first (any depth), then members the discriminators identify, then
     // the unsliced fixed / pattern values (1.4.0: slice members were never pinned before).
@@ -2974,12 +3033,14 @@ export class FHIRIGService {
     }
     const narrated = generateNarrative && authoring.ensureNarrative(resource);
     const core = await this.validateCore(pkg, resource, row.artifact_id || profile);
+    await this.withExtended(pkg, resource, core);
     if (repaired) attachRepairIssues(core.issues as Record<string, any>[], repaired.issues);
 
     const data = {
       resource: losslessDraft !== undefined ? restoreNumbers(resource, losslessDraft) : resource,
       validation: core,
       ...(repair === "content" ? { repair: "content", changes: repaired ? repaired.changes : [], repair_issues: repaired ? repaired.issues : [] } : {}),
+      ...(profileChanges.length ? { profile_changes: profileChanges } : {}),
       coerced,
       narrated,
       pinned,

@@ -117,7 +117,7 @@ For each resource in the sorted order, repeat a–e below. **Efficiency tip**: t
 - Read the returned `unresolved`: **it must be empty**. An unresolved reference means some `"<Type>/<key>"` matched no entry → go back and fix it (usually a misspelled key or a record you forgot to convert), then reassemble.
 
 **Step 6 — Validate the whole package**
-- `fhir_validate_bundle(bundle=<the bundle from the previous step>)`. Read each entry's `valid`, `referenceIssues` and `checked_fully`.
+- `fhir_validate_bundle(bundle=<the bundle from the previous step>)`. Read each entry's `valid`, `referenceIssues` and `checked_fully`, plus `extended_findings` (fix every `severity: "error"` item as its `fix` says; these are not in `issues`).
   - All valid with no referenceIssues → done. If `checked_fully: false`, list `profiles_unchecked` / `valuesets_unchecked` (profiles / ValueSets that could not be checked) in your delivery notes and do not claim full validation.
   - Otherwise fix only the problematic records (return to Phase 2 and finalize those), then rebuild and revalidate.
 

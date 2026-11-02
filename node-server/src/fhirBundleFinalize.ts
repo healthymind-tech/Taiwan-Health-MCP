@@ -28,13 +28,14 @@
  */
 
 import { createHash } from "node:crypto";
+import { repairMetaProfiles } from "./extendedFindings/index.js";
 import { isRawNumber, restoreNumbers } from "./losslessJson.js";
 
 // --------------------------------------------------------------------------- //
 // Public types
 // --------------------------------------------------------------------------- //
 
-export type FinalizeRule = "fullUrl-uuid" | "reference-rewire" | "resource-id" | "bundle-type" | "document-order";
+export type FinalizeRule = "fullUrl-uuid" | "reference-rewire" | "resource-id" | "bundle-type" | "document-order" | "meta-profile";
 
 export interface FinalizeChange {
   /** Instance path in the validator's dotted form (`Bundle.entry[0].fullUrl`, `Bundle.entry[1].resource.subject.reference`). */
@@ -87,6 +88,8 @@ export interface FinalizeOptions {
   skipDocument?: boolean;
   /** v19 R1: leave fullUrl / reference / id as written (only the Bundle.type / document order rules run). */
   skipIds?: boolean;
+  /** ROUND 9: the unique replacement of an unresolvable meta.profile value (extendedFindings.mapProfile); absent = rule off. */
+  profileMapper?: (resourceType: string, profile: string) => Promise<string | null>;
 }
 
 /** One Bundle.type the entries' shape suggests (fhir_validate_bundle document suggestions, finalize notes). */
@@ -593,6 +596,9 @@ export async function finalizeBundle(input: Record<string, any>, deps: FinalizeD
       );
     }
   }
+
+  // ROUND 9: rule `meta-profile`, after the reorder so paths are final
+  if (opts.profileMapper) changes.push(...(await repairMetaProfiles(bundle, opts.profileMapper)));
 
   // A stray entry written at Bundle level (fullUrl / resource beside `entry`) is not an id
   // problem and is never moved — but it is the most likely reason for a later

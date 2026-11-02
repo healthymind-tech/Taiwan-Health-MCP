@@ -293,3 +293,26 @@ test("evaluator decision: a missing target that no fact names is a model omissio
   assert.ok(r.reasons.some((x) => x.code === "missing-target" && /Encounter/u.test(x.message)));
   assert.ok(!r.reasons.some((x) => x.code === "insufficient-information"));
 });
+
+test("ROUND 9: extended errors stop a release, unverifiable does not; checked_fully=false stops it whatever require_official says", async () => {
+  const ext = (findings: Array<Record<string, unknown>>, summary: Record<string, unknown>) => ({ extended_findings: { summary, findings } });
+  const blocked = await releaseCheck(base(FULL), deps(officialOk(ext([{ kind: "unresolvable-profile", severity: "error", path: "Patient.meta.profile[0]", message: "m", fix: { action: "a" } }], { errors: 1, unverifiable: 0 }))));
+  assert.equal(blocked.release, false);
+  const r = blocked.reasons.find((x) => x.code === "extended-error");
+  assert.equal(r?.check, "extended");
+  assert.equal(r?.message, "m a");
+  assert.deepEqual(blocked.validation.extended, { errors: 1, unverifiable: 0 });
+
+  const counted = await releaseCheck(base(FULL), deps(officialOk(ext([{ kind: "no-local-data", severity: "unverifiable", path: "x", message: "m", count: 3 }], { errors: 0, unverifiable: 3 }))));
+  assert.equal(counted.reasons.some((x) => x.check === "extended"), false);
+  assert.deepEqual(counted.validation.extended, { errors: 0, unverifiable: 3 });
+
+  const incomplete = await releaseCheck(base(FULL), deps(officialOk(ext([], { errors: 0, unverifiable: 0, incomplete: true }))));
+  assert.ok(incomplete.reasons.some((x) => x.code === "extended-incomplete"));
+
+  const none = await releaseCheck(base(FULL), deps(officialOk({})));
+  assert.equal("extended" in none.validation, false);
+
+  const optOut = await releaseCheck(base(FULL, { require_official: false }), deps({ valid: true, source: "builtin", issues: [], checked_fully: false }));
+  assert.ok(optOut.reasons.some((x) => x.code === "not-fully-checked"));
+});

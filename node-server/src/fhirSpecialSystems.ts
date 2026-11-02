@@ -20,6 +20,8 @@ import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
+import { checkUcumCode, UCUM_SYSTEM } from "./fhirUcum.js";
+import { txKnowsSystem } from "./txCodeTables.js";
 
 export const BCP47 = "urn:ietf:bcp:47";
 export const BCP13 = "urn:ietf:bcp:13";
@@ -175,11 +177,15 @@ export function specialSystemMember(system: string, code: string): boolean | und
 }
 
 /**
- * Code systems the validator's terminology server answers (standalone ValueSetValidator SERVER_SIDE_LIST, tag
- * 7.0.1:1131, plus the HL7 / THO / SNOMED / DICOM spaces, CPT, ATC and the urn:ietf / urn:iso systems). A system
- * outside this set that no package holds is unknown to it as well (REVIEW_port_2 G21).
+ * Code systems the validator's terminology server answers: its published capability list (txCodeTables.txKnowsSystem),
+ * the list validator_cli itself consults (ValueSetValidator.preferServerSide, standalone tag 7.0.1:1135). A system outside
+ * it that no package holds is unknown to the server as well (REVIEW_port_2 G21). Without the bundled list: the standalone
+ * ValueSetValidator SERVER_SIDE_LIST (tag 7.0.1:1131) plus the HL7 / THO / SNOMED / DICOM spaces, CPT, ATC and the
+ * urn:ietf / urn:iso systems.
  */
 export function terminologyServerKnows(system: string): boolean {
+  const known = txKnowsSystem(system);
+  if (known !== null) return known;
   const listed = [
     "http://fdasis.nlm.nih.gov",
     "http://hl7.org/fhir/sid/ndc",

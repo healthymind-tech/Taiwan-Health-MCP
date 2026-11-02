@@ -48,6 +48,7 @@ FHIR IG 服務模組是一套通用、以 IG 為範圍（IG-scoped）的工具�
 - **`fhir_validate_resource`**：依 `meta.profile` 指定的剖面驗證單一資源（結構 + 術語綁定）。
 - **`fhir_validate_bundle`**：驗證整個 Bundle（每個 entry 依其 `meta.profile`，另檢查 Bundle 內參照完整性）。
 - 兩個驗證工具都回報驗證是否完整：`checked_fully`、`profiles_unchecked`、`valuesets_unchecked`（`valid` 的語意與 HL7 相同；有剖面或 ValueSet 無法檢查時會明確標出，而不是默默當作通過）。選用參數 `source_text` / `site_config` / `evidence_map` 會另外加上 grounding 檢查結果；不帶這些參數時輸出與未加 grounding 前完全相同。
+- `checked_fully` 的意思是「HL7 validator_cli 會做的檢查都做了」；它自己也只給 warning 的情況（找不到 CodeSystem、未知 profile）不會讓它變成 `false`。本機資料能證明的問題放在獨立的 `extended_findings`，不進 `issues`，見[工具說明](../tools/fhir-ig-tools.md#extended-findings)。
 
 ### 5. 紀錄忠實度（grounding，確定性、不使用 LLM）
 - **`fhir_check_grounding`**：比對 Bundle 與來源病歷文字——每個已填的臨床事實與代碼都必須能在病歷中找到依據（evidence map 或自動定位），含日期 / 數值 / 單位 / 識別碼 / 劑量 / 頻次正規化，以及段落、否定與病史規則；問題以 `fhir_validate_bundle` 的格式回傳。

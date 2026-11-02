@@ -477,6 +477,7 @@ function disable(c: AnnotatedChange, d: Disabled): void {
   else if (c.rule === "document") d.steps.add("document");
   else if (c.rule === "fullUrl-uuid" || c.rule === "reference-rewire" || c.rule === "resource-id") d.steps.add("ids");
   else if (c.rule === "bundle-type" || c.rule === "document-order") d.steps.add("document_order");
+  else if (c.rule === "meta-profile") d.steps.add("meta_profile");
   else if (CONTENT_RULES.has(c.rule)) {
     d.blocked.add(changeBlockKey(c.rule, c.path));
     if (isObj(c.from) && typeof c.from.path === "string") d.blocked.add(changeBlockKey(c.rule, String(c.from.path)));
@@ -560,6 +561,19 @@ export function underMoved(pointer: string, changes: AnnotatedChange[]): boolean
   return changes.some((c) => c.moved_to !== undefined && c.rule !== "document-order" && c.moved_to !== c.pointer && prefixOf(tokensOf(c.moved_to), et));
 }
 
+/**
+ * ROUND 9: is the error inside a resource whose meta.profile the finalizer repaired? The resource was not checked against
+ * that profile before, so the error was hidden, not added: the repair stays and the error is reported.
+ */
+export function underRepairedProfile(pointer: string, changes: AnnotatedChange[]): boolean {
+  const et = tokensOf(pointer);
+  return changes.some((c) => {
+    if (c.rule !== "meta-profile") return false;
+    const t = tokensOf(c.pointer);
+    return prefixOf(t.slice(0, Math.max(0, t.length - 3)), et);
+  });
+}
+
 export async function guardNoNewErrors<R extends PipelineResult>(
   sent: Json,
   run: (d: Disabled) => Promise<R>,
@@ -588,6 +602,10 @@ export async function guardNoNewErrors<R extends PipelineResult>(
     if (exposed === "allow_under_moved") {
       const r = result;
       fresh = fresh.filter((e) => !underMoved(r.map.pointer(String(e.path ?? "Bundle"), "final", sent), r.changes));
+    }
+    {
+      const r = result;
+      fresh = fresh.filter((e) => !underRepairedProfile(r.map.pointer(String(e.path ?? "Bundle"), "final", sent), r.changes));
     }
     if (!fresh.length) break;
     const located = fresh.map((e) => {
@@ -751,7 +769,7 @@ interface ItemSite {
 }
 
 /** Changes of the id / document normaliser (their paths are in final space). */
-const FINALIZER_RULES = new Set<string>(["fullUrl-uuid", "reference-rewire", "resource-id", "bundle-type", "document-order"]);
+const FINALIZER_RULES = new Set<string>(["fullUrl-uuid", "reference-rewire", "resource-id", "bundle-type", "document-order", "meta-profile"]);
 
 /** Rewrite the pointer prefix `from` → `to` in a patch's paths (null when an op is outside `from`). */
 function rebase(ops: PatchOp[], from: string, to: string): PatchOp[] | null {

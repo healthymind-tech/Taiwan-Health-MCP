@@ -378,7 +378,11 @@ export const TOOL_DESCRIPTIONS = {
     "record states, and return the missing items, the record lines that state absence, a template clarification question and a ready " +
     "insufficient_information object. Deterministic, no LLM.",
   fhir_validate_bundle:
-    "Validate a FHIR Bundle in-process: each entry's resource against its meta.profile plus internal reference integrity. Optional " +
+    "Validate a FHIR Bundle in-process: each entry's resource against its meta.profile plus internal reference integrity. " +
+    "extended_findings (present only when there is something to report, never part of issues): {summary: {errors, unverifiable, incomplete?}, findings: [{kind, severity, path, message, fix?}]} — " +
+    "what local data proves where validator_cli only warns: code-not-in-held-codesystem and unresolvable-profile / malformed-profile (errors, they stop fhir_release_check), no-local-data (unverifiable, counted). " +
+    "checked_fully means every check validator_cli would do was done. " +
+    "Optional " +
     "source_text/site_config/evidence_map add grounding issues (is each value stated in the record). Without package_id the IG " +
     "owning the meta.profile canonicals is used ('|version' pins a version; provenance.resolved_by). Issues may carry ranked " +
     "suggestions [{value, kind, confidence, reason, patch}] (what to change the value to) and, for reference-chain errors, caused_by. " +
@@ -395,7 +399,11 @@ export const TOOL_DESCRIPTIONS = {
     "identifier / date / quantity value must be found in the record (ungrounded-value; normalised or derived, e.g. ROC dates, units, " +
     "hospital day N) — a value of another time point or field is value-from-other-event (data.record_checks).",
   fhir_validate_resource:
-    "Validate a FHIR resource against an IG profile, in-process (source:builtin). Pre-flight only. Optional source_text/site_config/" +
+    "Validate a FHIR resource against an IG profile, in-process (source:builtin). Pre-flight only. " +
+    "extended_findings (present only when there is something to report, never part of issues): {summary: {errors, unverifiable, incomplete?}, findings: [{kind, severity, path, message, fix?}]} — " +
+    "what local data proves where validator_cli only warns: code-not-in-held-codesystem and unresolvable-profile / malformed-profile (errors, they stop fhir_release_check), no-local-data (unverifiable, counted). " +
+    "checked_fully means every check validator_cli would do was done. " +
+    "Optional source_text/site_config/" +
     "evidence_map add grounding issues for this resource (is each value stated in the record). Without package_id the IG owning " +
     "its meta.profile is used ('|version' pins a version; provenance.resolved_by). Issues may carry ranked suggestions " +
     "[{value, kind, confidence, reason, patch}] (what to change the value to). " +

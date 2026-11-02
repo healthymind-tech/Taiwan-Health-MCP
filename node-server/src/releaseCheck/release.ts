@@ -14,6 +14,10 @@
  *      targets: the Bundle profile's required entry slices are present, and a single-entry Bundle is not accepted when
  *      the facts name several resource types (`suspected-empty-bundle`, advisory); without targets completeness cannot be
  *      judged → `incomplete-input`, never released.
+ *   5. parity v3 (ROUND 9) — the release condition is: parity 0 errors AND checked_fully=true AND extended 0 errors. Whatever
+ *      require_official says, `checked_fully: false` stops a release (`not-fully-checked`), and every error of
+ *      `extended_findings` does (`extended-error`, check "extended"); `unverifiable` findings are counted, they do not; a
+ *      layer that could not finish does (`extended-incomplete`).
  * v20.2 (evaluator decision): only decidable conditions stop a release — the official verdict, the targets, and the
  * blocking content findings (structured numbers / dates / identifiers not in the record). Fact coverage and every
  * semantic content finding are returned in `advisories` / as advisory issues and never stop it.
@@ -78,7 +82,7 @@ export interface ReleaseReason {
   message: string;
   pointer?: string;
   count: number;
-  /** "validation" | "content" | "facts" | "completeness" */
+  /** "validation" | "extended" | "content" | "facts" | "completeness" */
   check: string;
 }
 
@@ -226,7 +230,17 @@ export async function releaseCheck(input: ReleaseInput, deps: ReleaseDeps): Prom
         reasons.push({ code: "not-officially-verified", message: `Not released: ${why}. Only an official validator verdict with 0 errors releases a Bundle; retry when it is available.`, count: 1, check: "validation" });
       } else {
         validation.note = `require_official=false: the MCP verdict was accepted (${why}).`;
+        if (data.checked_fully === false) reasons.push({ code: "not-fully-checked", message: "Not released: a check validator_cli would do was not done (see codes_unchecked / slices_unchecked / invariants_unchecked / undecided_causes of fhir_validate_bundle).", count: 1, check: "validation" });
       }
+    }
+    // ROUND 9: the extended layer, independent of the parity verdict
+    const ext: Json | null = isObj(data.extended_findings) ? data.extended_findings : null;
+    if (ext) {
+      const rows: Json[] = (Array.isArray(ext.findings) ? ext.findings : []).filter(isObj);
+      const errs = rows.filter((f) => f.severity === "error");
+      validation.extended = { errors: errs.length, unverifiable: Number(ext.summary?.unverifiable ?? 0), ...(ext.summary?.incomplete ? { incomplete: true } : {}) };
+      reasons.push(...issueReasons(errs.map((f) => ({ message: f.fix?.action ? `${f.message} ${f.fix.action}` : f.message })), "extended-error", "extended"));
+      if (ext.summary?.incomplete) reasons.push({ code: "extended-incomplete", message: "The extended checks could not finish; validate again.", count: 1, check: "extended" });
     }
     content = {
       completed: true,

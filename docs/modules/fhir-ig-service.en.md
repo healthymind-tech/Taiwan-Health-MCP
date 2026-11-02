@@ -47,6 +47,7 @@ If none applies the error code is `NO_DEFAULT_IG` (no arbitrary package is picke
 - **`fhir_validate_resource`**: validate a single resource against the profile named in `meta.profile` (structure + terminology bindings).
 - **`fhir_validate_bundle`**: validate a whole Bundle (each entry against its `meta.profile`, plus reference integrity inside the Bundle).
 - Both validation tools report how complete the check was: `checked_fully`, `profiles_unchecked`, `valuesets_unchecked` (`valid` keeps the HL7 meaning; a profile or ValueSet that could not be checked is flagged rather than silently passed). The optional `source_text` / `site_config` / `evidence_map` parameters add grounding issues; without them the output is identical to the output before grounding existed.
+- `checked_fully` means "every check HL7 validator_cli would do was done"; where it only warns itself (no CodeSystem found, an unknown profile) it stays `true`. What the local data can prove goes to the separate `extended_findings`, never to `issues`: see the [tool reference](../tools/fhir-ig-tools.md#extended-findings).
 
 ### 5. Record faithfulness (grounding — deterministic, no LLM)
 - **`fhir_check_grounding`**: checks a Bundle against the source clinical record text — every populated clinical fact and code must be supported by the record (evidence map or auto-locate), with date / number / unit / identifier / dose / frequency normalisation and section, negation and history rules; issues come back in the `fhir_validate_bundle` shape.

@@ -22,6 +22,8 @@
 
 import type { PackageRow } from "./fhirIg.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "./fhirValidator.js";
+import { terminologyServerKnows } from "./fhirSpecialSystems.js";
+import { variantsOf, type HeldVerdict } from "./extendedFindings/index.js";
 import { conceptInactive, conceptStatus, findConcept, type CodeSystemIndex, type CsConcept, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains } from "./fhirCodeSystem.js";
 import * as terminology from "./fhirTerminology.js";
 import { BCP13, BCP47, RFC3986, isAbsoluteUrl, judgeLanguageTag, mimeTypeShapeOk, terminologyServerKnows } from "./fhirSpecialSystems.js";
@@ -50,7 +52,7 @@ import { TransientLookupError, currentSnapshot } from "./fhirValidationSnapshot.
 import { generateSnapshotAsync } from "./fhirSnapshotGenerator.js";
 import { fixPackageResource } from "./fhirPackageHacker.js";
 import { logWarning } from "./logger.js";
-import { txCodeVerdict, type TxCodeVerdict } from "./txCodeTables.js";
+import { txCodeVerdict, txKnowsSystem, type TxCodeVerdict } from "./txCodeTables.js";
 import { enumeratedCodes, installedEnumeratedDisplay } from "./codeAcceptance.js";
 
 const SD_TTL_MS = 30 * 60 * 1000;
@@ -402,6 +404,7 @@ function noLocalDisplay(system: string, display: string | null): CodeCheck {
  * though no package in the closure defines them as a CodeSystem resource.
  */
 function txKnownSystem(system: string): boolean {
+  if (txKnowsSystem(system) !== null) return terminologyServerKnows(system);
   if (SILENT_SYSTEMS.includes(system)) return true;
   if ([ISO3166, ICD10CM, CVX, ICD10_WHO, RXNORM, "http://snomed.info/sct", "http://loinc.org", "http://unitsofmeasure.org"].includes(system)) return true;
   if (serverSideSystem(system)) return true;
@@ -785,14 +788,15 @@ export class DbValidatorResolver implements ValidatorResolver {
       // reference server (txCodeTables.ts, ISSUES_v15.2) for the codes the installed data carries.
       const tx = txCodeVerdict(system, code);
       if (tx) return this.checkTxTable(system, code, display, tx);
+      if (txKnowsSystem(system) === false) return { status: "unknown-system" };
       return { ...noLocalDisplay(system, display), undecided: true };
     }
     let idx = await terminology.loadCodeSystemIndex(system, this.pkg, true);
     // REVIEW_port_2 G10: a urn:oid / urn:uuid CodeSystem in the closure is judged like any other (ValueSetValidator.java:654)
+    // A system neither held nor listed by the terminology server ends in UNKNOWN_CODESYSTEM like any other (official corpus).
     if ((system.startsWith("urn:oid:") || system.startsWith("urn:uuid:")) && !(idx && idx.url && idx.url.split("|")[0] === system)) {
-      // An OID no package holds is unknown to the terminology server as well: a definite UNKNOWN_CODESYSTEM, nothing left
-      // undecided (official corpus: every urn:oid system without a package, ips / twcore)
-      return terminologyServerKnows(system) ? noLocalDisplay(system, display) : { status: "unknown-system" };
+      // An OID the terminology server does not list is unknown there as well: a definite UNKNOWN_CODESYSTEM
+      return txKnowsSystem(system) === false ? { status: "unknown-system" } : noLocalDisplay(system, display);
     }
     // The terminology loader falls back to a CodeSystem with the same id (for
     // bare ids from tool callers); a Coding.system must match the canonical
@@ -911,8 +915,10 @@ export class DbValidatorResolver implements ValidatorResolver {
     }
     if (idx) return { ...noLocalDisplay(system, display), undecided: true };
     // REVIEW_port_2 G1: a system the validator's terminology server answers but that is not held here is undecided
-    // (an error there for a bad code), not UNKNOWN_CODESYSTEM
-    if (serverSideSystem(system)) return { ...noLocalDisplay(system, display), undecided: true };
+    // (an error there for a bad code), not UNKNOWN_CODESYSTEM. The server's published list decides, as in validator_cli
+    // (preferServerSide); only a system it does not list ends in the warning, which is all the validator does either.
+    // No list available: undecided, never a silent pass.
+    if (txKnowsSystem(system) !== false) return { ...noLocalDisplay(system, display), undecided: true };
     return { status: "unknown-system" };
   }
 
@@ -975,6 +981,33 @@ export class DbValidatorResolver implements ValidatorResolver {
       if (listed) return judgeCodeSystemDisplay(system, code, display, { display: listed, designationList: [] }, null) ?? { status: "ok" };
     }
     return noLocalDisplay(system, display);
+  }
+
+  /**
+   * extended_findings: a code of a system the validator does not know, looked up in the local data under the other
+   * spellings of the canonical (extendedFindings.variantsOf), the closure first through the validator's own code check,
+   * so that edition completeness and partial lists count exactly as there. Copies outside the closure can only confirm a
+   * code: a package's excerpt marked `complete` proves no absence.
+   */
+  async heldVerdict(system: string, code: string, version: string | null = null): Promise<HeldVerdict> {
+    let weak: string | null = null;
+    for (const heldAs of variantsOf(system)) {
+      const r = await this.checkCode(heldAs, code, null, version);
+      if (r.status === "unknown-system") continue;
+      if (r.status === "ok" && !r.undecided) return { held: "found", heldAs };
+      if (r.status === "invalid-code" && r.severity === "error" && !r.undecided && !r.extra?.length) return { held: "absent", heldAs };
+      weak ??= heldAs;
+    }
+    if (weak) return { held: "incomplete", heldAs: weak };
+    const outside = (
+      await query<{ canonical_url: string; found: boolean }>(
+        "SELECT a.canonical_url, EXISTS (SELECT 1 FROM fhir.concepts c WHERE c.package_id = a.package_id AND c.package_version = a.package_version AND c.cs_id = a.artifact_id AND c.code = $2) AS found " +
+          "FROM fhir.artifacts a WHERE a.resource_type = 'CodeSystem' AND a.canonical_url = ANY($1::text[]) ORDER BY found DESC, a.canonical_url LIMIT 1",
+        [[system, ...variantsOf(system)], code],
+      )
+    ).rows[0];
+    if (!outside) return { held: "no" };
+    return outside.found ? { held: "found", heldAs: outside.canonical_url } : { held: "outside", heldAs: outside.canonical_url };
   }
 
   /** RxNorm from rxnorm.concepts (concept-only reference terminology); a warning when not loaded. */

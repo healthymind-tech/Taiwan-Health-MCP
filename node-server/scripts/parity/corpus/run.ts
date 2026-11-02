@@ -78,7 +78,7 @@ const reproPlan: PlanTarget[] | null = reproPlanFile ? (JSON.parse(readFileSync(
 const families = opt("--family")?.split(",").filter(Boolean) ?? null;
 const only = opt("--only")?.split(",") ?? (reproPlan ? [...new Set(reproPlan.map((t) => t.id))] : null);
 
-type Validate = (item: CorpusItem, instance: Res) => Promise<{ issues: SimpleIssue[]; flags: string[]; unchecked?: Res }>;
+type Validate = (item: CorpusItem, instance: Res) => Promise<{ issues: SimpleIssue[]; flags: string[]; unchecked?: Res; extended?: Res }>;
 
 /** --engine file: InstanceValidator over the offline package cache. */
 function fileEngine(): Validate {
@@ -172,7 +172,10 @@ async function dbEngine(): Promise<{ validate: Validate; close: () => Promise<vo
         if (x !== undefined && !(Array.isArray(x) && x.length === 0)) unchecked[k] = x;
       }
     }
-    return { issues: raw.map((i) => ({ severity: String(i.severity), path: String(i.path ?? ""), message: String(i.message ?? ""), code: i.code })), flags, unchecked };
+    // extended_findings: never compared with the jar (only d.issues / entries are); kept for the release simulation
+    const x: Res | undefined = d.extended_findings;
+    const extended = x ? { ...x.summary, kinds: [...new Set((x.findings as Res[]).filter((f) => f.severity === "error").map((f) => String(f.kind)))] } : undefined;
+    return { issues: raw.map((i) => ({ severity: String(i.severity), path: String(i.path ?? ""), message: String(i.message ?? ""), code: i.code })), flags, unchecked, ...(extended ? { extended } : {}) };
   };
   return { validate, close: closePool };
 }
@@ -203,6 +206,7 @@ interface ItemResult {
   flags: string[];
   /** the service's reasons when checked_fully is false */
   unchecked?: Res;
+  extended?: Res;
   error?: string;
   repro?: string[];
 }
@@ -267,6 +271,7 @@ async function main(): Promise<void> {
         const v = await withTimeout(validate(item, item.instance as Res), timeoutMs);
         r.flags.push(...v.flags);
         if (v.unchecked && Object.keys(v.unchecked).length) r.unchecked = v.unchecked;
+        if (v.extended) r.extended = v.extended;
         const issues = v.issues.filter((i) => !isContentCheck(i));
         r.ourErrors = issues.filter(isError).map(keyOf);
         r.comparison = compareIssues(official, issues);

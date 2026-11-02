@@ -121,7 +121,7 @@ FHIR-IG toolset),把**一整包扁平 JSON**(多個 list、每個 list 是一種
 - 讀回傳的 `unresolved`:**必須是空的**。若有未解析的參照,代表某個 `"<Type>/<key>"` 沒對到任何 entry → 回去修(通常是 key 拼錯或漏轉某筆),再重組。
 
 **Step 6 — 驗證整包**
-- `fhir_validate_bundle(bundle=<上一步的bundle>)`。讀每個 entry 的 `valid`、`referenceIssues` 與 `checked_fully`。
+- `fhir_validate_bundle(bundle=<上一步的bundle>)`。讀每個 entry 的 `valid`、`referenceIssues` 與 `checked_fully`，以及 `extended_findings`（有 `severity: "error"` 的項目要依 `fix` 修正，它不在 `issues` 裡）。
   - 全 valid 且無 referenceIssues → 完成。若 `checked_fully: false`,在交付說明中列出 `profiles_unchecked` / `valuesets_unchecked`(沒能檢查的 Profile / ValueSet),不要宣稱已完整驗證。
   - 否則只修有問題的那幾筆(回階段二對該筆 finalize),再重新 build + validate。
 
