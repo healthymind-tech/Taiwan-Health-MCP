@@ -124,3 +124,15 @@ test("a CodeableConcept with a coding in the value set still fails when another 
   const bad = await new InstanceValidator(new R()).validate({ ...base, clinicalStatus: { coding: [{ system: CL, code: "active" }, { system: CL, code: "nope" }] } });
   assert.ok(errors(bad).some((i) => i.path === "Condition.clinicalStatus" && /None of the codings provided/.test(i.message)), JSON.stringify(errors(bad)));
 });
+
+test("a system-less coding is a member only of a single include enumerating it (ValueSetValidator.inComponent `only && system == null`)", async () => {
+  const VSE = "http://x/ValueSet/enum";
+  class R extends FakeResolver {
+    async fetchValueSet(url: string): Promise<Json | null> {
+      return url === VSE ? { resourceType: "ValueSet", url: VSE, compose: { include: [{ system: "http://loinc.org", concept: [{ code: "1-8" }] }] } } : super.fetchValueSet(url);
+    }
+  }
+  const v = new InstanceValidator(new R()) as any;
+  assert.equal(await v.bindingClause(VSE, [{ code: "1-8" }]), true);
+  assert.equal(await v.bindingClause(VSE, [{ code: "2-6" }]), false);
+});

@@ -462,6 +462,17 @@ export function impliedVitalSignProfile(code: any): string | null {
  */
 const QUANTITY_TYPES = ["Quantity"];
 
+/**
+ * ValueSetValidator.inComponent (standalone tag 7.0.1:2102, `only && system == null`): a Coding without a system is a
+ * member only of a value set with a single include that enumerates its code ("we'll accept the stated codes at face
+ * value" — official corpus: IPS Observation.code under an enumerated LOINC include, no error; PAS Observation.code under
+ * a whole-system include, NoValid_1_CC).
+ */
+function faceValueMember(vs: Record<string, any> | null, code: string): boolean {
+  const includes: any[] = vs && isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
+  return includes.length === 1 && isObject(includes[0]) && Array.isArray(includes[0].concept) && includes[0].concept.some((c: any) => isObject(c) && c.code === code);
+}
+
 /** BaseValidator.isExampleUrl (7.0.1). */
 export function isExampleUrl(url: string): boolean {
   const hosts = ["example.org", "acme.com", "acme.org", "example.com", "example.net"];
@@ -4234,7 +4245,10 @@ export class InstanceValidator {
         if (!code) continue;
         // a Coding without a system is never valid in a value set (ValueSetValidator: Coding_has_no_system__cannot_validate);
         // only a bare code (code / string / uri) infers its system
-        if (system === null && isObject(a)) continue;
+        if (system === null && isObject(a)) {
+          if (faceValueMember(await this.vsHeader(valueSet), code)) hit = true;
+          continue;
+        }
         const m = await this.member(valueSet, system, code);
         if (m === true) {
           // FHIRPathEngine.opMemberOf (services, tag 7.0.1:2792): validateCode(…).isOk() — a wrong display (error) of
@@ -4973,17 +4987,6 @@ export class InstanceValidator {
     return r.status === "invalid-code" ? `; ${r.message}` : "";
   }
 
-  /** Every include of the value set is a CodeSystem the validator checks locally (BaseWorkerContext: no server call). */
-  private async valueSetIsLocal(vs: Record<string, any>): Promise<boolean> {
-    const includes: any[] = isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
-    if (!includes.length || !this.resolver.codeSystemLocal) return true;
-    for (const inc of includes) {
-      if (!isObject(inc) || typeof inc.system !== "string") return false;
-      if (!(await this.resolver.codeSystemLocal(inc.system).catch(() => true))) return false;
-    }
-    return true;
-  }
-
   private async inferCodeSystems(vs: Record<string, any>, code: string): Promise<Set<string> | null> {
     const includes = isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
     if (!includes.length) return null;
@@ -5070,13 +5073,6 @@ export class InstanceValidator {
     }
     // checkCodedElement (IV:2405, tag 7.0.1): a Coding is checked against its binding only with both system and code
     if ((typeCode === "Coding" || typeCode === "Quantity") && codings[0][0] === null) return;
-    // A CodeableConcept whose codings have no system: the local ValueSetValidator answers not-in-value-set (a value set
-    // of held CodeSystems), the terminology server only the warning Coding_has_no_system__cannot_validate (a value set
-    // over LOINC / SNOMED CT …) — official corpus: PAS Claim.priority NoValid_1_CC, IPS Observation.code no error
-    if (typeCode === "CodeableConcept" && codings.every(([s]) => s === null) && !(await this.valueSetIsLocal(vs))) {
-      issues.push({ severity: "warning", path: `${item.path}.coding[0]`, code: "invalid", message: "Coding has no system. A code with no system has no defined meaning, and it cannot be validated. A system should be provided" });
-      return;
-    }
     if ((strength === "required" || strength === "extensible") && ["code", "string", "uri", "url", "canonical"].includes(typeCode)) {
       // REVIEW_port_2 G20 — ValueSetValidator.systemForCodeInValueSet (standalone, tag 7.0.1:1603): a bare code that
       // more than one include defines cannot be given a system (UNABLE_TO_RESOLVE_SYSTEM__VALUE_SET_HAS_MULTIPLE_MATCHES)
@@ -5107,7 +5103,7 @@ export class InstanceValidator {
     for (const [system, code] of codings) {
       // ValueSetValidator: a Coding without a system cannot be validated (Coding_has_no_system__cannot_validate) and is
       // never a member — only bare primitive codes infer their system from the value set
-      const m = system === null && typeCode !== "code" && typeCode !== "string" && typeCode !== "uri" && typeCode !== "url" && typeCode !== "canonical" ? false : await this.member(url, system, code!);
+      const m = system === null && typeCode !== "code" && typeCode !== "string" && typeCode !== "uri" && typeCode !== "url" && typeCode !== "canonical" ? faceValueMember(vs, code!) : await this.member(url, system, code!);
       if (m === true) {
         const idx = list.findIndex((c) => isObject(c) && c.code === code && (c.system ?? null) === system);
         const c = idx >= 0 ? list[idx] : null;
