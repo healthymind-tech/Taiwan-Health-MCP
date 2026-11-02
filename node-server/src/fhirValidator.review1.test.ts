@@ -574,6 +574,38 @@ test("findProfile(url, source): an unversioned extension reference from a packag
   assert.ok(!unscoped.some((i) => i.severity === "error" && i.message.includes("definition allows for the types")), JSON.stringify(unscoped));
 });
 
+test("resolveBindingReference: an unversioned binding takes the ValueSet version of the profile's package closure (jar: |5.2.0 with a 9.0.0 loaded)", async () => {
+  const VS = "http://example.org/fhir/ValueSet/scoped-vs";
+  const P = "http://example.org/fhir/StructureDefinition/scoped-binding";
+  EXTRA[P] = sd(P, "Patient", "resource", [
+    ...SDS[CORE + "Patient"].snapshot.element.filter((e: Json) => e.path !== "Patient.maritalStatus"),
+    el("Patient.maritalStatus", 0, "1", ["CodeableConcept"], { binding: { strength: "required", valueSet: VS } }),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint" });
+  const asked: string[] = [];
+  class R6 extends Resolver {
+    override async fetchValueSet(url: string): Promise<Json | null> {
+      asked.push(url);
+      return url === VS ? { resourceType: "ValueSet", url: VS, version: "9.0.0", name: "Later" } : url === `${VS}|5.2.0` ? { resourceType: "ValueSet", url: VS, version: "5.2.0", name: "Scoped" } : super.fetchValueSet(url);
+    }
+    async scopedDefinitionVersion(url: string, source: Json, type?: string): Promise<string | null> {
+      return type === "ValueSet" && url === VS && source.url === P ? "5.2.0" : null;
+    }
+  }
+  await new InstanceValidator(new R6()).validate({ resourceType: "Patient", maritalStatus: { coding: [{ system: "http://example.org/cs", code: "x" }] } }, { profiles: [P] });
+  assert.ok(asked.includes(`${VS}|5.2.0`), JSON.stringify(asked));
+});
+
+test("wrong choice: an object the parser emptied has had content; a primitive's inline children repeat the not-allowed (jar)", async () => {
+  const E = "http://example.org/fhir/StructureDefinition/wc-address";
+  EXTRA[E] = sd(E, "Extension", "complex-type", [
+    el("Extension", 0, "*", []),
+    el("Extension.url", 1, "1", ["uri"], { fixedUri: E }),
+    el("Extension.value[x]", 1, "1", ["Address"]),
+  ], { baseDefinition: CORE + "Extension", derivation: "constraint", context: [{ type: "element", expression: "Element" }] });
+  const got = errs(await run({ resourceType: "Patient", extension: [{ url: E, valueCodeableConcept: { nothing: 1 } }] })).map(([, m]) => m);
+  assert.ok(!got.includes("Object must have some content"), JSON.stringify(got));
+});
+
 test("F10 invariants with memberOf() / conformsTo() are evaluated (FHIRPathEngine.funcMemberOf, funcConformsTo)", async () => {
   const NEED = "http://example.org/fhir/StructureDefinition/pat-need-birth";
   EXTRA[NEED] = sd(NEED, "Patient", "resource", [

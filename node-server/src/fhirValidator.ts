@@ -1402,6 +1402,8 @@ interface Item {
   typeUnknown?: boolean;
   /** `value` is already what the parser kept of a value validated as another type. */
   parsedValue?: boolean;
+  /** A message checkPrimitive reaches only if the binding passed. */
+  afterBinding?: string;
   /** JSON property the item came from (choice elements: e.g. valueQuantity). */
   key: string;
   path: string;
@@ -3424,7 +3426,7 @@ export class InstanceValidator {
     if (el.path === "StructureDefinition.snapshot" && rctx.ids) rctx = { ...rctx, ids: new Map() };
 
     if (isPrimitive(typeCode)) {
-      if (item.profileType && isObject(v)) await this.complexAsPrimitive(v, item, typeCode, issues);
+      if (item.profileType && isObject(v)) await this.complexAsPrimitive(v, item, typeCode, issues, sdx.hasChildren(el) ? sdx : null);
       else this.checkPrimitive(v, item, typeCode, el, issues, sdx.sd);
       if (item.ext !== undefined && item.ext !== null) {
         await this.validatePrimitiveExtensions(item, el, rctx, issues, depth);
@@ -3657,7 +3659,7 @@ export class InstanceValidator {
       // An object the parser emptied (dropBadPrimitivesIn) had content in the source: checkObject stays quiet, the
       // element is the same empty element for ele-1.
       const choice = /\[x\]$/u.test(String(el.path ?? ""));
-      if (!this.xmlSource && !this.parserEmptied.has(v)) issues.push({ severity: "error", path: choice ? (item.jpath ?? item.path) : item.path, code: "invalid", message: "Object must have some content" });
+      if (!this.xmlSource && !this.parserEmptied.has(v) && !item.parsedValue) issues.push({ severity: "error", path: choice ? (item.jpath ?? item.path) : item.path, code: "invalid", message: "Object must have some content" });
       issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
     }
 
@@ -4355,6 +4357,16 @@ export class InstanceValidator {
           // nothing present
         } else {
           const t = allowedTypes.length === 1 ? allowedTypes[0] : allowedTypes[0] || (def.contentReference ? "BackboneElement" : "");
+          if (item.parsedValue && item.actualType && t) {
+            // a child of the written type under the same name in the profile's type: checkChildByDefinition l. 7894-7896
+            const own = await this.sdx(CORE + item.actualType);
+            const g = own?.children(own.root)?.get(name);
+            const found = g ? typeCodeOf((g.base || g.slices[0])?.type?.[0] ?? {}) : "";
+            if (found && found !== t) {
+              issues.push({ severity: "error", path: `${item.path}.${name}`, code: "structure", message: `The Profile '${this.versionedUrl(gsdx)}' definition allows for the type ${t} but found type ${found}` });
+              profileTypeKeys.set(name, found);
+            }
+          }
           collect(name, t || "BackboneElement");
         }
       }
@@ -5411,8 +5423,12 @@ export class InstanceValidator {
         // checkPrimitive l. 3665-3679: the regex is the element's own type's (e.fhirType()), whatever type is being checked
         const regext = ["id", "base64Binary", "markdown"].includes(item.actualType) ? undefined : R4_TYPE_REGEX[item.actualType];
         const own: Issue[] = [];
-        // (a bound element fails checkPrimitiveBinding first when the value is not in the set)
-        if (declaredOk && !el.binding && regext && !javaFullRegex(regext)!.test(text)) own.push({ severity: "error", path, code: "invalid", message: `Element value '${text}' does not meet ${item.actualType} regex '${regext}'` });
+        if (declaredOk && regext && !javaFullRegex(regext)!.test(text)) {
+          const message = `Element value '${text}' does not meet ${item.actualType} regex '${regext}'`;
+          // a bound element fails checkPrimitiveBinding first when the value is not in the set: see validateItemAgainst
+          if (el.binding) item.afterBinding = message;
+          else own.push({ severity: "error", path, code: "invalid", message });
+        }
         if (String(el.path) === "Extension.value[x]") this.checkPrimitiveValue(text, item, item.actualType, {}, profile, own);
         for (const i of own) if (!own.slice(0, own.indexOf(i)).some((x) => x.message === i.message)) issues.push(i);
       }
@@ -6051,7 +6067,7 @@ export class InstanceValidator {
    * type): the element is walked against the primitive's definition, so `value` is checkPrimitive's ILLEGAL_PROPERTY and
    * an Extension_PROF_Type, anything but id / extension is Validation_VAL_Profile_NotAllowed.
    */
-  private async complexAsPrimitive(v: Record<string, any>, item: Item, typeCode: string, issues: Issue[]): Promise<void> {
+  private async complexAsPrimitive(v: Record<string, any>, item: Item, typeCode: string, issues: Issue[], inline: SdIndex | null = null): Promise<void> {
     const tsdx = await this.sdx(CORE + typeCode);
     const vurl = `${CORE}${typeCode}${tsdx?.sd?.version ? `|${tsdx.sd.version}` : ""}`;
     const own = item.actualType ? await this.sdx(CORE + item.actualType) : null;
@@ -6064,6 +6080,7 @@ export class InstanceValidator {
       if (key.startsWith("_") || key === "id" || key === "extension") continue;
       if (key !== "value") {
         issues.push({ severity: "error", path: `${item.path}.${key}`, code: "structure", message: `This element is not allowed by the profile ${vurl}` });
+        if (inline) issues.push({ severity: "error", path: `${item.path}.${key}`, code: "structure", message: `This element is not allowed by the profile ${this.versionedUrl(inline)}` });
         continue;
       }
       issues.push({ severity: "error", path: item.path, code: "invalid", message: "The property 'value' is invalid" });
