@@ -23,6 +23,7 @@
  * none —, mutation family), with counts and example ids. --plan writes the top-N buckets' first examples as a
  * corpus/run.ts --repro-plan (class-level targets).
  *
+ * Release simulation (a Bundle converts automatically only with 0 errors and checked_fully=true): see the section text.
  * Also: why items are not fully checked (`unchecked`, see classifyUnchecked; --held held.json from corpus/held.ts says
  * what terminology this install holds), the all-corpus figures with the network bucket, and the items no tool call can
  * carry (flag tool-boundary: outside the gate, measured through validateText, with what rejects them in the service).
@@ -259,12 +260,48 @@ const rejecter = (it: Res): string => {
   if (it.raw === "unparseable") return "HTTP body parser (express.json: 400, strict JSON) — the tool is never called";
   return "the tool (INVALID_ARGUMENT: resource must include a resourceType)";
 };
+interface ReleaseRow {
+  valid: number;
+  releasable: number;
+  releasableWithTx: number;
+  blockedTsErrors: number;
+  blockedToolBoundary: number;
+  blocked: Record<UncheckedClass, number>;
+  unsafe: number;
+}
+const releaseRows = new Map<string, ReleaseRow>();
+const unsafeReleases: Res[] = [];
 for (const it of items) {
   const ig = String(it.ig ?? "?");
   const s = st(ig);
   s.items++;
   const off: ErrKey[] = it.officialErrors ?? [];
   const ours: ErrKey[] = it.ourErrors ?? [];
+  {
+    const row = releaseRows.get(ig) ?? { valid: 0, releasable: 0, releasableWithTx: 0, blockedTsErrors: 0, blockedToolBoundary: 0, blocked: { other: 0, dependency: 0, tx: 0, local: 0 }, unsafe: 0 };
+    releaseRows.set(ig, row);
+    const ran = !!it.comparison && it.status !== "crash";
+    const boundaryItem = isToolBoundary(it);
+    const incomplete = (it.flags ?? []).includes("not-checked-fully");
+    const wouldRelease = ran && !boundaryItem && !ours.length && !incomplete;
+    if (wouldRelease && (off.length || isOfficialCrash(it))) {
+      row.unsafe++;
+      unsafeReleases.push(it);
+    }
+    if (!isOfficialCrash(it) && !off.length) {
+      row.valid++;
+      if (wouldRelease) {
+        row.releasable++;
+        row.releasableWithTx++;
+      } else if (boundaryItem || !ran) row.blockedToolBoundary++;
+      else if (ours.length) row.blockedTsErrors++;
+      else {
+        const cls = new Set(classifyUnchecked(it).map(([c]) => c));
+        row.blocked[UNCHECKED_ORDER.find((c) => cls.has(c))!]++;
+        if (cls.size === 1 && cls.has("tx")) row.releasableWithTx++;
+      }
+    }
+  }
   if ((it.flags ?? []).includes("not-checked-fully")) {
     const row = uncheckedRows.get(ig) ?? { items: 0, bundles: 0, by: { other: 0, dependency: 0, tx: 0, local: 0 }, onlyLocal: 0, anyTx: 0, gateBlockedBundles: 0 };
     const reasons = classifyUnchecked(it);
@@ -382,6 +419,25 @@ lines.push(
   "Errors only (error + fatal; MCP content checks dropped). An official error with a Java message_id matches ours by (normalised path, classify.errorClass); one without (parse layer) by (normalised path, normalised text). Gate items exclude official-crash, network-dependent (profile-typo) and raw-unparseable items. Acceptance: verdict differences 0, missing 0, extra rate < 0.1%.",
   "",
 );
+lines.push("## Release simulation", "");
+lines.push(
+  "Items are the whole corpus, network bucket included. A release needs TS 0 errors and checked_fully=true through the service path; tool-boundary items cannot reach the service, so they never release.",
+  "- **jar valid**: 0 official errors; official-crash items are excluded.",
+  "- **releasable without outbound (measured)**: of those, TS 0 errors and checked_fully=true. The corpus TS run has no live tx, so this is a direct measurement.",
+  "- **releasable with outbound (ESTIMATE, not run)**: the measured column plus items with TS 0 errors whose only undecided reasons are class tx. It assumes tx decides each of them and finds no error.",
+  "- **blocked columns** split the jar-valid items that do not release without outbound; an item counts under its worst reason (other > dependency > tx > local).",
+  "- **unsafe release**: TS 0 errors and checked_fully=true, but the jar judged the item invalid or crashed on it. Must be 0.",
+  "",
+);
+lines.push("| IG | jar valid | releasable, no outbound (measured) | % | releasable, outbound (estimate) | % | blocked: TS errors | blocked: other | blocked: dependency | blocked: tx | blocked: local | blocked: tool-boundary | unsafe release |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+const rr = [...releaseRows].sort((a, b) => a[0].localeCompare(b[0]));
+const rrLine = (ig: string, r: ReleaseRow): string => `| ${ig} | ${r.valid} | ${r.releasable} | ${pct(r.releasable, r.valid)} | ${r.releasableWithTx} | ${pct(r.releasableWithTx, r.valid)} | ${r.blockedTsErrors} | ${r.blocked.other} | ${r.blocked.dependency} | ${r.blocked.tx} | ${r.blocked.local} | ${r.blockedToolBoundary} | ${r.unsafe} |`;
+for (const [ig, r] of rr) lines.push(rrLine(ig, r));
+const rrSum = (f: (r: ReleaseRow) => number): number => rr.reduce((a, [, r]) => a + f(r), 0);
+lines.push(rrLine("**all**", { valid: rrSum((r) => r.valid), releasable: rrSum((r) => r.releasable), releasableWithTx: rrSum((r) => r.releasableWithTx), blockedTsErrors: rrSum((r) => r.blockedTsErrors), blockedToolBoundary: rrSum((r) => r.blockedToolBoundary), blocked: { other: rrSum((r) => r.blocked.other), dependency: rrSum((r) => r.blocked.dependency), tx: rrSum((r) => r.blocked.tx), local: rrSum((r) => r.blocked.local) }, unsafe: rrSum((r) => r.unsafe) }));
+lines.push("", `Unsafe releases (${unsafeReleases.length}):`, "");
+for (const it of unsafeReleases) lines.push(`- \`${it.ig}/${it.id}\` (${it.family}, ${String(it.mutation).slice(0, 60)})${isOfficialCrash(it) ? ": jar crashed" : `: jar ${(it.officialErrors ?? []).length} errors, first: ${String(it.officialErrors?.[0]?.msg ?? "").slice(0, 110)}`}`);
+lines.push("");
 lines.push("## All corpus, network bucket included (gate + network; official-crash and tool-boundary items apart)", "");
 lines.push("| IG | items | verdict miss | verdict extra | official keys | missing keys | extra keys | extra rate | gate extra rate |", "|---|---|---|---|---|---|---|---|---|");
 const allRow = (s: IgStats): string => `| ${s.ig} | ${s.allItems} | ${s.allVerdictMiss} | ${s.allVerdictExtra} | ${s.allOfficialKeys} | ${s.allMissing} | ${s.allExtra} | ${pct(s.allExtra, s.allOfficialKeys)} | ${pct(s.extra, s.officialKeys)} |`;
