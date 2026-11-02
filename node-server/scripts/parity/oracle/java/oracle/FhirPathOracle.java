@@ -21,10 +21,12 @@ import org.hl7.fhir.services.elementmodel.Element;
 import org.hl7.fhir.services.elementmodel.Manager;
 import org.hl7.fhir.services.fhirpath.ExpressionNode;
 import org.hl7.fhir.services.fhirpath.FHIRPathEngine;
+import org.hl7.fhir.services.validation.constants.ReferenceValidationPolicy;
 import org.hl7.fhir.utilities.FhirPublication;
 import org.hl7.fhir.utilities.validation.ValidationMessage;
 import org.hl7.fhir.validation.ValidationEngine;
 import org.hl7.fhir.validation.instance.InstanceValidator;
+import org.hl7.fhir.validation.instance.advisor.BasePolicyAdvisorForFullValidation;
 import org.hl7.fhir.validation.instance.utils.ValidationContext;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
@@ -59,6 +61,7 @@ public final class FhirPathOracle {
         .fromSource("hl7.fhir.r4.core#4.0.1");
     ve.setLanguage("en-US");
     ve.setLocale(Locale.US);
+    ve.setPolicyAdvisor(new BasePolicyAdvisorForFullValidation(ReferenceValidationPolicy.IGNORE, null)); // the CLI default: references are not followed
     InstanceValidator val = ve.getValidator(FhirFormat.JSON);
     // conformsTo() re-enters the validator, which needs the state a validate() call sets up (clearInternalState, l. 1115)
     val.validate(null, new ArrayList<>(), new ByteArrayInputStream("{\"resourceType\":\"Basic\"}".getBytes(StandardCharsets.UTF_8)), FhirFormat.JSON);

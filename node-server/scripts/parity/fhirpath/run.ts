@@ -295,7 +295,8 @@ function comparable(i: Item): string {
     const m = /^(\S+)\s+'?([^']*)'?$/.exec(i.value ?? "");
     return m ? `${Number(m[1])} ${m[2]}` : (i.value ?? "");
   }
-  if (i.leaves) return i.leaves.join("\n");
+  // the XHTML of a narrative is serialised differently by each side (&quot; vs "); the validator never compares it
+  if (i.leaves) return i.leaves.filter((l) => !/(^|\.)div=/.test(l)).join("\n");
   const v = i.value ?? "";
   if (i.type === "decimal") return String(Number(v));
   if (i.type === "date" || i.type === "dateTime" || i.type === "time" || i.type === "instant") return v.replace(/^@T?/, "").replace(/^T/, "");

@@ -28,7 +28,7 @@ import { fileURLToPath } from "node:url";
 import { InstanceValidator, type Issue } from "../../../src/fhirValidator.js";
 import { parseFhirXml } from "../../../src/fhirXml.js";
 import { errorClass } from "../classify.js";
-import { compareIssues, issuesOfOutcome, type Comparison, type SimpleIssue } from "../lib/compare.js";
+import { compareIssues, isError, issuesOfOutcome, type Comparison, type SimpleIssue } from "../lib/compare.js";
 import { FileValidatorResolver, ResourceStore } from "../lib/fileResolver.js";
 import { findPackage, packageClosure, type Res } from "../lib/packages.js";
 import { loadRuns, SUITE_DIR, type TestRun } from "./manifest.js";
@@ -106,6 +106,11 @@ export function readOracle(file: string): Map<string, OracleRow> {
 
 export function judgeWithOracle(r: RunResult, row: OracleRow | undefined, expected: SimpleIssue[]): OracleVerdict {
   if (r.status === "skipped") return { class: "not-run" };
+  if (row?.status === "threw" && row.error) {
+    // the evaluator's rule for an official crash: the instance is not accepted, so ours must give at least one error
+    const rejected = (r.actual ?? []).some(isError);
+    return { class: rejected ? (r.status === "pass" ? "agree" : "jar-agrees") : "disagree", jarStatus: row.status, jarError: row.error, txRequests: row.txRequests };
+  }
   if (!row || row.status !== "ok") return { class: "no-outcome", jarStatus: row?.status ?? "missing", jarError: row?.error, txRequests: row?.txRequests };
   const jarIssues = issuesOfOutcome(row.outcome);
   // our crash / timeout has no issue list: it can only disagree
@@ -141,7 +146,7 @@ export function oracleReport(results: RunResult[]): string {
   lines.push(row("env-excl., failing suite", excl.filter((r) => r.status !== "pass")), row("env-excl., passing suite", excl.filter((r) => r.status === "pass")));
   const js = ran.filter((r) => r.oracle?.jarMatchesSuite === false);
   lines.push(`jar differs from the suite's expected file: ${js.length} runs (${excl.filter((r) => r.oracle?.jarMatchesSuite === false).length} env-excluded)`);
-  for (const r of excl.filter((x) => x.oracle?.class === "disagree")) lines.push(`  disagree ${r.id} [${r.module}] jar errors ${r.oracle!.comparison!.expectedErrors}, ours ${r.oracle!.comparison!.actualErrors}`);
+  for (const r of excl.filter((x) => x.oracle?.class === "disagree")) lines.push(`  disagree ${r.id} [${r.module}] jar errors ${r.oracle!.comparison?.expectedErrors ?? "(crash)"}, ours ${r.oracle!.comparison?.actualErrors ?? 0}`);
   for (const r of excl.filter((x) => x.oracle?.class === "jar-agrees")) lines.push(`  jar-agrees ${r.id} [${r.module}]`);
   for (const r of ran.filter((x) => x.oracle?.class === "no-outcome")) lines.push(`  no jar outcome ${r.id}: ${r.oracle!.jarStatus} ${(r.oracle!.jarError ?? "").slice(0, 160)}`);
   return lines.join("\n");
