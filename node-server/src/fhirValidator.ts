@@ -4936,9 +4936,9 @@ export class InstanceValidator {
     return p;
   }
 
-  /** FHIRPath memberOf() on a code / Coding / CodeableConcept: null = empty (funcMemberOf l. 5181-5183, no ValueSet). */
+  /** FHIRPath memberOf() on a code / Coding / CodeableConcept: null = empty (funcMemberOf l. 5181-5183, no ValueSet); undefined = the terminology server may hold it. */
   private async hostMemberOf(value: any, url: string): Promise<boolean | null | undefined> {
-    if (!(await this.vsHeader(url))) return null;
+    if (!(await this.vsHeader(url))) return (await this.valueSetMayBeAtServer(url)) ? undefined : null;
     if (typeof value === "string") return this.member(url, null, value);
     return this.bindingClause(url, [value]);
   }
@@ -4995,6 +4995,7 @@ export class InstanceValidator {
 
   /** `(<path> memberOf '<vs>')` answered with the local terminology (undefined when it cannot decide). */
   private async bindingClause(valueSet: string, actual: any[]): Promise<boolean | undefined> {
+    if (!(await this.vsHeader(valueSet)) && !(await this.valueSetMayBeAtServer(valueSet))) return false; // funcMemberOf: no ValueSet → no match
     let hit = false;
     let unknown = false;
     for (const a of actual) {
@@ -5899,7 +5900,7 @@ export class InstanceValidator {
           path: item.path,
           code: "not-found",
           message: `ValueSet '${url}' not found`,
-          unchecked: { kind: "valueSet", canonical: url },
+          ...((await this.valueSetMayBeAtServer(url)) ? { unchecked: { kind: "valueSet" as const, canonical: url } } : {}),
         });
       }
       return;
@@ -6102,7 +6103,7 @@ export class InstanceValidator {
       if (this.resolver.codeSystemExists && (await this.resolver.codeSystemExists(maxUrl).catch(() => false))) {
         issues.push({ severity: "error", path: item.path, code: "code-invalid", message: `Found a reference to a CodeSystem '${maxUrl}' where a ValueSet belongs` });
       } else {
-        issues.push({ severity: "warning", path: item.path, code: "code-invalid", message: `ValueSet '${maxUrl}' not found`, unchecked: { kind: "valueSet", canonical: maxUrl } });
+        issues.push({ severity: "warning", path: item.path, code: "code-invalid", message: `ValueSet '${maxUrl}' not found`, ...((await this.valueSetMayBeAtServer(maxUrl)) ? { unchecked: { kind: "valueSet" as const, canonical: maxUrl } } : {}) });
       }
       return;
     }
@@ -6193,6 +6194,16 @@ export class InstanceValidator {
   }
 
   private resolvableCache = new Map<string, Promise<boolean>>();
+
+  /**
+   * A ValueSet outside the closure: the terminology server may hold it (jar: IPS vaccines-uv-ips answered, us-core birthsex,
+   * TW Core medcation-atc-tw and RadLex "not found"). Which ones cannot be told offline: an HL7-space or installed canonical
+   * stays undecided, anything else is a definite not found.
+   */
+  private async valueSetMayBeAtServer(url: string): Promise<boolean> {
+    if (/^https?:\/\/(terminology\.)?hl7\.org\//.test(url) || url.includes("?fhir_vs") || url.startsWith("http://snomed.info/") || url.startsWith("http://loinc.org")) return true;
+    return this.resolver.definitionExists ? this.defExists(url.split("|")[0]) : true;
+  }
 
   private systemResolvable(system: string): Promise<boolean> {
     let p = this.resolvableCache.get(system);

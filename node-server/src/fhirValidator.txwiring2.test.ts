@@ -224,3 +224,24 @@ test("G21 (jar): a CodeableConcept of a system nobody holds, the required value 
   await v.checkBinding(el, { coding: [{ system: CSN, code: "Z" }] }, "CodeableConcept", { path: "Observation.code", value: {} }, issues);
   assert.deepEqual(issues.filter((i) => i.severity === "error" || (i as any).unchecked), []);
 });
+
+test("a ValueSet nobody holds: outside the HL7 space a definite not found, inside it undecided (jar: tx.fhir.org holds some IG value sets)", async () => {
+  class R extends FakeResolver {
+    async definitionExists(): Promise<boolean> {
+      return false;
+    }
+    async valueSetContains(): Promise<boolean | undefined> {
+      return undefined;
+    }
+  }
+  const run = async (url: string): Promise<Issue[]> => {
+    const issues: Issue[] = [];
+    const el = { path: "Observation.code", base: { path: "Observation.code" }, binding: { strength: "required", valueSet: url } };
+    await (new InstanceValidator(new R()) as any).checkBinding(el, { coding: [{ system: "http://x/cs", code: "a" }] }, "CodeableConcept", { path: "Observation.code", value: {} }, issues, null);
+    return issues;
+  };
+  const far = await run("http://www.rsna.org/RadLex_Playbook.aspx");
+  assert.deepEqual(far.map((i) => [i.severity, i.message, (i as any).unchecked]), [["warning", "ValueSet 'http://www.rsna.org/RadLex_Playbook.aspx' not found", undefined]]);
+  const near = await run("http://hl7.org/fhir/uv/ips/ValueSet/vaccines-uv-ips");
+  assert.deepEqual((near[0] as any).unchecked, { kind: "valueSet", canonical: "http://hl7.org/fhir/uv/ips/ValueSet/vaccines-uv-ips" });
+});

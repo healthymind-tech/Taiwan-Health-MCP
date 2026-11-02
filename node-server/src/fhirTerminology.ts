@@ -550,6 +550,23 @@ export async function externalFilterMatches(system: string, f: ComposeFilter, co
   if (system === ICD10CM_URL) return icd10cmFilterMatches(prop, op, value, code);
   if (system === RXNORM_URL) return rxnormFilterMatches(prop, op, value, code);
   if (routeSystem(system) !== "loinc") return undefined;
+  if (op === "regex") {
+    // jar + tx.fhir.org: a find, not a full-string match (CLASS regex PATH holds PATH, PATH.PROTOCOLS.GENER and MOLPATH.MUT, not HEM/BC)
+    const col = LOINC_FILTER_COLUMNS[prop];
+    if (!col) return undefined;
+    let re: RegExp;
+    try {
+      re = new RegExp(value);
+    } catch {
+      return undefined;
+    }
+    try {
+      const v = (await loincFilterRow(code))?.[col];
+      return v === null || v === undefined ? undefined : re.test(String(v));
+    } catch {
+      return undefined;
+    }
+  }
   if (op !== "=" && op !== "in") return undefined;
   const wanted = op === "in" ? value.split(",").map((v) => v.trim()).filter((v) => v !== "") : [value];
   if (!wanted.length) return undefined;
