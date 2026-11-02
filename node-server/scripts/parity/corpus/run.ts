@@ -35,7 +35,9 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { registerLosslessLiterals } from "../../../src/fhirJsonLiterals.js";
 import { InstanceValidator } from "../../../src/fhirValidator.js";
+import { parseLossless } from "../../../src/losslessJson.js";
 import { errorClass, isContentCheck } from "../classify.js";
 import { compareIssues, isError, lenientMessage, normMessage, normPath, type Comparison, type SimpleIssue } from "../lib/compare.js";
 import { FileValidatorResolver, ResourceStore } from "../lib/fileResolver.js";
@@ -129,6 +131,14 @@ async function dbEngine(): Promise<{ validate: Validate; close: () => Promise<vo
     return { issues: issues.map((i) => ({ severity: i.severity, path: i.path, message: i.message, code: i.code })), flags: ["tool-boundary"] };
   };
   const validate: Validate = async (item, instance) => {
+    // what the MCP tools do with the request text (mcp.ts): number spellings and repeated names of a raw item
+    if (item.raw?.text !== undefined && instance === item.instance) {
+      try {
+        registerLosslessLiterals(instance, parseLossless(item.raw.text));
+      } catch {
+        // not JSON: the item cannot reach a tool
+      }
+    }
     const [pid, ver] = (item.packages[0] ?? "").split("#");
     // the request as mcp.ts sees it: a fresh tree of the text with its number spellings / repeated names registered;
     // the minimiser's reduced trees have no text
@@ -201,11 +211,14 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   let t: NodeJS.Timeout | undefined;
   return Promise.race([p, new Promise<T>((_, rej) => (t = setTimeout(() => rej(new Error(`timeout after ${ms} ms`)), ms)))]).finally(() => clearTimeout(t));
 }
-/** --exclude-from a.json[,b.json]: skip ids already compared there (resume / add new corpus items only). */
+/**
+ * --exclude-from a.json[,b.json]: skip items already compared there (resume / add new corpus items only). Keyed by
+ * `source` (`<ig>/<id>` in the evaluator layout): 18 corpus ids repeat across IGs, an id alone would skip the other IG.
+ */
 const excluded = new Set<string>();
 for (const f of opt("--exclude-from")?.split(",").filter(Boolean) ?? []) {
   readResults(f, (x) => {
-    if (x.comparison || x.skip === "raw-unparseable") excluded.add(String(x.id));
+    if (x.comparison || x.skip === "raw-unparseable") excluded.add(String(x.source ?? x.id));
   });
 }
 const crashOnly = args.includes("--crash-only");
@@ -231,7 +244,7 @@ async function main(): Promise<void> {
     idx++;
     if (idx < start || idx >= start + count || idx % shardN !== shardK) continue;
     if (only && !only.includes(item.id)) continue;
-    if (excluded.has(item.id) || (crashOnly && !item.officialCrash)) continue;
+    if (excluded.has(item.source) || (crashOnly && !item.officialCrash)) continue;
     if (n++ >= limit) break;
     if (!item.packages.length) item.packages = defaultPackages;
     if (!item.profile && defaultProfile) item.profile = defaultProfile;

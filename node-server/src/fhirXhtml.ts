@@ -897,12 +897,14 @@ function divHasId(n: XNode, id: string): boolean {
  * InstanceValidator.checkNarrative, textLink part (TEXT_LINK_*): `narrative` has textLink extensions; `resource` is
  * the resource holding it; `bundleEntries` the entries of the Bundle it sits in (getElementBundle), or null.
  * (sic) the "no div / no id / no data" rules test Narrative.display, which does not exist, so they always fire.
- * The selector's FHIRPath syntax check (TEXT_LINK_SELECTOR_INVALID) is not ported.
+ * TEXT_LINK_SELECTOR_INVALID: `selectorError` gives the syntax error of a selector; the wording after "is invalid:"
+ * is the TS parser's, and Java's type check (fpe.check against the target) is not ported.
  */
 export function textLinkIssues(
   narrative: Record<string, any>,
   resource: Record<string, any>,
   bundleEntries: Array<Record<string, any>> | null,
+  selectorError: (expression: string) => string | null = () => null,
 ): XhtmlIssue[] {
   const exts = (Array.isArray(narrative.extension) ? narrative.extension : []).filter((e: any) => e?.url === EXT_TEXT_LINK);
   if (!exts.length) return [];
@@ -956,6 +958,11 @@ export function textLinkIssues(
           else if (n > 1) multiple();
         }
       }
+    }
+    const selector = str(sub(ex, "selector")[0]);
+    if (selector !== null) {
+      const e = selectorError(selector);
+      if (e !== null) err("TEXT_LINK_SELECTOR_INVALID", `The textLink selector '${selector}' is invalid: ${e}`);
     }
   }
   return out;

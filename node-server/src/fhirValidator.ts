@@ -35,7 +35,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { evaluateConstraint, evaluateExpression, fhirPathBase, invariantExpression, primitiveValueAlias, type FhirPathEnv } from "./fhirPath.js";
+import { evaluateConstraint, evaluateExpression, fhirPathBase, fhirPathSyntaxError, invariantExpression, primitiveValueAlias, type FhirPathEnv } from "./fhirPath.js";
 import { fixedPattern } from "./fhirSnapshot.js";
 import { generateSnapshotAsync } from "./fhirSnapshotGenerator.js";
 import { validateStructureDefinition } from "./fhirSdValidator.js";
@@ -50,7 +50,7 @@ import { validateCodeSystemResource } from "./fhirCodeSystemResource.js";
 import { validateConceptMapResource } from "./fhirConceptMapResource.js";
 import { validateValueSetResource } from "./fhirValueSetResource.js";
 import { languageXhtmlIssues, narrativeControlIssues, parseXhtml, textLinkIssues, validateXhtml, xhtmlHrefIssues } from "./fhirXhtml.js";
-import { duplicateKeys, numberText } from "./fhirJsonLiterals.js";
+import { copyLiterals, duplicateKeys, numberText } from "./fhirJsonLiterals.js";
 import { dropUnprocessed, JsonSyntaxError, jsonSyntaxIssues, parseFhirJsonText, toPlain, type JObject } from "./fhirJsonParser.js";
 
 export const SOURCE = "builtin";
@@ -1157,46 +1157,16 @@ function describeJsonType(v: unknown): string {
 }
 
 /** Embedded resources (contained / Bundle entry resource and response outcome / Parameters resource) JsonParser cannot parse. */
-/**
- * JsonParser.parseChildPrimitiveInstance (hl7-core 7.0.1, JsonParser.java:682-688): a primitive whose `_x` is not an
- * object logs THIS_PROPERTY_MUST_BE_AN_OBJECT_NOT_ and creates no element at all — the value is gone for cardinality,
- * slicing, invariants and every sub-validation (`identifier.system` with a bad `_system` is a missing system). Applied
- * to the instance before validation, copy-on-write. Only a scalar `x` next to `_x`: without one the walker decides.
- */
-/** Objects that only became empty when a bad primitive was dropped: the JSON object had content (checkObject stays quiet). */
-const PARSER_EMPTIED = new WeakSet<object>();
+/** A shallow copy of a parsed object that keeps its source literals (fhirJsonLiterals). */
+function copyNode(node: Record<string, any>): Record<string, any> {
+  const c = { ...node };
+  copyLiterals(node, c);
+  return c;
+}
 
-function dropBadPrimitiveForks(node: any, path: string, issues: Issue[]): any {
-  if (Array.isArray(node)) {
-    let out: any[] | null = null;
-    node.forEach((v, i) => {
-      const r = dropBadPrimitiveForks(v, `${path}[${i}]`, issues);
-      if (r !== v) (out ??= [...node])[i] = r;
-    });
-    return out ?? node;
-  }
-  if (!isObject(node)) return node;
-  let out: Record<string, any> | null = null;
-  for (const k of Object.keys(node)) {
-    const v = node[k];
-    if (k.startsWith("_")) {
-      const name = k.slice(1);
-      const main = node[name];
-      if (!isObject(v) && main !== undefined && main !== null && typeof main !== "object") {
-        const at = `${path}.${name}`;
-        issues.push({ severity: "error", path: at, code: "structure", message: `This property must be an object, not ${describeJson(v)} (${name} at ${at})` });
-        out ??= { ...node };
-        delete out[k];
-        delete out[name];
-        if (!Object.keys(out).length) PARSER_EMPTIED.add(out);
-      }
-      continue;
-    }
-    if (out && !(k in out)) continue; // a primitive dropped above
-    const r = dropBadPrimitiveForks(v, `${path}.${k}`, issues);
-    if (r !== v) (out ??= { ...node })[k] = r;
-  }
-  return out ?? node;
+/** Element.isEmpty for an object the parser emptied: every value is gone or itself emptied. */
+function hasNoContent(o: Record<string, any>, emptied: WeakSet<object>): boolean {
+  return Object.values(o).every((v) => (Array.isArray(v) ? v.every((x) => isObject(x) && emptied.has(x)) : isObject(v) && emptied.has(v)));
 }
 
 function unparsedResources(root: Record<string, any>): Set<object> {
@@ -1322,6 +1292,8 @@ interface Item {
   parserPath?: string;
   /** (parity v3) The element model path (JsonParser npath: choice elements by their [x] name, arrays indexed). */
   jpath?: string;
+  /** (parity v3) The object holding the property (NodeStack parent). */
+  parent?: Record<string, any>;
 }
 
 /** The element an extension sits on, as InstanceValidator.checkExtensionContext sees it. */
@@ -1473,12 +1445,19 @@ export class InstanceValidator {
    * type Resource — no id, no children (FHIRPath sees nothing there; a reference to it finds a `Resource`).
    */
   private unparsed = new Set<object>();
+  /** Objects with content in the source that lost all of it in the parser (dropBadPrimitivesIn). */
+  private parserEmptied = new WeakSet<object>();
+  private parserEmptiedAny = false;
   private strippedCache = new WeakMap<object, any>();
   private emptiedCache = new WeakMap<object, Promise<boolean>>();
 
-  /** The FHIRPath view of a value: unparsed embedded resources removed (they have no content in the element model). */
+  /**
+   * The FHIRPath view of a value: what has no content in the element model is removed — unparsed embedded resources,
+   * objects the parser emptied (Element.isEmpty: FHIRPathEngine.funcExists does not count them; cmp-1 on a section whose
+   * only entry lost its reference).
+   */
   private fhirPathView(v: any): any {
-    if (!this.unparsed.size || v === null || typeof v !== "object") return v;
+    if ((!this.unparsed.size && !this.parserEmptiedAny) || v === null || typeof v !== "object") return v;
     const hit = this.strippedCache.get(v);
     if (hit !== undefined) return hit;
     let out: any;
@@ -1489,13 +1468,13 @@ export class InstanceValidator {
       let changed = false;
       const o: Record<string, any> = {};
       for (const [k, x] of Object.entries(v)) {
-        if (isObject(x) && this.unparsed.has(x)) {
+        if (isObject(x) && (this.unparsed.has(x) || this.parserEmptied.has(x))) {
           changed = true;
           continue;
         }
-        if (Array.isArray(x) && x.some((y) => isObject(y) && this.unparsed.has(y))) {
+        if (Array.isArray(x) && x.some((y) => isObject(y) && (this.unparsed.has(y) || this.parserEmptied.has(y)))) {
           changed = true;
-          const kept = x.filter((y) => !(isObject(y) && this.unparsed.has(y))).map((y) => this.fhirPathView(y));
+          const kept = x.filter((y) => !(isObject(y) && (this.unparsed.has(y) || this.parserEmptied.has(y)))).map((y) => this.fhirPathView(y));
           if (kept.length) o[k] = kept;
           continue;
         }
@@ -1566,7 +1545,10 @@ export class InstanceValidator {
     if (!isObject(resource0) || typeof resource0.resourceType !== "string") {
       return [{ severity: "fatal", path: "", code: "structure", message: "resource must be a JSON object with a resourceType" }];
     }
-    const resource = await this.dropBadPrimitiveValues(dropBadPrimitiveForks(resource0, resource0.resourceType, issues), resource0.resourceType, issues, 0);
+    this.xmlSource = opts.format === "xml";
+    this.parserEmptied = new WeakSet();
+    this.parserEmptiedAny = false;
+    const resource = await this.dropBadPrimitiveValues(resource0, resource0.resourceType, issues, 0);
     const bundle = resource.resourceType === "Bundle" ? this.bundleCtx(resource) : null;
     const rctx: ResourceCtx = { resource, container: null, root: resource, bundle, entry: null };
     // `|version` is kept: HL7 resolves a versioned canonical to that version only.
@@ -2870,7 +2852,7 @@ export class InstanceValidator {
         }
         await this.checkUri(v, item, typeCode, el, issues);
       }
-      this.checkFixedPattern(el, v, item, sdx, issues);
+      this.checkFixedPattern(el, v, item, sdx, issues, true);
       await this.checkBinding(el, v, typeCode, item, issues, null);
       await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
       return;
@@ -3040,7 +3022,7 @@ export class InstanceValidator {
       });
       return;
     }
-    if (Object.keys(v).length === 0 && !isResourceRoot) {
+    if (Object.keys(v).length === 0 && !isResourceRoot && !this.parserEmptied.has(v)) {
       // (parity v2) JsonParser.checkObject (7.0.1): OBJECT_MUST_HAVE_SOME_CONTENT, and the (empty) element is kept —
       // validation goes on, so its required children are reported as missing.
       // XML: XmlParser keeps the empty element (its parse error, if any, comes from fhirXml.ts) and ele-1 fails.
@@ -3049,7 +3031,7 @@ export class InstanceValidator {
       // property, and FHIRPathEngine.funcHasValue (l. 6208) reads such an element as having a value. Evaluator
       // corpus: every non-choice `{}` (extension, meta, text, code, subject, category[n] …) carries ele-1 in
       // validator_cli 7.0.1, no `value[x]` / `dose[x]` / `effective[x]` `{}` does.
-      if (!this.xmlSource && !PARSER_EMPTIED.has(v)) issues.push({ severity: "error", path: item.path, code: "invalid", message: "Object must have some content" });
+      if (!this.xmlSource && !this.parserEmptied.has(v)) issues.push({ severity: "error", path: item.path, code: "invalid", message: "Object must have some content" });
       if (this.xmlSource || !/\[x\]$/u.test(String(el.path ?? ""))) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
     }
 
@@ -3160,6 +3142,11 @@ export class InstanceValidator {
           typeProfilePass = psdx;
           typeRootConstraints.push([psdx, psdx.root]);
         }
+      } else if (tsdx && !profs.length && typeCode !== "Extension" && (el.type || []).length <= 1) {
+        // checkChildByDefinition l. 8094 + 8165-8171: p = the type's definition is validated (validateElement) and then
+        // the inline children (l. 8174-8182), both: Narrative.div's cardinality and txt-1 / txt-2 under a profile that
+        // constrains `text.div`
+        typeProfilePass = tsdx;
       }
     }
 
@@ -3195,7 +3182,7 @@ export class InstanceValidator {
       for (const x of narrativeControlIssues(v, el, lang, sdx.url)) issues.push({ severity: x.severity, path: item.path, code: "business-rule", message: x.message });
       // textLink extensions (TEXT_LINK_*): the Bundle the resource sits in (getElementBundle), when it is an entry
       const inBundle = rctx.root !== rctx.resource && rctx.root?.resourceType === "Bundle" && Array.isArray(rctx.root.entry) && !rctx.container;
-      for (const x of textLinkIssues(v, rctx.resource, inBundle ? rctx.root.entry : null)) issues.push({ severity: x.severity, path: item.path, code: "structure", message: x.message });
+      for (const x of textLinkIssues(v, rctx.resource, inBundle ? rctx.root.entry : null, fhirPathSyntaxError)) issues.push({ severity: x.severity, path: item.path, code: "structure", message: x.message });
     }
     if (typeCode === "Reference") await this.checkReference(el, v, item, rctx, issues, depth);
     await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
@@ -3466,7 +3453,7 @@ export class InstanceValidator {
         const mk = (value: any, ext: any, p: string): Item => {
           const idx = /\[(\d+)\]$/.exec(p);
           const jpath = idx && p !== path ? `${jbase}[${idx[1]}]` : jbase;
-          return { value, ext, key, path: p, jpath, typeCode, lp, parentExtUrl, host, inList: baseMax0 !== "1" && baseMax0 !== "0", profileType: profileTypeKeys.has(key) };
+          return { value, ext, key, path: p, jpath, parent: node, typeCode, lp, parentExtUrl, host, inList: baseMax0 !== "1" && baseMax0 !== "0", profileType: profileTypeKeys.has(key) };
         };
         const raw = node[key];
         const rawExt = node["_" + key];
@@ -4809,9 +4796,11 @@ export class InstanceValidator {
         else ok = false;
       } else ok = false;
     }
-    if (typeCode === "markdown" && this.htmlInMarkdown !== "none") {
+    // IV:3632: not the comment of an ElementDefinition describing a narrative div (`.comment` next to a path `….text.div`)
+    const divComment = path.endsWith(".comment") && typeof item.parent?.path === "string" && item.parent.path.endsWith(".text.div");
+    if (typeCode === "markdown" && this.htmlInMarkdown !== "none" && !divComment) {
       // TYPE_SPECIFIC_CHECKS_DT_MARKDOWN_HTML: MarkDownProcessor.preProcess escapes the HTML-looking tags; the first
-      // changed position is quoted (two characters). (The ElementDefinition.comment-of-a-text.div exemption is not ported.)
+      // changed position is quoted (two characters).
       const processed = s.replace(/(?<!\\)<(\/)?([A-Za-z][A-Za-z0-9-]*[\s>])/g, "\\<$1$2").replace(/<(!|\?)/g, "\\<$1");
       if (processed !== s) {
         let i = 0;
@@ -4940,14 +4929,18 @@ export class InstanceValidator {
    * needs each pattern coding matched by one coding of the instance (TYPE_CHECKS_PATTERN_CC), a fixed one the same
    * codings in order; a fixed value without extensions bans extensions on the instance (Extension_EXT_Fixed_Banned).
    */
-  private checkFixedPattern(el: Record<string, any>, v: any, item: Item, sdx: SdIndex, issues: Issue[]): void {
-    // A "" gets no _DT_Fixed_Wrong from validator_cli (evaluator corpus, family empty-string, every fixed element:
-    // only ele-1 / "value cannot be empty"). Observed behaviour: the Java branch that skips it is not identified
-    // (IV:3049 / 7725 read as if it should fire). The verdict is unaffected: those two errors are always reported.
-    if (v === "") return;
+  /**
+   * The fixed / pattern check of one element. A primitive: checkPrimitive l. 3658 — after the blank-value return of
+   * l. 3236, so a blank value is not compared — with `#<its id>`. A complex element: checkChildByDefinition l. 8021,
+   * with `#<the parent definition's id>` (`definition` there). Primitives inside a complex fixed value are compared
+   * by the complex check, blank or not (checkCoding → checkFixedValue).
+   */
+  private checkFixedPattern(el: Record<string, any>, v: any, item: Item, sdx: SdIndex, issues: Issue[], primitive = false): void {
+    if (primitive && typeof v === "string" && isJavaBlank(v)) return;
     const [fixed, pattern] = fixedPattern(el);
     const source = `${sdx.url}${sdx.sd?.version ? `|${sdx.sd.version}` : ""}`;
-    const context = `${source}#${el.id ?? el.path}`;
+    const ownId = String(el.id ?? el.path);
+    const context = `${source}#${primitive ? ownId : ownId.replace(/\.[^.]*$/u, "")}`;
     const tag = (list: Issue[]): void => {
       for (const i of list) issues.push({ ...i, element: el.id, profile: sdx.url });
     };
@@ -5009,7 +5002,8 @@ export class InstanceValidator {
             }
             if (!found) {
               const us = isObject(fc) && fc.userSelected !== undefined;
-              const list = `[${all.map((x) => x.message).join(", ")}]`;
+              // List<ValidationMessage>.toString(): ValidationMessage.toString (ToStringStyle.SHORT_PREFIX_STYLE)
+              const list = `[${all.map((x) => `ValidationMessage[level=ERROR,type=VALUE,location=${x.path},message=${x.message}]`).join(", ")}]`;
               issues.push({
                 severity: "error",
                 path,
@@ -5665,7 +5659,7 @@ export class InstanceValidator {
       }
       return;
     }
-    // a "" display is no display (validator_cli reports its ele-1 / "value cannot be empty", never a wrong display)
+    // Coding.setDisplay: Utilities.noString(value) → display = null (the Coding sent to validation has no display)
     const display = typeof v.display === "string" && v.display !== "" ? v.display : null;
     const version = typeof v.version === "string" && v.version ? v.version : null;
     const r = await this.codeCheck(system, code, display, version);
@@ -6284,9 +6278,15 @@ export class InstanceValidator {
    * primitive) nor into a second value of the same choice element.
    */
   /**
-   * JsonParser.parseChildPrimitiveInstance (JsonParser.java:683-685): a non-repeating primitive whose JSON value is an
-   * object or an array logs THIS_PROPERTY_MUST_BE_AN_SIMPLE_VALUE_NOT_ at the element's path (`value[x]` for a choice)
-   * and creates no element — dropped here before validation, copy-on-write, walking the base definitions.
+   * The tree the JSON parser builds, before validation (copy-on-write, walking the base definitions), so cardinality,
+   * slicing, invariants and every sub-validation see it. JsonParser.parseChildPrimitive(Instance), reported at the
+   * parser's path (`value[x]` for a choice, no index in a list):
+   *  - a non-repeating primitive whose JSON value is an object or an array: THIS_PROPERTY_MUST_BE_AN_SIMPLE_VALUE_NOT_;
+   *  - a `_x` that is not an object (scalar, or an item of a list): THIS_PROPERTY_MUST_BE_AN_OBJECT_NOT_;
+   *  - a `_x` of a list that is not an array: THIS_BASE_PROPERTY_MUST_BE_AN_ARRAY_NOT_ ((sic) describes the main value);
+   *  - each creates no element: the value goes too. An empty `_x` next to a value: OBJECT_MUST_HAVE_SOME_CONTENT, the
+   *    element stays.
+   * An object left without content this way is no "empty object" of the source: it is remembered (parserEmptied).
    */
   private async dropBadPrimitiveValues(resource: Record<string, any>, path: string, issues: Issue[], depth: number): Promise<Record<string, any>> {
     if (depth > MAX_DEPTH || typeof resource.resourceType !== "string") return resource;
@@ -6329,13 +6329,62 @@ export class InstanceValidator {
       const baseMax = String((def.base && def.base.max) ?? def.max ?? "*");
       const expectArray = baseMax !== "1" && baseMax !== "0";
       if (isPrimitive(typeCode)) {
-        if (!expectArray && raw !== null && typeof raw === "object") {
-          const at = `${path}.${propName}`;
-          issues.push({ severity: "error", path: at, code: "structure", message: `This property must be a simple value, not ${describeJson(raw)} (${key} at ${at})` });
-          out ??= { ...node };
+        const at = `${path}.${propName}`;
+        const fork = node[`_${key}`];
+        const drop = (): void => {
+          out ??= copyNode(node);
           delete out[key];
           delete out[`_${key}`];
-          if (!Object.keys(out).length) PARSER_EMPTIED.add(out);
+        };
+        const notObject = (v: unknown): void => {
+          issues.push({ severity: "error", path: at, code: "structure", message: `This property must be an object, not ${describeJson(v)} (${key} at ${at})` });
+        };
+        const emptyFork = (): void => {
+          issues.push({ severity: "error", path: at, code: "invalid", message: "Object must have some content" });
+        };
+        if (this.xmlSource) continue;
+        if (!expectArray) {
+          if (raw !== null && typeof raw === "object") {
+            issues.push({ severity: "error", path: at, code: "structure", message: `This property must be a simple value, not ${describeJson(raw)} (${key} at ${at})` });
+            drop();
+          } else if (fork !== undefined && fork !== null && !isObject(fork)) {
+            notObject(fork);
+            drop();
+          } else if (isObject(fork) && !Object.keys(fork).length && raw !== null) {
+            emptyFork();
+            (out ??= copyNode(node));
+            delete out[`_${key}`];
+          }
+        } else if (Array.isArray(raw) && fork !== undefined && fork !== null) {
+          if (!Array.isArray(fork)) {
+            issues.push({ severity: "error", path: at, code: "invalid", message: `This base property must be an Array, not ${describeJson(raw)}` });
+            drop();
+          } else {
+            const n = Math.max(raw.length, fork.length);
+            const main: any[] = [];
+            const shadow: any[] = [];
+            let changed = false;
+            for (let i = 0; i < n; i++) {
+              const m = raw[i] ?? null;
+              const f = fork[i] ?? null;
+              if (f !== null && !isObject(f)) {
+                notObject(f);
+                changed = true;
+                continue;
+              }
+              main.push(m);
+              if (isObject(f) && !Object.keys(f).length && m !== null) {
+                emptyFork();
+                changed = true;
+                shadow.push(null);
+              } else shadow.push(f);
+            }
+            if (changed) {
+              out ??= copyNode(node);
+              out[key] = main;
+              out[`_${key}`] = shadow;
+            }
+          }
         }
         continue;
       }
@@ -6356,16 +6405,21 @@ export class InstanceValidator {
       if (Array.isArray(raw)) {
         let arr: any[] | null = null;
         for (let i = 0; i < raw.length; i++) {
-          const r = await one(raw[i], `${path}.${key}[${i}]`);
+          const r = await one(raw[i], `${path}.${propName}[${i}]`);
           if (r !== raw[i]) (arr ??= [...raw])[i] = r;
         }
-        if (arr) (out ??= { ...node })[key] = arr;
+        if (arr) (out ??= copyNode(node))[key] = arr;
       } else {
-        const r = await one(raw, `${path}.${key}`);
-        if (r !== raw) (out ??= { ...node })[key] = r;
+        const r = await one(raw, `${path}.${propName}`);
+        if (r !== raw) (out ??= copyNode(node))[key] = r;
       }
     }
-    return out ?? node;
+    if (!out) return node;
+    if (hasNoContent(out, this.parserEmptied)) {
+      this.parserEmptied.add(out);
+      this.parserEmptiedAny = true;
+    }
+    return out;
   }
 
   private async structuralPass(resource: Record<string, any>, path: string, issues: Issue[], depth: number): Promise<void> {
@@ -6503,7 +6557,7 @@ export class InstanceValidator {
         }
       }
     }
-    if (!isRoot && kept === 0 && Object.keys(node).length > 0) {
+    if (!isRoot && kept === 0 && (Object.keys(node).length > 0 || this.parserEmptied.has(node))) {
       issues.push({ severity: "error", path, code: "invariant", message: ELE1_MESSAGE });
     }
   }
@@ -6533,8 +6587,8 @@ export class InstanceValidator {
     if (!constraints.length) return;
     if (item.value === null || item.value === undefined) return;
     const env: FhirPathEnv = {
-      resource: rctx.resource,
-      rootResource: rctx.container || rctx.resource,
+      resource: this.fhirPathView(rctx.resource),
+      rootResource: this.fhirPathView(rctx.container || rctx.resource),
       resolveReference: (ref: string) => this.resolveRefForFhirPath(ref, rctx),
     };
     const base = fhirPathBase(String(el.path || sdx.type), typeCode);

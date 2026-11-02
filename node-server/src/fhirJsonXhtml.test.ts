@@ -205,6 +205,8 @@ test("textLink (TEXT_LINK_*), Language_XHTML_*, data: URL mime types", () => {
     "The target of the textLink data reference '#n2' was not found in the resource",
     "No data element was found in the textLink extension",
   ]);
+  const bad = { url: "http://hl7.org/fhir/StructureDefinition/textLink", extension: [{ url: "data", valueUri: "#n1" }, { url: "selector", valueString: "a.(" }] };
+  assert.deepEqual(textLinkIssues(narr([bad]), res, null, () => "bad path").map((i) => i.message), ["The textLink selector 'a.(' is invalid: bad path"]);
   assert.deepEqual(languageXhtmlIssues("en", `<div ${NS} lang="de" xml:lang="de">x</div>`).map((i) => i.message), [
     // (sic) Java: no Different2 when xml:lang equals lang
     "Resource has a language (en), and the XHTML has a lang (de), but they differ",
@@ -252,7 +254,58 @@ test("JsonParser wording for primitives: _x shadows, null entries / scalars, emp
   assert.deepEqual(await run({ one: null }), ["Basic.one | This property must be a simple value, not a Null (one at Basic.one)"]);
   assert.deepEqual(await run({ many: ["a", null] }), ["Basic.many | The JSON array for '1' is invalid at index {1} - must have at least one valid value"]);
   assert.ok((await run({ items: [null, { code: "a" }] })).includes("Basic.items[0] | The property items must be an Array, not a Null (at Basic.items[0])"));
+  // a list: an item whose shadow is not an object is not built, a shadow that is not an array loses the property
+  assert.deepEqual(await run({ many: ["a", "b"], _many: [null, "x"] }), ["Basic.many | This property must be an object, not a Primitive property (many at Basic.many)"]);
+  assert.deepEqual(await run({ many: ["a"], _many: {} }), ["Basic.many | This base property must be an Array, not an Array"]);
   // ARRAY_CANNOT_BE_EMPTY is parseChildComplex only
   assert.deepEqual(await run({ many: [] }), []);
   assert.deepEqual(await run({ items: [] }), ["Basic.items | Array cannot be empty - the property should not be present if it has no values"]);
+});
+
+test("invariants see the tree the parser built: a dropped value is gone, an object it emptied does not exist", async () => {
+  const EXISTS = { key: "tst-1", severity: "error", human: "items or note", expression: "items.exists() or note.exists()" };
+  const BASIC = sd(CORE + "Basic", "Basic", "resource", [
+    el("Basic", 0, "*", [], { constraint: [EXISTS] }),
+    el("Basic.note", 0, "1", ["string"]),
+    el("Basic.items", 0, "*", ["Identifier"]),
+  ]);
+  const ID = sd(CORE + "Identifier", "Identifier", "complex-type", [el("Identifier", 0, "*"), el("Identifier.value", 0, "1", ["string"])]);
+  class R extends FakeResolver {
+    override async fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
+      const u = url.split("|")[0];
+      return u === CORE + "Basic" ? BASIC : u === CORE + "Identifier" ? ID : super.fetchStructureDefinition(url);
+    }
+  }
+  const v = await new InstanceValidator(new R()).validate({ resourceType: "Basic", items: [{ value: "a", _value: "bad" }] });
+  const m = errs(v);
+  assert.ok(m.includes("Basic.items[0].value | This property must be an object, not a Primitive property (value at Basic.items[0].value)"), JSON.stringify(m));
+  assert.ok(m.some((x) => /^Basic \| Constraint failed: tst-1/.test(x)), JSON.stringify(m));
+  assert.ok(!m.some((x) => /Object must have some content/.test(x)), JSON.stringify(m));
+  assert.ok(m.some((x) => /^Basic.items\[0\] \| Constraint failed: ele-1/.test(x)), JSON.stringify(m));
+});
+
+test("fixed values: a blank primitive is not compared (checkPrimitive returns first), the pattern's Issues list prints ValidationMessage", async () => {
+  const P = "http://example.org/fhir/StructureDefinition/basic-fx";
+  const CC = sd(CORE + "CodeableConcept", "CodeableConcept", "complex-type", [el("CodeableConcept", 0, "*"), el("CodeableConcept.coding", 0, "*", ["Coding"])]);
+  const CD = sd(CORE + "Coding", "Coding", "complex-type", [el("Coding", 0, "*"), el("Coding.system", 0, "1", ["uri"]), el("Coding.code", 0, "1", ["code"])]);
+  const B = sd(CORE + "Basic", "Basic", "resource", [el("Basic", 0, "*"), el("Basic.status", 0, "1", ["code"]), el("Basic.cat", 0, "1", ["CodeableConcept"])]);
+  const PR = sd(P, "Basic", "resource", [
+    el("Basic", 0, "*"),
+    el("Basic.status", 0, "1", ["code"], { fixedCode: "final" }),
+    el("Basic.cat", 0, "1", ["CodeableConcept"], { patternCodeableConcept: { coding: [{ system: "http://s", code: "A" }] } }),
+  ], { baseDefinition: CORE + "Basic", derivation: "constraint", version: "1.0.0" });
+  class R extends FakeResolver {
+    override async fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
+      const m: Record<string, Record<string, any>> = { [CORE + "Basic"]: B, [CORE + "CodeableConcept"]: CC, [CORE + "Coding"]: CD, [P]: PR };
+      return m[url.split("|")[0]] ?? super.fetchStructureDefinition(url);
+    }
+  }
+  const run = async (f: Record<string, any>): Promise<string[]> => errs(await new InstanceValidator(new R()).validate({ resourceType: "Basic", ...f }, { profiles: [P] }));
+  assert.ok(!(await run({ status: "" })).some((m) => /but is fixed/.test(m)));
+  assert.ok((await run({ status: "other" })).some((m) => m.includes("Value is 'other' but is fixed to 'final' in the profile " + P + "|1.0.0#Basic.status")));
+  const got = await run({ cat: { coding: [{ system: "http://s", code: "" }] } });
+  assert.ok(
+    got.some((m) => m.includes("Issues: [ValidationMessage[level=ERROR,type=VALUE,location=Basic.cat.coding.code,message=Value is '' but is fixed to 'A' in the profile " + P + "|1.0.0#Basic]]")),
+    JSON.stringify(got),
+  );
 });

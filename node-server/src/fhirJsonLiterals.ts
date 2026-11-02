@@ -27,6 +27,14 @@ export function numberText(container: unknown, key: string | number): string | u
   return container !== null && typeof container === "object" ? NUMBERS.get(container)?.get(String(key)) : undefined;
 }
 
+/** A copy of a parsed container keeps the source literals of the original. */
+export function copyLiterals(from: object, to: object): void {
+  const m = NUMBERS.get(from);
+  if (m) NUMBERS.set(to, m);
+  const d = DUPLICATES.get(from);
+  if (d) DUPLICATES.set(to, d);
+}
+
 export function setDuplicateKeys(obj: object, names: string[]): void {
   if (names.length) DUPLICATES.set(obj, names);
 }
