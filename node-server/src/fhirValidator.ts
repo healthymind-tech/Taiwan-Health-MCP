@@ -4223,16 +4223,43 @@ export class InstanceValidator {
    * against one of the resource's own declared profiles also makes the match fail. Parse-time issues are not part of
    * it (the parser reported them once).
    */
-  private async resourceConforms(ctx: ResourceCtx, url: string, path: string, depth: number): Promise<boolean> {
-    const res = await this.conformance(ctx, url, path, depth);
-    if (!isValid(res.filter((i) => !isParseIssue(i)))) return false;
+  private async resourceConforms(ctx: ResourceCtx, url: string, path: string, depth: number, checkSpecials = false): Promise<boolean> {
+    const passes = async (u: string): Promise<boolean> => {
+      if (!isValid((await this.conformance(ctx, u, path, depth)).filter((i) => !isParseIssue(i)))) return false;
+      // start, IV:6917-6937 / 6981-7001: the profile's imposeProfile dependencies (one level); an unresolved one is a warning
+      const sdx = await this.sdx(u);
+      for (const x of Array.isArray(sdx?.sd.extension) ? sdx!.sd.extension : []) {
+        if (!isObject(x) || x.url !== IMPOSE_PROFILE_EXT) continue;
+        const ip = typeof x.valueCanonical === "string" ? x.valueCanonical : typeof x.valueUri === "string" ? x.valueUri : null;
+        if (!ip || !(await this.sdx(ip))) continue;
+        if (!isValid((await this.conformance(ctx, ip, path, depth)).filter((i) => !isParseIssue(i)))) return false;
+      }
+      return true;
+    };
+    if (!(await passes(url))) return false;
     if (await this.emptiedByParser(ctx.resource)) return false;
     const meta = isObject(ctx.resource.meta) && Array.isArray(ctx.resource.meta.profile) ? ctx.resource.meta.profile : [];
     for (const mp of meta) {
       if (typeof mp !== "string" || !mp || mp === url) continue;
       if (!(await this.sdx(mp))) continue; // Validation_VAL_Profile_Unknown: a warning
-      const r2 = await this.conformance(ctx, mp, path, depth);
-      if (!isValid(r2.filter((i) => !isParseIssue(i)))) return false;
+      if (!(await passes(mp))) return false;
+    }
+    if (checkSpecials) {
+      // startInner with checkSpecials (IV:7181-7184): conformsTo() runs in a new ValidationContext, where it is on
+      // (a reference target's forLocalReference context has it off, ValidationContext:196). The specials this
+      // validator can fail on here: ObservationValidator's vital-signs profile, validateResourceRules' security labels.
+      if (ctx.resource.resourceType === "Observation") {
+        const vs = impliedVitalSignProfile(ctx.resource.code);
+        if (vs && vs !== url && !meta.includes(vs) && (await this.sdx(vs)) && !(await passes(vs))) return false;
+      }
+      if (Array.isArray(ctx.resource.meta?.security)) {
+        const tags = new Set<string>();
+        for (const e of ctx.resource.meta.security) {
+          const t = `${isObject(e) && typeof e.system === "string" ? e.system : null}#${isObject(e) && typeof e.code === "string" ? e.code : null}`;
+          if (tags.has(t)) return false; // duplicate security label
+          tags.add(t);
+        }
+      }
     }
     return true;
   }
@@ -4284,7 +4311,7 @@ export class InstanceValidator {
         continue;
       }
       const ctx: ResourceCtx = { resource: r, container: null, root: rctx.root, bundle: rctx.bundle, entry: this.entryFor(r, rctx, false) };
-      if (await this.resourceConforms(ctx, p, this.pathOf(it, dpath), depth + 1)) return true;
+      if (await this.resourceConforms(ctx, p, this.pathOf(it, dpath), depth + 1, true)) return true;
       notes.push(p);
     }
     return false;

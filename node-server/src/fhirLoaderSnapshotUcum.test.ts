@@ -422,3 +422,30 @@ test("JsonParser.checkObject: an empty _x is reported once and the primitive sta
   const issues = errors(await new InstanceValidator(new FakeResolver()).validate({ resourceType: "Patient", gender: "male", _gender: {} }));
   assert.deepEqual(issues.map((i) => [i.path, i.message]), [["Patient.gender", "Object must have some content"]]);
 });
+
+test("reference sub-validation: an imposeProfile dependency's errors fail the match (IV:6917-6937)", async () => {
+  const LOOSE = "http://ex.org/StructureDefinition/patient-imp";
+  const OBS_P = "http://ex.org/StructureDefinition/obs-imp";
+  const PAT = "http://example.tw/fhir/StructureDefinition/pat";
+  const loose = { ...SDS[CORE + "Patient"], url: LOOSE, derivation: "constraint", extension: [{ url: "http://hl7.org/fhir/StructureDefinition/structuredefinition-imposeProfile", valueCanonical: PAT }] };
+  const obsP = sd(OBS_P, "Observation", "resource", [
+    ...(SDS[CORE + "Observation"].snapshot.element as Json[]).filter((x) => x.path !== "Observation.subject"),
+    el("Observation.subject", 0, "1", [], { type: [{ code: "Reference", targetProfile: [LOOSE] }] }),
+  ]);
+  class R extends FakeResolver {
+    async fetchStructureDefinition(url: string): Promise<Json | null> {
+      const u = url.split("|")[0];
+      return u === LOOSE ? loose : u === OBS_P ? obsP : super.fetchStructureDefinition(url);
+    }
+  }
+  const b = {
+    resourceType: "Bundle",
+    type: "collection",
+    entry: [
+      { fullUrl: "http://ex.org/fhir/Observation/o1", resource: { resourceType: "Observation", id: "o1", meta: { profile: [OBS_P] }, status: "final", code: { text: "x" }, subject: { reference: "Patient/p1" } } },
+      { fullUrl: "http://ex.org/fhir/Patient/p1", resource: { resourceType: "Patient", id: "p1" } },
+    ],
+  };
+  const issues = errors(await new InstanceValidator(new R()).validate(b));
+  assert.ok(issues.some((i) => /^Unable to find a profile match for Patient\/p1/.test(i.message)), JSON.stringify(issues));
+});
