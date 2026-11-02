@@ -5941,6 +5941,16 @@ export class InstanceValidator {
     else codings = codingsOf(v);
     codings = codings.filter(([, c]) => c !== null && c !== "");
     if (!codings.length) {
+      // checkTerminologyCodeableConcept l. 1754 cc.hasCoding(): a coding without a code is still a coding, so the value set answers
+      const noCode: any[] = typeCode === "CodeableConcept" && isObject(v) && Array.isArray(v.coding) ? v.coding.filter((c: any) => isObject(c) && Object.keys(c).length > 0) : [];
+      if (noCode.length) {
+        const desc = `'${vs.title || vs.name || url}' (${vs.url}${vs.version ? `|${vs.version}` : ""})`;
+        const shown = noCode.map((c) => `${typeof c.system === "string" ? c.system : "null"}#${typeof c.code === "string" ? c.code : "null"}`).join(", ");
+        if (strength === "required") issues.push({ severity: "error", path: item.path, code: "code-invalid", message: `None of the codings provided are in the value set ${desc}, and a coding from this value set is required) (codes = ${shown})` });
+        else if (strength === "extensible") issues.push({ severity: "warning", path: item.path, code: "code-invalid", message: `None of the codings provided are in the value set ${desc}, and a coding should come from this value set unless it has no suitable code (note that the validator cannot judge what is suitable) (codes = ${shown})` });
+        else if (strength === "preferred") issues.push({ severity: "warning", path: item.path, code: "code-invalid", message: `None of the codings provided are in the value set ${desc}, and a coding is recommended to come from this value set (codes = ${shown})` });
+        return;
+      }
       if (typeCode === "CodeableConcept" && strength === "required") {
         issues.push({ severity: "error", path: item.path, code: "code-invalid", message: `No code provided, and a code is required from the value set '${vs.title || vs.name || url}' (${vs.url}${vs.version ? `|${vs.version}` : ""})` });
       }
@@ -6341,7 +6351,8 @@ export class InstanceValidator {
       const u = v.includes("|") ? v.slice(0, v.lastIndexOf("|")) : v;
       const found = !!this.resolver.definitionExists && (await this.defExists(u));
       // settings.isAllowExamples(): "nothing - these do need to resolve"
-      if (!found && !this.allowExamples) issues.push({ severity: "error", path: item.path, code: "invalid", message: `Example URLs are not allowed in this context (${short(v)})` });
+      // a value with whitespace has failed the URI rule (validateElement: the URL checks run on a good value only)
+      if (!found && !this.allowExamples && !/\s/.test(v)) issues.push({ severity: "error", path: item.path, code: "invalid", message: `Example URLs are not allowed in this context (${short(v)})` });
     }
     // canonical: the HL7 validator only hints when a canonical does not resolve.
     if (typeCode !== "uri" && typeCode !== "url") return;
@@ -6359,6 +6370,24 @@ export class InstanceValidator {
     issues.push({ severity: "error", path: item.path, code: "invalid", message: urlResolveMessage(v) });
   }
 
+  /**
+   * A coding of a CodeableConcept with a system and no code still goes to validateCode (checkCodeableConcept l. 1519): a CodeSystem
+   * judged here answers NO_CODE_PROVIDED(_VERSION) (ValueSetValidator l. 1256), the terminology server its own error on the
+   * coding, reported as a warning on the CodeableConcept too (official corpus: v2-0360|2.7, BCP-47, ISO 3166).
+   */
+  private async codelessCoding(v: Record<string, any>, system: string, item: Item, issues: Issue[]): Promise<void> {
+    const version = typeof v.version === "string" && v.version ? v.version : null;
+    const cs = this.resolver.fetchCodeSystem ? await this.resolver.fetchCodeSystem(version ? `${system}|${version}` : system).catch(() => null) : null;
+    if (cs && ["complete", "fragment", "supplement"].includes(String(cs.content))) {
+      const message = cs.version ? `No code provided for CodeSystem '${system}' version '${cs.version}'` : `No code provided for CodeSystem '${system}'`;
+      issues.push({ severity: "warning", path: item.path, code: "code-invalid", message });
+    } else if (await this.systemResolvable(system)) {
+      const message = `Coding has no code for system ${system} and cannot be validated`;
+      issues.push({ severity: "error", path: item.path, code: "code-invalid", message });
+      issues.push({ severity: "warning", path: item.path.replace(/\.coding\[\d+\]$/, ""), code: "code-invalid", message });
+    }
+  }
+
   private async checkCoding(v: Record<string, any>, item: Item, issues: Issue[], el: Record<string, any> | null = null): Promise<void> {
     const system = v.system;
     const code = v.code;
@@ -6368,12 +6397,15 @@ export class InstanceValidator {
     if (typeof code === "string" && code && (system === undefined || system === null) && (!inCC || (el && isObject(el.binding)))) {
       issues.push({ severity: "warning", path: item.path, code: "code-invalid", message: "A code with no system has no defined meaning, and it cannot be validated. A system should be provided" });
     }
-    if (typeof system === "string" && system) {
-      if (!/^[a-z][a-z0-9+.-]*:/i.test(system)) {
+    // isSystemReferenceValid; a value with whitespace only gets the URI rule (official corpus), a number is read as its text
+    const written = typeof system === "number" || typeof system === "boolean" ? String(system) : system;
+    if (typeof written === "string" && written && !/\s/.test(written)) {
+      if (!/^[a-z][a-z0-9+.-]*:/i.test(written)) {
         issues.push({ severity: "error", path: `${item.path}.system`, code: "code-invalid", message: "Coding.system must be an absolute reference, not a local reference" });
         return;
       }
     }
+    if (inCC && typeof system === "string" && system && !/\s/.test(system) && (typeof code !== "string" || !code)) await this.codelessCoding(v, system, item, issues);
     if (typeof system !== "string" || typeof code !== "string" || !code) return;
     // UCUM: tx.fhir.org parses the expression (Unknown_Code_in_Version on failure) and checks the display against
     // the code and its formal structure (Display_Name_for__should_be_one_of__instead_of; review G9).

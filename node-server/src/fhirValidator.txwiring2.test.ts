@@ -245,3 +245,41 @@ test("a ValueSet nobody holds: outside the HL7 space a definite not found, insid
   const near = await run("http://hl7.org/fhir/uv/ips/ValueSet/vaccines-uv-ips");
   assert.deepEqual((near[0] as any).unchecked, { kind: "valueSet", canonical: "http://hl7.org/fhir/uv/ips/ValueSet/vaccines-uv-ips" });
 });
+
+test("a coding without a code: the value set still answers (cc.hasCoding), and a held CodeSystem says NO_CODE_PROVIDED_VERSION", async () => {
+  const VSH = "http://x/ValueSet/held";
+  const CSH = "http://x/held/cs";
+  class R extends FakeResolver {
+    async fetchValueSet(url: string): Promise<Json | null> {
+      return url.split("|")[0] === VSH ? { resourceType: "ValueSet", url: VSH, title: "Held", compose: { include: [{ system: CSH }] } } : super.fetchValueSet(url);
+    }
+    async fetchCodeSystem(url: string): Promise<Json | null> {
+      return url === CSH ? { resourceType: "CodeSystem", url: CSH, version: "1.0.1", content: "complete", concept: [] } : null;
+    }
+    async codeSystemResolvable(): Promise<boolean> {
+      return true;
+    }
+  }
+  const v = new InstanceValidator(new R()) as any;
+  const bound: Issue[] = [];
+  await v.checkBinding({ path: "X.y", base: { path: "X.y" }, binding: { strength: "required", valueSet: VSH } }, { coding: [{ system: CSH, code: ["a"] }] }, "CodeableConcept", { path: "X.y", value: {} }, bound, null);
+  assert.deepEqual(bound.map((i) => i.message), [`None of the codings provided are in the value set 'Held' (${VSH}), and a coding from this value set is required) (codes = ${CSH}#null)`]);
+  const el = { path: "CodeableConcept.coding", base: { path: "CodeableConcept.coding" } };
+  const held: Issue[] = [];
+  await v.checkCoding({ system: CSH }, { path: "X.y.coding[0]" }, held, el);
+  assert.deepEqual(held.map((i) => `${i.severity} ${i.path} ${i.message}`), [`warning X.y.coding[0] No code provided for CodeSystem '${CSH}' version '1.0.1'`]);
+  const server: Issue[] = [];
+  await v.checkCoding({ system: "urn:ietf:bcp:47", code: "" }, { path: "X.y.coding[0]" }, server, el);
+  assert.deepEqual(server.map((i) => `${i.severity} ${i.path}`), ["error X.y.coding[0]", "warning X.y"]);
+  assert.equal(server[0].message, "Coding has no code for system urn:ietf:bcp:47 and cannot be validated");
+});
+
+test("Coding.system: a number is read as its text, a value with whitespace only gets the URI rule", async () => {
+  const v = new InstanceValidator(new FakeResolver()) as any;
+  const a: Issue[] = [];
+  await v.checkCoding({ system: 1, code: "a" }, { path: "X" }, a);
+  assert.deepEqual(a.map((i) => i.message), ["Coding.system must be an absolute reference, not a local reference"]);
+  const b: Issue[] = [];
+  await v.checkCoding({ system: "not a uri with spaces", code: "a" }, { path: "X" }, b);
+  assert.ok(!b.some((i) => /absolute reference/.test(i.message)), JSON.stringify(b));
+});
