@@ -265,7 +265,7 @@ export function judgeHeldCodeSystem(idx: CodeSystemIndex, system: string, code: 
     }
     // ValueSetValidator l. 864-888: not judged on example content, the exception's warningMessage
     if (idx.content === "example") {
-      return { status: "invalid-code", severity: "warning", message: `Resolved system ${system}${idx.version ? ` (v${idx.version})` : ""}, but the definition only has example content, so the code has not been validated` };
+      return { status: "invalid-code", severity: "warning", undecided: true, message: `Resolved system ${system}${idx.version ? ` (v${idx.version})` : ""}, but the definition only has example content, so the code has not been validated` };
     }
     return null;
   }
@@ -753,7 +753,7 @@ export class DbValidatorResolver implements ValidatorResolver {
         // release is at least the version the server uses (newer codes exist there).
         return loincStrict(await terminology.loincEdition())
           ? { status: "invalid-code", severity: "error", message: loincUnknownMessage(code) }
-          : { status: "invalid-code", severity: "warning", message: `Code '${code}' was not found in the locally held LOINC release of '${system}'` };
+          : { status: "invalid-code", severity: "information", undecided: true, message: `Code '${code}' was not found in the locally held LOINC release of '${system}'` };
       }
       if (display !== null) {
         const bad = judgeDisplay(system, code, display, held.displays, "error");
@@ -786,11 +786,12 @@ export class DbValidatorResolver implements ValidatorResolver {
         }
         // Local table is not the complete current CMS code set (older edition,
         // or tabular XML without the order file): an unknown code may exist at
-        // tx.fhir.org — warn, never a false reject.
+        // tx.fhir.org — an incompleteness note, never a false reject.
         const ed = edition ? ` (${edition.edition}, ${edition.complete ? "complete" : "incomplete"})` : "";
         return {
           status: "invalid-code",
-          severity: "warning",
+          severity: "information",
+          undecided: true,
           message: ICD10CM_SHAPE.test(code)
             ? `Code '${code}' was not found in the locally held ICD-10-CM edition${ed}; it may exist in the edition used by the terminology server`
             : `Code '${code}' does not look like an ICD-10-CM code`,
@@ -878,7 +879,7 @@ export class DbValidatorResolver implements ValidatorResolver {
     if (!(await terminology.rxnormHeld())) {
       return display === null
         ? { status: "silent" }
-        : { status: "display-unchecked", severity: "warning", message: `Display not checked (RxNorm): no local RxNorm terminology is loaded for ${RXNORM}` };
+        : { status: "display-unchecked", message: `Display not checked (RxNorm): no local RxNorm terminology is loaded for ${RXNORM}` };
     }
     const edition = await terminology.rxnormEdition();
     return judgeRxnorm(code, display, await terminology.rxnormConcept(code), rxnormStrict(edition), edition?.version ?? null);

@@ -65,7 +65,8 @@ test("LOINC unknown non-term codes: LG always, bad check digit always, otherwise
   assert.ok(bad(judgeLoincOther("LA6752-4", null, null, false)));
   const missing = judgeLoincOther("LA99999-7", null, null, false);
   assert.equal(missing.status, "invalid-code");
-  assert.equal((missing as any).severity, "warning");
+  assert.equal((missing as any).severity, "information");
+  assert.equal((missing as any).undecided, true);
   assert.ok(loincNonTermCheckDigitValid("LA99999-7"));
   assert.ok(bad(judgeLoincOther("LA99999-7", null, null, true)));
 });
@@ -139,7 +140,8 @@ test("SNOMED inactive description: INACTIVE_DISPLAY_FOUND unless inactivated aft
 test("SNOMED unknown concepts: error when strict (incl. released after the tx edition), warning otherwise", () => {
   const u = judgeSnomed("987654321008", null, null, [], true);
   assert.ok(bad(u) && u.status === "invalid-code" && u.message.includes("version 'http://snomed.info/sct/900000000000207008/version/20250201'"));
-  assert.equal((judgeSnomed("987654321008", null, null, [], false) as any).severity, "warning");
+  assert.equal((judgeSnomed("987654321008", null, null, [], false) as any).severity, "information");
+  assert.equal((judgeSnomed("987654321008", null, null, [], false) as any).undecided, true);
   const late = { active: true, effectiveTime: null, firstReleased: "2025-03-01" };
   assert.ok(bad(judgeSnomed("1365792007", null, late, [], true)));
   assert.equal(judgeSnomed("1365792007", null, late, [], false).status, "ok");
@@ -164,7 +166,8 @@ test("WHO ICD-10: case-sensitive codes, title or long description, strict only f
   assert.equal(judgeIcd10Who("C00.0", "Malignant neoplasm: External upper lip", row, "2019-covid-expanded", true).status, "ok");
   assert.ok(bad(judgeIcd10Who("C00.0", "foo bar", row, "2019-covid-expanded", true)));
   assert.ok(bad(judgeIcd10Who("a09", null, null, "2019-covid-expanded", true)));
-  assert.equal((judgeIcd10Who("A09.5", null, null, "2016", false) as any).severity, "warning");
+  assert.equal((judgeIcd10Who("A09.5", null, null, "2016", false) as any).severity, "information");
+  assert.equal((judgeIcd10Who("A09.5", null, null, "2016", false) as any).undecided, true);
   assert.ok(icd10WhoStrict({ edition: "2019-covid-expanded", complete: true }));
   assert.ok(!icd10WhoStrict({ edition: "2016", complete: true }));
 });

@@ -116,7 +116,7 @@ test("displayDenotesDifferentDrug: different ingredient → reason; same drug in
   assert.equal(displayDenotesDifferentDrug("ibuprofeno 400 mg", ["ibuprofen 400 MG Oral Tablet"]), null);
 });
 
-test("judgeRxnorm: a display naming another drug is an error even with only the preferred name held; a synonym stays a warning", () => {
+test("judgeRxnorm: a display naming another drug is an error even with only the preferred name held; a synonym stays undecided", () => {
   const preferredOnly = { name: "thyroglobulin 100 MG Oral Tablet", altNames: null };
   const wrong = judgeRxnorm("313375", "Clopidogrel 75 MG Oral Tablet", preferredOnly, false, "06032024");
   assert.equal(wrong.status, "invalid-display");
@@ -125,9 +125,9 @@ test("judgeRxnorm: a display naming another drug is an error even with only the 
   assert.ok(msg.startsWith("Wrong Display Name 'Clopidogrel 75 MG Oral Tablet' for " + RXNORM + "#313375. Valid display is 'thyroglobulin 100 MG Oral Tablet'"), msg);
   // Display_Name_for__should_be_one_of__instead_of: the official text, no reason of our own appended
   assert.ok(msg.endsWith(" (for the language(s) 'en')"), msg);
-  // Same drug, other wording: cannot rule out a PSN / SY atom → warning.
+  // Same drug, other wording: cannot rule out a PSN / SY atom → undecided.
   const syn = judgeRxnorm("313375", "Thyroglobulin 100 mg tablet", preferredOnly, false, "06032024");
-  assert.equal((syn as { severity: string }).severity, "warning");
+  assert.equal(syn.status, "display-unchecked");
   // CJK display: never an RxNorm name → error.
   const cjk = judgeRxnorm("313375", "甲狀腺球蛋白錠", preferredOnly, false, "06032024");
   assert.equal((cjk as { severity: string }).severity, "error");

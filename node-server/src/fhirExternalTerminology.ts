@@ -164,7 +164,8 @@ export function judgeLoincOther(
       ? { status: "invalid-code", severity: "error", message: loincUnknownMessage(code) }
       : {
           status: "invalid-code",
-          severity: "warning",
+          severity: "information",
+          undecided: true,
           message: `Code '${code}' was not found in the locally held LOINC release of '${LOINC}'; it may exist in the version used by the terminology server (${LOINC_TX_VERSION})`,
         };
   }
@@ -256,7 +257,8 @@ export function judgeSnomed(
         }
       : {
           status: "invalid-code",
-          severity: "warning",
+          severity: "information",
+          undecided: true,
           message: `Code '${code}' was not found in the locally held SNOMED CT release of '${SNOMED}'`,
         };
   }
@@ -332,7 +334,7 @@ export function judgeIcd10Who(code: string, display: string | null, row: Icd10Wh
   if (!row) {
     return strict
       ? { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${ICD10_WHO}' version '${edition}'` }
-      : { status: "invalid-code", severity: "warning", message: `Code '${code}' was not found in the locally held WHO ICD-10 edition (${edition ?? "unknown"})` };
+      : { status: "invalid-code", severity: "information", undecided: true, message: `Code '${code}' was not found in the locally held WHO ICD-10 edition (${edition ?? "unknown"})` };
   }
   if (display !== null) {
     const bad = judgeExternalDisplay(ICD10_WHO, code, display, [row.display, ...row.altDisplays], [row.display]);
@@ -411,7 +413,8 @@ export function judgeRxnorm(code: string, display: string | null, row: RxnormCon
       ? { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${RXNORM}' version '${RXNORM_TX_VERSION}'` }
       : {
           status: "invalid-code",
-          severity: "warning",
+          severity: "information",
+          undecided: true,
           message: `Code '${code}' was not found in the locally held RxNorm release${localVersion ? ` (${localVersion})` : ""}; it may exist in the release used by the terminology server (${RXNORM_TX_VERSION})`,
         };
   }
@@ -429,9 +432,9 @@ export function judgeRxnorm(code: string, display: string | null, row: RxnormCon
       return { ...bad, severity: "error" };
     }
     return {
-      status: "invalid-display",
-      severity: "warning",
-      message: bad.message,
+      status: "display-unchecked",
+      undecided: true,
+      message: `Display not checked (RxNorm): only the preferred name of ${code} is held locally, so another RxNorm name could not be ruled out`,
     };
   }
   return bad;

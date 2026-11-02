@@ -157,3 +157,21 @@ test("a value set pinning the system version names that version in Unknown code 
   await v.pinnedUnknownCode(vs, [{ system: "http://x/cs", code: "a" }], "Coding", { path: "Y" }, el);
   assert.deepEqual(el.map((i) => `${i.path} ${i.message}`), ["Y.code Unknown code 'a' in the CodeSystem 'http://x/cs' version '3.0.0'"]);
 });
+
+test("an incompleteness note is an information issue with `unchecked`, so checked_fully reflects it", async () => {
+  class R extends FakeResolver {
+    async checkCode(system: string, code: string): Promise<CodeCheck> {
+      if (code === "lag") return { status: "invalid-code", severity: "information", undecided: true, message: `Code '${code}' was not found in the locally held release of '${system}'` };
+      if (code === "dsp") return { status: "display-unchecked", message: `Display not checked: no local terminology for ${system}` };
+      return super.checkCode(system, code, null);
+    }
+  }
+  const v = new InstanceValidator(new R()) as any;
+  for (const code of ["lag", "dsp"]) {
+    const issues: Issue[] = await v.validate({ resourceType: "Observation", id: "o", status: "final", code: { coding: [{ system: "http://x/lag", code, display: "d" }] } });
+    const note = issues.find((i) => /locally held|not checked/.test(i.message));
+    assert.ok(note, JSON.stringify(issues));
+    assert.equal(note!.severity, "information");
+    assert.deepEqual((note as any).unchecked, { kind: "code", canonical: "http://x/lag" });
+  }
+});

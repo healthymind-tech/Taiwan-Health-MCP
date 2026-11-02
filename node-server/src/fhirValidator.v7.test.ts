@@ -231,11 +231,13 @@ test("judgeRxnorm: wrong display (tx.fhir.org wording), case-insensitive, any RX
   assert.equal(judgeRxnorm("313375", null, row, false, null).status, "ok");
 });
 
-test("judgeRxnorm: only the preferred name held → mismatch is a warning; unknown RXCUI strict only for a current release", () => {
+test("judgeRxnorm: only the preferred name held → mismatch undecided (information, unchecked); unknown RXCUI strict only for a current release", () => {
   const w = judgeRxnorm("213169", "Plavix 75 MG Oral Tablet", { name: "clopidogrel 75 MG Oral Tablet [Plavix]", altNames: null }, false, null);
-  assert.equal(w.status === "invalid-display" && w.severity, "warning");
+  assert.equal(w.status, "display-unchecked");
+  assert.equal(w.undecided, true);
   const u = judgeRxnorm("99999999", "x", null, false, "06032024");
-  assert.equal(u.status === "invalid-code" && u.severity, "warning");
+  assert.equal(u.status === "invalid-code" && u.severity, "information");
+  assert.equal(u.undecided, true);
   const s = judgeRxnorm("99999999", "x", null, true, "03022026");
   assert.equal(s.status === "invalid-code" && s.message, `Unknown code '99999999' in the CodeSystem '${RXNORM}' version '03022026'`);
   assert.equal(rxnormStrict({ releaseDate: "2024-06-03" }), false);

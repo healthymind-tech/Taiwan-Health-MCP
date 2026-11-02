@@ -227,10 +227,10 @@ export type CodeCheck = (
   /** Known-but-unchecked system (e.g. UCUM, BCP-47): say nothing. */
   | { status: "silent" }
   /** `at: "system"`: the finding is about Coding.system (e.g. CODESYSTEM_CS_NO_SUPPLEMENT), not the code. */
-  | { status: "invalid-code"; severity: "error" | "warning"; message: string; at?: "system" }
+  | { status: "invalid-code"; severity: "error" | "warning" | "information"; message: string; at?: "system" }
   | { status: "invalid-display"; severity: "error" | "warning" | "information"; message: string }
-  /** A display was given but there is no local terminology to check it against (default severity information). */
-  | { status: "display-unchecked"; message: string; severity?: "warning" | "information" }
+  /** A display was given but there is no local terminology to check it against: an information note, always `unchecked`. */
+  | { status: "display-unchecked"; message: string }
 ) &
   CodeCheckExtra;
 
@@ -5176,11 +5176,17 @@ export class InstanceValidator {
     }
   }
 
+  /** The issue of an invalid-code answer; one local data could not decide carries `unchecked` (F5). */
+  private invalidCodeIssue(r: Extract<CodeCheck, { status: "invalid-code" }>, path: string, system: string): Issue {
+    const note = r.severity === "information";
+    return { severity: r.severity, path, code: note ? "informational" : "code-invalid", message: r.message, ...(r.undecided ? { unchecked: { kind: "code" as const, canonical: system } } : {}) };
+  }
+
   /** "; <code system message>" for a Coding its CodeSystem rejects (the {1} of Terminology_TX_NoValid_12). */
   private async codeProblem(c: any): Promise<string> {
     if (!isObject(c) || typeof c.system !== "string" || typeof c.code !== "string") return "";
     const r = await this.codeCheck(c.system, c.code, null, typeof c.version === "string" ? c.version : null);
-    return r.status === "invalid-code" ? `; ${r.message}` : "";
+    return r.status === "invalid-code" && !r.undecided ? `; ${r.message}` : "";
   }
 
   private async inferCodeSystems(vs: Record<string, any>, code: string): Promise<Set<string> | null> {
@@ -5200,7 +5206,7 @@ export class InstanceValidator {
         continue;
       }
       const r = await this.codeCheck(system, code, null, null);
-      if (r.status === "unknown-system") return null;
+      if (r.status === "unknown-system" || r.undecided) return null;
       if (r.status !== "invalid-code") found.add(key);
     }
     return found;
@@ -5350,9 +5356,9 @@ export class InstanceValidator {
       .join(", ");
     if (anyUnknown && codingError === null) {
       issues.push({
-        severity: strength === "required" ? "warning" : "information",
+        severity: "information",
         path: item.path,
-        code: "code-invalid",
+        code: "informational",
         message: `The code(s) ${shown} could not be confirmed as members of the value set ${label} (not fully expandable locally)`,
         unchecked: { kind: "code", canonical: url, causes: [...new Set(codings.map(([s]) => `${s ?? ""}|${url}`))] },
       });
@@ -5709,11 +5715,11 @@ export class InstanceValidator {
         message: `A definition for CodeSystem '${system}' could not be found, so the code cannot be validated`,
       });
     } else if (r.status === "invalid-code") {
-      issues.push({ severity: r.severity, path: `${item.path}.${r.at ?? "code"}`, code: "code-invalid", message: r.message });
+      issues.push(this.invalidCodeIssue(r, `${item.path}.${r.at ?? "code"}`, system));
     } else if (r.status === "invalid-display") {
       issues.push({ severity: r.severity, path: `${item.path}.display`, code: "code-invalid", message: r.message });
     } else if (r.status === "display-unchecked") {
-      issues.push({ severity: r.severity ?? "information", path: `${item.path}.display`, code: "informational", message: r.message, ...(r.undecided ? { unchecked: { kind: "code" as const, canonical: system } } : {}) });
+      issues.push({ severity: "information", path: `${item.path}.display`, code: "informational", message: r.message, unchecked: { kind: "code", canonical: system } });
     } else if ((r.status === "silent" || r.status === "ok") && r.undecided) {
       issues.push({ severity: "information", path: `${item.path}.code`, code: "informational", message: version ? `Code '${code}' not checked: version '${version}' of ${system} is not held locally` : `Code '${code}' not checked: no local terminology for ${system}`, unchecked: { kind: "code", canonical: version ? `${system}|${version}` : system } });
     }
@@ -5863,7 +5869,7 @@ export class InstanceValidator {
             if (checkUcumCode(code) === "invalid") issues.push({ severity: "error", path: `${path}.code`, code: "code-invalid", message: ucumUnknownCodeMessage(code) });
           } else {
             const r = await this.codeCheck(system, code, null, null);
-            if (r.status === "invalid-code") issues.push({ severity: r.severity, path: `${path}.code`, code: "code-invalid", message: r.message });
+            if (r.status === "invalid-code") issues.push(this.invalidCodeIssue(r, `${path}.code`, system));
             else if (r.status === "unknown-system") {
               issues.push({ severity: "warning", path: `${path}.system`, code: "not-found", message: `A definition for CodeSystem '${system}' could not be found, so the code cannot be validated` });
             }
