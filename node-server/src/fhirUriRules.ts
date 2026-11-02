@@ -198,7 +198,7 @@ const CANONICAL_RESOURCES = new Set(
 
 /** Element base paths whose URI value is not checked for resolution by the HL7 validator. */
 export function uriResolutionExempt(basePath: string): boolean {
-  if (basePath === "Bundle.entry.fullUrl") return true;
+  if (basePath === "Bundle.entry.fullUrl" || basePath === "Extension.url") return true; // Extension.url: "validated elsewhere" (IV:4199)
   const p = basePath.split(".");
   return p.length === 2 && p[1] === "url" && CANONICAL_RESOURCES.has(p[0]);
 }

@@ -203,6 +203,55 @@ async function elementRules(
   }
 }
 
+const OBLIGATION_FLAGS = ["http://hl7.org/fhir/StructureDefinition/obligation-profile", "http://hl7.org/fhir/tools/StructureDefinition/obligation-profile"];
+const OBLIGATION_INHERITS = ["http://hl7.org/fhir/StructureDefinition/inherit-obligations", "http://hl7.org/fhir/tools/StructureDefinition/inherit-obligations"];
+const OBLIGATIONS = ["http://hl7.org/fhir/StructureDefinition/obligation", "http://hl7.org/fhir/tools/StructureDefinition/obligation"];
+
+/** validateObligationProfile + validateObligationProfileElement(Binding) (l. 375-487), R4 forms. */
+function obligationRules(out: SdIssue[], diff: Json[], listPath: string, base: Json): void {
+  const err = (path: string, message: string): void => {
+    out.push({ severity: "error", path, code: "invalid", message });
+  };
+  diff.forEach((element, i) => {
+    const at = `${listPath}.element[${i}]`;
+    const id = String(element.id);
+    const bd = (base.snapshot?.element || []).find((e: Json) => e.id === id);
+    if (!bd) return err(at, `The element '${id}' has no equivalent in the profile '${versioned(base)}' on which this Obligation Profile is based`);
+    for (const name of Object.keys(element)) {
+      if (name.startsWith("_") || ["id", "mustSupport", "min", "max"].includes(name)) continue;
+      if (name === "extension") {
+        (Array.isArray(element.extension) ? element.extension : []).forEach((x: Json, c: number) => {
+          if (!OBLIGATIONS.includes(x?.url)) err(`${at}.extension[${c}]`, `The element '${id}' has a property 'extension#${x?.url}' which is not allowed in Obligation profiles`);
+        });
+      } else if (name === "binding") {
+        const bp = `${at}.binding[0]`;
+        if (!bd.binding) {
+          err(bp, `The element '${id}' has a binding when the base element does not, and this is not allowed in Obligation profiles`);
+          continue;
+        }
+        for (const k of Object.keys(element.binding)) {
+          if (k.startsWith("_")) continue;
+          if (k === "extension") {
+            (element.binding.extension as Json[]).forEach((x, c) => {
+              if (x?.url !== "http://hl7.org/fhir/tools/StructureDefinition/additional-binding") {
+                err(`${bp}.extension[${c}]`, `The element '${id}' has a property 'extension#${x?.url}' which is not allowed in Obligation profiles`);
+                return;
+              }
+              const purpose = (x.extension || []).find((y: Json) => y?.url === "purpose");
+              const code = purpose?.valueCode;
+              if (["maximum", "required", "extensible"].includes(code)) err(`${bp}.extension[${c}]`, `The element '${id}' has an additional binding purpose of '${code}' which is not allowed in Obligation profiles`);
+            });
+          } else if (k === "strength") {
+            if (bd.binding.strength !== element.binding.strength) err(`${bp}.strength[0]`, `The element '${id}' has a different binding strength ('${element.binding.strength}') from the base ('${bd.binding.strength}') which is not allowed in Obligation profiles`);
+          } else err(`${bp}.${k}[0]`, `The element '${id}' has a binding property '${k}' which is not allowed in Obligation profiles`);
+        }
+      } else if (name === "path") {
+        if (element.path !== bd.path) err(`${at}.path[0]`, `The element '${id}' path value of '${element.path}' doesn't match the base path '${bd.path}'`);
+      } else err(`${at}.${name}[0]`, `The element '${id}' has a property '${name}' which is not allowed in Obligation profiles`);
+    }
+  });
+}
+
 /** StructureDefinitionValidator.validateStructureDefinition at `path`. */
 export async function validateStructureDefinition(sd: Json, path: string, deps: SdValidatorDeps): Promise<SdIssue[]> {
   const out: SdIssue[] = [];
@@ -233,5 +282,22 @@ export async function validateStructureDefinition(sd: Json, path: string, deps: 
   const diffById = new Map<string, Json>(diff.filter((e) => typeof e?.id === "string").map((e) => [e.id, e]));
   await elementRules(out, sd, path, `${path}.differential`, diff, false, base, null, deps);
   await elementRules(out, sd, path, `${path}.snapshot`, snap, true, base, diffById, deps);
+  // obligation profile support (l. 232-257)
+  const exts: Json[] = Array.isArray(sd.extension) ? sd.extension : [];
+  const flag = exts.find((x) => OBLIGATION_FLAGS.includes(x?.url));
+  if (flag && flag.valueBoolean === true) {
+    if (sd.derivation !== "constraint") out.push({ severity: "error", path, code: "invalid", message: "Only profiles that constrain another profile can be marked as an obligation profile" });
+    else obligationRules(out, diff, `${path}.differential`, base);
+  }
+  for (let c = 0; c < exts.length; c++) {
+    if (!OBLIGATION_INHERITS.includes(exts[c]?.url)) continue;
+    const at = `${path}.extension[${c}]`;
+    const tgt: string | undefined = exts[c].valueCanonical ?? exts[c].valueUri;
+    const target = tgt ? await deps.fetch(tgt) : null;
+    if (!tgt) out.push({ severity: "error", path: at, code: "invalid", message: "Unable to read a value from this extension" });
+    else if (!target) continue; // Java tests src, not the target, here (l. 359) and fails on it below; unknown: not reported
+    else if (!(target.extension || []).some((x: Json) => OBLIGATION_FLAGS.includes(x?.url) && x.valueBoolean === true)) out.push({ severity: "error", path: at, code: "invalid", message: `The profile '${tgt}' is not marked as an obligation profile` });
+    else if (sd.baseDefinition !== target.baseDefinition) out.push({ severity: "error", path: at, code: "invalid", message: `The profile '${tgt}' has a different base '${target.baseDefinition}' from that expected '${sd.baseDefinition}'` });
+  }
   return out;
 }

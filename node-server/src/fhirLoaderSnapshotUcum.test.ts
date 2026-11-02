@@ -478,3 +478,14 @@ test("matchetype: the extension is an error unless allowed, a $placeholder$ is n
   const req = errors(await new InstanceValidator(new FakeResolver()).validate({ resourceType: "Patient" }, { matchetypeStatus: "required" }));
   assert.ok(req.some((i) => /required to be a matchetype resource/.test(i.message)), JSON.stringify(req));
 });
+
+test("obligation profiles (StructureDefinitionValidator l. 232-257, 355-487): only must-support, obligations and additional bindings", async () => {
+  const f = fetchMini();
+  const deps = { fetch: async (u: string): Promise<Json | null> => f(u), hashSet: (v: string[]): string => `[${v.join(", ")}]` };
+  const P = "http://ex.org/StructureDefinition/ob";
+  const flag = { url: "http://hl7.org/fhir/StructureDefinition/obligation-profile", valueBoolean: true };
+  const sdx = profile(P, "Patient", [{ id: "Patient", path: "Patient" }, { id: "Patient.birthDate", path: "Patient.birthDate", mustSupport: true, short: "x" }, { id: "Patient.none", path: "Patient.none" }], { extension: [flag] });
+  const msgs = (await validateStructureDefinition(sdx, "StructureDefinition", deps)).map((i) => `${i.path} | ${i.message}`);
+  assert.ok(msgs.includes("StructureDefinition.differential.element[1].short[0] | The element 'Patient.birthDate' has a property 'short' which is not allowed in Obligation profiles"), JSON.stringify(msgs));
+  assert.ok(msgs.some((m) => m.startsWith("StructureDefinition.differential.element[2] | The element 'Patient.none' has no equivalent in the profile")), JSON.stringify(msgs));
+});
