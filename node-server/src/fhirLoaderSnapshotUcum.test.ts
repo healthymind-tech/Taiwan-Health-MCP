@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { fixPackageResource } from "./fhirPackageHacker.js";
 import { validateStructureDefinition } from "./fhirSdValidator.js";
 import { generateSnapshotAsync, makeBaseDefinition, SnapshotGenerator } from "./fhirSnapshotGenerator.js";
-import { checkUcumCode, ucumDisplayIssue, ucumDisplays } from "./fhirUcum.js";
+import { checkUcumCode, ucumCanonicalForm, ucumDisplayIssue, ucumDisplays } from "./fhirUcum.js";
 import { completenessOf, InstanceValidator, type Issue } from "./fhirValidator.js";
 import { CORE, FakeResolver, SDS, el, sd } from "./fhirTestKit.test.js";
 
@@ -488,4 +488,13 @@ test("obligation profiles (StructureDefinitionValidator l. 232-257, 355-487): on
   const msgs = (await validateStructureDefinition(sdx, "StructureDefinition", deps)).map((i) => `${i.path} | ${i.message}`);
   assert.ok(msgs.includes("StructureDefinition.differential.element[1].short[0] | The element 'Patient.birthDate' has a property 'short' which is not allowed in Obligation profiles"), JSON.stringify(msgs));
   assert.ok(msgs.some((m) => m.startsWith("StructureDefinition.differential.element[2] | The element 'Patient.none' has no equivalent in the profile")), JSON.stringify(msgs));
+});
+
+test("getCanonicalForm (ucum-java 1.0.10 Converter + Decimal)", () => {
+  assert.deepEqual(ucumCanonicalForm("4", "g"), { value: "4", code: "g" });
+  assert.deepEqual(ucumCanonicalForm("4040", "mg"), { value: "4.04", code: "g" });
+  assert.equal(ucumCanonicalForm("1", "m/s")?.code, "m.s-1");
+  assert.equal(ucumCanonicalForm("1", "kg.m2")?.code, "g.m2");
+  assert.equal(ucumCanonicalForm("1", "Cel"), null, "an offset special unit: UcumException");
+  assert.equal(ucumCanonicalForm("1", "nonsense"), null);
 });

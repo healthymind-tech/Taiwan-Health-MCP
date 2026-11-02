@@ -254,8 +254,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.48.0 (parity v3 round 5 corpus): ele-1 on JSON "" and non-choice {} and on a value-less primitive whose shadow holds only an id (message with its "(defined in …)" source); meta.profile example URLs reported; a 'Type/' reference under a urn fullUrl is an error.
   // 1.49.0 (parity v3 profile matching): reference / conformsTo() sub-validations = validateResource (own meta.profile profiles, parser-emptied elements), bad primitives dropped as JsonParser does (_x not an object, object / array for a single primitive), CantMatchChoice lists every target profile sorted, NotSlice details.
   // 1.49.0 (parity v3 tx-validator-wiring, round 2; REVIEW_port_2 G1 G3 G19-G21 G24-G28, REVIEW_port_1 F5 F9 F20): Coding.version against the CodeSystem of that version (determineVersion: VALUESET_VALUE_MISMATCH*, UNKNOWN_CODESYSTEM_VERSION), versioned includes, maxValueSet, several inferred systems, enumerated codes need the CodeSystem, membership filters as codeInFilter, hierarchy only from the concept-properties#parent property, expansion before compose, alternateCode, deprecated designations, Terminology_TX_NoValid_1_CC wording; a Coding without a system is not bound; unevaluated invariants → checked_fully false (invariants_unchecked).
-  fhir_validate_bundle: "1.56.0",
+  fhir_validate_bundle: "1.57.0",
   // 1.53.0: data carries codes_unchecked / slices_unchecked / invariants_unchecked / lookups_failed (the reasons for checked_fully=false, as fhir_validate_resource; they were dropped), and undecided_causes (`system|valueSet` behind undecided codes and slices).
+  // 1.53.0: invariant evaluation on Quantities and boundaries follows FHIRPathEngine (parity v3 round 7: UCUM canonical form in =, ~, <; no boundary carry).
   // 1.49.0 (parity v3 json-xhtml, round 6): JSON parser wording of primitives (empty / non-object _x shadows, null entries and scalars, [x] paths, no error on an empty primitive array), hasValue() false on "", no fixed / display finding on "", Resource.id without value or with extensions, fixed primitives with extensions, txt-1 / txt-2 on a value-less div.
   // 1.50.0 (parity v3): sub-validations with imposeProfile and conformsTo() specials, StructureDefinition rules, matchetype status, ids in eld-* failures, FHIRPath boundaries and Quantity rules, opAs case-insensitive.
   // 1.51.0 (parity v3 tx-validator-wiring, round 3): CodeSystem / ValueSet resources validated as CodeSystemValidator / ValueSetValidator, defining canonical urls absolute, The code provided / The Coding provided, an unknown system on a Coding element, Unknown code naming the version a value set pins.
@@ -309,8 +310,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.45.0: validation as fhir_validate_bundle 1.48.0 (parity v3 round 5 corpus).
   // 1.46.0: validation as fhir_validate_bundle 1.49.0 (parity v3 profile matching).
   // 1.46.0: terminology as fhir_validate_bundle 1.49.0 (parity v3 tx-validator-wiring, round 2).
-  fhir_validate_resource: "1.53.0",
+  fhir_validate_resource: "1.54.0",
   // 1.50.0: undecided_causes as fhir_validate_bundle 1.53.0.
+  // 1.50.0: validation as fhir_validate_bundle 1.53.0.
   // 1.46.0: validation as fhir_validate_bundle 1.49.0 (parity v3 json-xhtml, round 6).
   // 1.47.0: validation as fhir_validate_bundle 1.50.0.
   // 1.48.0: as fhir_validate_bundle 1.51.0 (parity v3 tx-validator-wiring, round 3).

@@ -23,7 +23,7 @@
 
 import { readFileSync } from "node:fs";
 import { htmlChecks1, htmlChecks2 } from "./fhirXhtml.js";
-import { convertUcum } from "./fhirUcum.js";
+import { ucumCanonicalForm } from "./fhirUcum.js";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 
@@ -289,17 +289,21 @@ function javaComparison(orig: any): any {
     fn: function (this: any, a: any[], b: any[]): any {
       if (a.length > 1 || b.length > 1) return [];
       if (a.length === 1 && b.length === 1) {
-        // opLessThan, FHIRPathEngine.java:2611-2627 (opGreater etc. alike): the same `code` children (or none) compare the
-        // values; otherwise qtyToCanonicalDecimal (l. 2471-2474) is null for a Quantity outside UCUM, and the null in the
-        // list is a NullPointerException in hasNoPrimitiveValue (l. 1713) — the invariant fails with no message
-        const l = plainQuantity(a[0]);
-        const r = plainQuantity(b[0]);
-        if ((l || r) && (l ?? stockQuantity(a[0])) && (r ?? stockQuantity(b[0]))) {
-          const lq = (l ?? stockQuantity(a[0]))!;
-          const rq = (r ?? stockQuantity(b[0]))!;
-          if (lq.code !== rq.code) throw new JavaFhirPathError("null");
-          if (lq.value === undefined || rq.value === undefined) return [];
-          return orig.fn.call(this, [Number(lq.value)], [Number(rq.value)]);
+        // opLessThan, FHIRPathEngine.java:2611-2627 (opGreater, opLessOrEqual, opGreaterOrEqual alike): the same `code`
+        // children (also none) compare the values; otherwise the canonical decimals (qtyToCanonicalDecimal, l. 2471-2482).
+        // Null there (outside UCUM, a unit it cannot convert) goes into the list and hasNoPrimitiveValue (l. 1713) fails
+        // with a NullPointerException: the invariant fails without a message
+        const l = javaQuantity(a[0]);
+        const r = javaQuantity(b[0]);
+        if (l && r) {
+          if (l.code === r.code) {
+            if (l.value === undefined || r.value === undefined) return [];
+            return orig.fn.call(this, [Number(l.value)], [Number(r.value)]);
+          }
+          const lc = qtyCanonical(l);
+          const rc = qtyCanonical(r);
+          if (!lc || !rc) throw new JavaFhirPathError("null");
+          return orig.fn.call(this, [Number(lc.value)], [Number(rc.value)]);
         }
       }
       return orig.fn.call(this, a, b);
@@ -440,43 +444,84 @@ interface QtyParts {
   value: string | undefined;
   code: string | null;
   unit: string | null;
+  system: string | null;
 }
 
-/** A Quantity stock fhirpath.js leaves a plain object (no UCUM system + code); null for anything else. */
-function plainQuantity(item: any): QtyParts | null {
-  const v = fpUtil.valData(item);
-  if (v === null || typeof v !== "object" || v instanceof fpTypes.FP_Type || javaFhirType(item).type !== "Quantity") return null;
-  return { value: v.value === undefined ? undefined : String(v.value), code: typeof v.code === "string" ? v.code : null, unit: typeof v.unit === "string" ? v.unit : null };
-}
-
-function stockQuantity(item: any): QtyParts | null {
-  const v = fpUtil.valData(item);
-  if (!(v instanceof fpTypes.FP_Quantity)) return null;
-  const code = String(v.unit ?? "").replace(/^'|'$/g, "");
-  return { value: String(v.value), code, unit: null };
-}
+const CALENDAR_UCUM: Record<string, string | null> = {
+  year: null, years: null, month: null, months: null, week: "wk", weeks: "wk", day: "d", days: "d", hour: "h", hours: "h",
+  minute: "min", minutes: "min", second: "s", seconds: "s", millisecond: "ms", milliseconds: "ms",
+};
 
 /**
- * FHIRPathEngine.qtyEqual (FHIRPathEngine.java:2428-2456) when a side is outside UCUM (no canonical pair): with a code on
- * either side both must have the same code, else null; `else if (!left.hasUnit() || right.hasUnit())` — the units must
- * both exist and match, else null (so two unit-less quantities are null, and a left unit with no right unit skips the
- * check). undefined: not such a comparison.
+ * The Quantity FHIRPathEngine reads: a literal (l. 1191-1221: `'mg'` is UCUM with that code; a calendar word keeps it as
+ * `unit`, with the UCUM code, except year and month, which have none and no system), or a Quantity element.
  */
-function javaQtyEqual(a: any, b: any): boolean | null | undefined {
-  const lp = plainQuantity(a);
-  const rp = plainQuantity(b);
-  if (!lp && !rp) return undefined;
-  const l = lp ?? stockQuantity(a);
-  const r = rp ?? stockQuantity(b);
+function javaQuantity(item: any): QtyParts | null {
+  const v = fpUtil.valData(item);
+  if (v instanceof fpTypes.FP_Quantity) {
+    const u = String(v.unit ?? "");
+    if (/^'.*'$/.test(u)) return { value: String(v.value), code: u.slice(1, -1), unit: null, system: UCUM };
+    const code = CALENDAR_UCUM[u] ?? null;
+    return { value: String(v.value), code, unit: u, system: code === null ? null : UCUM };
+  }
+  if (v === null || typeof v !== "object" || v instanceof fpTypes.FP_Type || javaFhirType(item).type !== "Quantity") return null;
+  return {
+    value: v.value === undefined ? undefined : String(v.value),
+    code: typeof v.code === "string" ? v.code : null,
+    unit: typeof v.unit === "string" ? v.unit : null,
+    system: typeof v.system === "string" ? v.system : null,
+  };
+}
+
+const UCUM = "http://unitsofmeasure.org";
+
+/** qtyToCanonicalPair / qtyToCanonicalDecimal (FHIRPathEngine.java:2458-2482). */
+function qtyCanonical(q: QtyParts): { value: string; code: string } | null {
+  if (q.system !== UCUM || q.value === undefined) return null;
+  return ucumCanonicalForm(q.value, q.code === null ? "1" : q.code);
+}
+
+/** The code / unit rule shared by qtyEqual (l. 2446-2454) and qtyEquivalent (l. 2519-2527): false = the result is null. */
+function qtyUnitsComparable(l: QtyParts, r: QtyParts): boolean {
+  if (l.code !== null || r.code !== null) return l.code !== null && r.code !== null && l.code === r.code;
+  if (l.unit === null || r.unit !== null) return l.unit !== null && r.unit !== null && l.unit === r.unit;
+  return true;
+}
+
+/** removeTrailingZeros + decEqual (FHIRPathEngine.java:2340-2344). */
+function decEqualText(l: string, r: string): boolean {
+  const strip = (x: string): string => (x.includes(".") ? x.replace(/0+$/, "").replace(/\.$/, "") : x);
+  return strip(l) === strip(r);
+}
+
+/** Utilities.equivalentNumber (Utilities.java:1258-1273): rounded HALF_UP to the coarser scale. */
+function equivalentNumber(l: string, r: string): boolean {
+  const scale = (x: string): number => (x.includes(".") ? x.length - x.indexOf(".") - 1 : 0);
+  const unscaled = (x: string, s: number): bigint => {
+    const neg = x.startsWith("-");
+    const a = neg ? x.slice(1) : x;
+    const [i, f = ""] = a.split(".");
+    const digits = BigInt(i + f.slice(0, s).padEnd(s, "0"));
+    const up = f.length > s && f[s] >= "5";
+    return (neg ? -1n : 1n) * (digits + (up ? 1n : 0n));
+  };
+  const s = Math.min(scale(l), scale(r));
+  return unscaled(l, s) === unscaled(r, s);
+}
+
+/** FHIRPathEngine.qtyEqual (l. 2428-2456) / qtyEquivalent (l. 2501-2530); null = empty; undefined = not two Quantities. */
+function javaQtyCompare(a: any, b: any, equivalent: boolean): boolean | null | undefined {
+  const l = javaQuantity(a);
+  const r = javaQuantity(b);
   if (!l || !r) return undefined;
   if (l.value === undefined && r.value === undefined) return true;
   if (l.value === undefined || r.value === undefined) return null;
-  if (l.code !== null || r.code !== null) {
-    if (l.code === null || r.code === null || l.code !== r.code) return null;
-  } else if (l.unit === null || r.unit !== null) {
-    if (l.unit === null || r.unit === null || l.unit !== r.unit) return null;
-  }
-  return Number(l.value) === Number(r.value);
+  const dl = qtyCanonical(l);
+  const dr = qtyCanonical(r);
+  const same = equivalent ? equivalentNumber : decEqualText;
+  if (dl && dr) return dl.code === dr.code ? same(dl.value, dr.value) : false;
+  if (!qtyUnitsComparable(l, r)) return null;
+  return same(l.value, r.value);
 }
 
 // ------------------------------------------------------------ dates and times
@@ -671,7 +716,7 @@ if (loaded.engine) {
       ...orig,
       fn: function (this: any, a: any[], b: any[]): any {
         if (a.length === 1 && b.length === 1) {
-          const qe = javaQtyEqual(a[0], b[0]);
+          const qe = javaQtyCompare(a[0], b[0], false);
           if (qe === null) return [];
           if (qe !== undefined) return [not ? !qe : qe];
           const eq = javaDateEqualsMixedZone(a[0], b[0]);
@@ -684,27 +729,14 @@ if (loaded.engine) {
   }
   Object.assign(table, JAVA_OPERATORS);
   for (const op of ["<", ">", "<=", ">="]) table[op] = javaComparison(table[op]);
-  // opEquivalent on Quantities: an APPROXIMATION of qtyEquivalent (FHIRPathEngine.java:2501-2530), which compares
-  // getCanonicalForm values with Utilities.equivalentNumber (l. 1258-1273). This converts right into left's unit with
-  // ucum-lhc instead of ucum-java's Converter and Decimal, so the scale compared is not always the Java one.
+  // opEquivalent on two Quantities: qtyEquivalent (FHIRPathEngine.java:2501-2530)
   const equiv = table["~"];
   table["~"] = {
     ...equiv,
     fn: function (this: any, a: any[], b: any[]): any {
       if (a.length === 1 && b.length === 1) {
-        const l = fpUtil.valData(a[0]);
-        const r = fpUtil.valData(b[0]);
-        if (l instanceof fpTypes.FP_Quantity && r instanceof fpTypes.FP_Quantity && l.unit !== r.unit) {
-          const lu = String(l.unit).replace(/^'|'$/g, "");
-          const ru = String(r.unit).replace(/^'|'$/g, "");
-          const n = convertUcum(Number(String(r.value)), ru, lu);
-          if (n !== null) {
-            const ls = String(l.value);
-            const rs = String(Number(n.toFixed(12)));
-            const scale = Math.min(ls.includes(".") ? ls.length - ls.indexOf(".") - 1 : 0, rs.includes(".") ? rs.length - rs.indexOf(".") - 1 : 0);
-            return [Number(ls).toFixed(scale) === Number(rs).toFixed(scale)];
-          }
-        }
+        const q = javaQtyCompare(a[0], b[0], true);
+        if (q !== undefined) return q === null ? [] : [q];
       }
       return equiv.fn.call(this, a, b);
     },

@@ -25,6 +25,7 @@
 
 import { createRequire } from "node:module";
 import { UCUM_PREFIXES, UCUM_UNITS, UCUM_ESSENCE_VERSION } from "./fhirUcumEssence.js";
+import { UcumDecimal, UcumException } from "./fhirUcumDecimal.js";
 
 export const UCUM_SYSTEM = "http://unitsofmeasure.org";
 export const UCUM_VERSION = UCUM_ESSENCE_VERSION;
@@ -36,10 +37,15 @@ interface UnitDef {
   metric: boolean;
   base: boolean;
   name: string;
+  special: boolean;
+  valueUnit: string;
+  value: string;
 }
 
-const UNITS = new Map<string, UnitDef>(UCUM_UNITS.map(([code, metric, base, name]) => [code, { code, metric: metric === 1, base: base === 1, name }]));
-const PREFIXES = UCUM_PREFIXES.map(([code, name]) => ({ code, name }));
+const UNITS = new Map<string, UnitDef>(
+  UCUM_UNITS.map(([code, metric, base, name, special, valueUnit, value]) => [code, { code, metric: metric === 1, base: base === 1, name, special: special === 1, valueUnit, value }]),
+);
+const PREFIXES = UCUM_PREFIXES.map(([code, name, value]) => ({ code, name, value }));
 
 class UcumError extends Error {}
 
@@ -168,7 +174,7 @@ class Lexer {
   }
 }
 
-type Component = { kind: "factor"; value: number } | { kind: "symbol"; prefix: { code: string; name: string } | null; unit: UnitDef | null; exponent: number } | { kind: "term"; term: Term };
+type Component = { kind: "factor"; value: number } | { kind: "symbol"; prefix: { code: string; name: string; value: string } | null; unit: UnitDef | null; exponent: number } | { kind: "term"; term: Term };
 interface Term {
   comp: Component | null;
   op: "/" | "." | null;
@@ -224,7 +230,7 @@ function parseComp(lexer: Lexer): Component {
 
 function parseSymbol(lexer: Lexer): Component {
   const sym = String(lexer.token);
-  let prefix: { code: string; name: string } | null = null;
+  let prefix: { code: string; name: string; value: string } | null = null;
   let unit: UnitDef | null = null;
   for (const p of PREFIXES) {
     if (!sym.startsWith(p.code)) continue;
@@ -327,6 +333,141 @@ export function ucumDisplayIssue(code: string, display: string): string | null {
   if (valid.some((v) => v.toLowerCase() === want || norm(v) === norm(display))) return null;
   const choices = valid.length === 1 ? `'${valid[0]}'` : `one of ${valid.length} choices: ${valid.map((v) => `'${v}'`).join(", ")}`;
   return `Wrong Display Name '${display}' for ${UCUM_SYSTEM}#${code}. Valid display is ${choices}`;
+}
+
+// ------------------------------------------------------------ canonical form (ucum-java 1.0.10)
+
+interface CanonicalUnit {
+  base: string;
+  exponent: number;
+}
+interface Canonical {
+  value: UcumDecimal;
+  units: CanonicalUnit[];
+}
+
+/** org.fhir.ucum.special.Registry.init: unit → [units, value, hasOffset]. */
+const SPECIAL_HANDLERS: Record<string, [string, () => UcumDecimal, boolean]> = {
+  Cel: ["K", () => new UcumDecimal("1"), true],
+  "[degF]": ["K", () => new UcumDecimal(5).divide(new UcumDecimal(9)), true],
+  "[p'diop]": ["deg", () => new UcumDecimal("1"), false],
+  "%[slope]": ["deg", () => new UcumDecimal("1"), false],
+  "[hp_X]": ["1", () => new UcumDecimal("1"), false],
+  "[hp_C]": ["1", () => new UcumDecimal("1"), false],
+  "[pH]": ["mol/l", () => new UcumDecimal("1"), false],
+  Np: ["1", () => new UcumDecimal("1"), false],
+  B: ["1", () => new UcumDecimal("1"), false],
+  "B[SPL]": ["10*-5.Pa", () => new UcumDecimal(2), false],
+  "B[V]": ["V", () => new UcumDecimal("1"), false],
+  "B[mV]": ["mV", () => new UcumDecimal("1"), false],
+  "B[uV]": ["uV", () => new UcumDecimal("1"), false],
+  "B[W]": ["W", () => new UcumDecimal("1"), false],
+  "B[kW]": ["kW", () => new UcumDecimal("1"), false],
+  bit_s: ["1", () => new UcumDecimal("1"), false],
+};
+
+const oneCanonical = (): UcumDecimal => new UcumDecimal("1.000000000000000000000000000000");
+
+/** XmlDefinitionsParser.parseValue: a value with a `.` has precision 24. */
+function unitValue(v: string): UcumDecimal {
+  return v.includes(".") ? new UcumDecimal(v, 24) : new UcumDecimal(v);
+}
+
+/** Converter.expandDefinedUnit. */
+function expandDefinedUnit(unit: UnitDef): Canonical {
+  let u = unit.valueUnit;
+  let v: UcumDecimal;
+  if (unit.special) {
+    const h = SPECIAL_HANDLERS[unit.code];
+    if (!h) throw new UcumException("Not handled yet (special unit)");
+    u = h[0];
+    v = h[1]();
+    if (h[2]) throw new UcumException("Not handled yet (special unit with offset from 0 at intersect)");
+  } else v = unitValue(unit.value);
+  const lexer = new Lexer(u);
+  const t = parseTerm(lexer, true);
+  if (!lexer.finished()) throw new UcumException("Expression was not parsed completely. Syntax Error?");
+  const result = normaliseTerm(t);
+  result.value = result.value.multiply(v);
+  return result;
+}
+
+/** Converter.normalise(Symbol). */
+function normaliseSymbol(sym: Extract<Component, { kind: "symbol" }>): Canonical {
+  if (!sym.unit) throw new UcumException("no unit"); // the bare prefix is a tx.fhir.org quirk: ucum-java reports it unknown
+  const result: Canonical = { value: oneCanonical(), units: [] };
+  if (sym.unit.base) result.units.push({ base: sym.unit.code, exponent: sym.exponent });
+  else {
+    const can = expandDefinedUnit(sym.unit);
+    for (const c of can.units) c.exponent = c.exponent * sym.exponent;
+    result.units.push(...can.units);
+    if (sym.exponent > 0) for (let i = 0; i < sym.exponent; i++) result.value = result.value.multiply(can.value);
+    else for (let i = 0; i > sym.exponent; i--) result.value = result.value.divide(can.value);
+  }
+  if (sym.prefix) {
+    const pv = new UcumDecimal(sym.prefix.value, 24);
+    if (sym.exponent > 0) for (let i = 0; i < sym.exponent; i++) result.value = result.value.multiply(pv);
+    else for (let i = 0; i > sym.exponent; i--) result.value = result.value.divide(pv);
+  }
+  return result;
+}
+
+/** Converter.normalise(Term). */
+function normaliseTerm(term: Term): Canonical {
+  const result: Canonical = { value: oneCanonical(), units: [] };
+  let div = false;
+  let t: Term | null = term;
+  while (t) {
+    const c: Component | null = t.comp;
+    if (c?.kind === "factor") {
+      const f = new UcumDecimal(c.value);
+      result.value = div ? result.value.divide(f) : result.value.multiply(f);
+    } else if (c) {
+      const temp: Canonical = c.kind === "term" ? normaliseTerm(c.term) : normaliseSymbol(c);
+      if (div) {
+        result.value = result.value.divide(temp.value);
+        for (const u of temp.units) u.exponent = 0 - u.exponent;
+      } else result.value = result.value.multiply(temp.value);
+      result.units.push(...temp.units);
+    }
+    div = t.op === "/";
+    t = t.term;
+  }
+  for (let i = result.units.length - 1; i >= 0; i--) {
+    const sf = result.units[i];
+    for (let j = i - 1; j >= 0; j--) {
+      const st = result.units[j];
+      if (st.base === sf.base) {
+        st.exponent = sf.exponent + st.exponent;
+        result.units.splice(i, 1);
+        break;
+      }
+    }
+  }
+  for (let i = result.units.length - 1; i >= 0; i--) if (result.units[i].exponent === 0) result.units.splice(i, 1);
+  result.units.sort((a, b) => (a.base < b.base ? -1 : a.base > b.base ? 1 : 0));
+  return result;
+}
+
+/**
+ * UcumEssenceService.getCanonicalForm (l. 268-285) of `value code`: the value (Decimal.asDecimal) and the canonical
+ * units (ExpressionComposer.compose(can, false)); null where FHIRPathEngine catches a UcumException (invalid unit, a
+ * special unit it cannot convert).
+ */
+export function ucumCanonicalForm(value: string, code: string): { value: string; code: string } | null {
+  try {
+    const v = new UcumDecimal(value);
+    const lexer = new Lexer(code);
+    const term = parseTerm(lexer, true);
+    if (!lexer.finished()) return null;
+    const c = normaliseTerm(term);
+    const p = v.multiply(c.value);
+    if (v.isWholeNumber()) p.checkForCouldBeWholeNumber();
+    return { value: p.asDecimal(), code: c.units.map((u) => u.base + (u.exponent !== 1 ? String(u.exponent) : "")).join(".") };
+  } catch (e) {
+    if (e instanceof UcumException || e instanceof UcumError) return null;
+    throw e;
+  }
 }
 
 interface UcumUtils {
