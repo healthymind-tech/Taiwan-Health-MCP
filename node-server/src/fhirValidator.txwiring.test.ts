@@ -9,7 +9,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { composeContains, indexCodeSystem } from "./fhirCodeSystem.js";
 import { completenessOf, InstanceValidator, type CodeCheck, type Issue } from "./fhirValidator.js";
-import { isOkLanguage, judgeHeldCodeSystem, serverSideSystem } from "./fhirValidationResolver.js";
+import { serverPrefers } from "./fhirSpecialSystems.js";
+import { isOkLanguage, judgeHeldCodeSystem } from "./fhirValidationResolver.js";
 import { COND_PROFILE, CORE, FakeResolver } from "./fhirTestKit.test.js";
 
 type Json = Record<string, any>;
@@ -172,6 +173,6 @@ test("G4: Resource.language is the display language of its code checks (IV:7380 
 });
 
 test("G1: systems the terminology server answers (SERVER_SIDE_LIST) are undecided when not held, not unknown", () => {
-  for (const s of ["http://varnomen.hgvs.org", "http://unstats.un.org/unsd/methods/m49/m49.htm", "https://www.usps.com/", "http://www.ama-assn.org/go/cpt"]) assert.equal(serverSideSystem(s), true, s);
-  assert.equal(serverSideSystem("http://www.genenames.org"), false);
+  for (const s of ["http://varnomen.hgvs.org", "http://unstats.un.org/unsd/methods/m49/m49.htm", "https://www.usps.com/", "http://www.ama-assn.org/go/cpt"]) assert.equal(serverPrefers(s), true, s);
+  assert.equal(serverPrefers("http://hospital.example/cs"), false);
 });

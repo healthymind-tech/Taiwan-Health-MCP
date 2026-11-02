@@ -175,40 +175,42 @@ export function specialSystemMember(system: string, code: string): boolean | und
   return undefined;
 }
 
+/** The standalone ValueSetValidator SERVER_SIDE_LIST (tag 7.0.1:1131). */
+const SERVER_SIDE_LIST = new Set([
+  "http://fdasis.nlm.nih.gov",
+  "http://hl7.org/fhir/sid/ndc",
+  "http://loinc.org",
+  "http://snomed.info/sct",
+  "http://unitsofmeasure.org",
+  "http://unstats.un.org/unsd/methods/m49/m49.htm",
+  "http://varnomen.hgvs.org",
+  "http://www.nlm.nih.gov/research/umls/rxnorm",
+  "https://www.usps.com/",
+  "urn:ietf:bcp:13",
+  "urn:ietf:bcp:47",
+  "urn:ietf:rfc:3986",
+  "urn:iso:std:iso:3166",
+  "urn:iso:std:iso:4217",
+  "urn:oid:1.2.36.1.2001.1005.17",
+]);
+
 /**
- * Code systems the validator's terminology server answers: its published capability list (txCodeTables.txKnowsSystem),
- * the list validator_cli itself consults (ValueSetValidator.preferServerSide, standalone tag 7.0.1:1135). A system outside
- * it that no package holds is unknown to the server as well (REVIEW_port_2 G21). Without the bundled list: the standalone
- * ValueSetValidator SERVER_SIDE_LIST (tag 7.0.1:1131) plus the HL7 / THO / SNOMED / DICOM spaces, CPT, ATC and the
+ * ValueSetValidator.preferServerSide (standalone tag 7.0.1:1135): SERVER_SIDE_LIST, then the server's published capability
+ * list (txCodeTables.txKnowsSystem). null: not listed and the bundled capability list is unavailable.
+ */
+export function serverPrefers(system: string): boolean | null {
+  return SERVER_SIDE_LIST.has(system) ? true : txKnowsSystem(system);
+}
+
+/**
+ * Code systems the validator's terminology server answers. A system outside them that no package holds is unknown to
+ * the server as well (REVIEW_port_2 G21). Without the bundled list: the HL7 / THO / SNOMED / DICOM spaces, CPT, ATC and the
  * urn:ietf / urn:iso systems.
  */
 export function terminologyServerKnows(system: string): boolean {
-  const known = txKnowsSystem(system);
+  const known = serverPrefers(system);
   if (known !== null) return known;
-  const listed = [
-    "http://fdasis.nlm.nih.gov",
-    "http://hl7.org/fhir/sid/ndc",
-    "http://loinc.org",
-    "http://snomed.info/sct",
-    "http://unitsofmeasure.org",
-    "http://unstats.un.org/unsd/methods/m49/m49.htm",
-    "http://varnomen.hgvs.org",
-    "http://www.nlm.nih.gov/research/umls/rxnorm",
-    "https://www.usps.com/",
-    "urn:oid:1.2.36.1.2001.1005.17",
-    "http://www.ama-assn.org/go/cpt",
-    "http://www.whocc.no/atc",
-    // official outcomes answer codes of these with no package holding them
-    "http://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets",
-    "https://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets",
-    "http://www.ada.org/snodent",
-    "http://nucc.org/provider-taxonomy",
-    "http://standardterms.edqm.eu",
-    "http://fhir.de/CodeSystem/dimdi/icd-10-gm",
-    "http://fhir.de/CodeSystem/bfarm/atc",
-    "http://id.who.int/icd/release/11/mms",
-  ];
-  if (listed.includes(system)) return true;
+  if (system === "http://www.ama-assn.org/go/cpt" || system === "http://www.whocc.no/atc") return true;
   if (system.startsWith("urn:ietf:") || system.startsWith("urn:iso:")) return true;
   return /^https?:\/\/(terminology\.)?hl7\.org\//.test(system) || system.startsWith("http://snomed.info/") || system.startsWith("http://dicom.nema.org/");
 }

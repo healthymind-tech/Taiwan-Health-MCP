@@ -7,7 +7,8 @@ import assert from "node:assert/strict";
 import { applyFilter, codeInFilter, composeContains, conceptInactive, expandComposeWith, findConcept, indexCodeSystem, type TerminologyDeps } from "./fhirCodeSystem.js";
 import { externalFilterMatches } from "./fhirTerminology.js";
 import { txValidateCode } from "./fhirTxValidate.js";
-import { judgeHeldCodeSystem, nameSystemAsWritten, serverSideSystem } from "./fhirValidationResolver.js";
+import { serverPrefers } from "./fhirSpecialSystems.js";
+import { judgeHeldCodeSystem, nameSystemAsWritten } from "./fhirValidationResolver.js";
 
 type Json = Record<string, any>;
 function depsWith(cs: Json | null, extra: Partial<TerminologyDeps> = {}): TerminologyDeps {
@@ -178,7 +179,8 @@ test("a Coding.system spelled url|version: the messages name it as written (offi
   assert.deepEqual(nameSystemAsWritten({ status: "ok" }, base, `${base}|2.7`), { status: "ok" });
 });
 
-test("systems official outcomes answer but no package holds are server-side: undecided, not UNKNOWN_CODESYSTEM", () => {
-  for (const s of ["http://standardterms.edqm.eu", "http://terminology.hl7.org/CodeSystem/icd-o-3", "http://id.who.int/icd/release/11/mms"]) assert.equal(serverSideSystem(s), true, s);
-  assert.equal(serverSideSystem("http://hospital.example/cs"), false);
+test("preferServerSide: SERVER_SIDE_LIST, then the capability list", () => {
+  assert.equal(serverPrefers("urn:oid:1.2.36.1.2001.1005.17"), true); // in the list of the code, not in the server's
+  for (const c of ["http://standardterms.edqm.eu", "http://terminology.hl7.org/CodeSystem/icd-o-3", "http://id.who.int/icd/release/11/mms"]) assert.equal(serverPrefers(c), true, c);
+  assert.equal(serverPrefers("http://hospital.example/cs"), false);
 });

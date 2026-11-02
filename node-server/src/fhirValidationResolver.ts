@@ -25,7 +25,7 @@ import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type Valid
 import { variantsOf, type HeldVerdict } from "./extendedFindings/index.js";
 import { conceptInactive, conceptStatus, findConcept, type CodeSystemIndex, type CsConcept, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains } from "./fhirCodeSystem.js";
 import * as terminology from "./fhirTerminology.js";
-import { BCP13, BCP47, RFC3986, isAbsoluteUrl, judgeLanguageTag, mimeTypeShapeOk, terminologyServerKnows } from "./fhirSpecialSystems.js";
+import { BCP13, BCP47, RFC3986, isAbsoluteUrl, judgeLanguageTag, mimeTypeShapeOk, serverPrefers, terminologyServerKnows } from "./fhirSpecialSystems.js";
 import { ISO3166_DISPLAY, ISO3166_VERSION, iso3166UserAssigned } from "./fhirIso3166.js";
 import {
   CVX,
@@ -51,7 +51,7 @@ import { TransientLookupError, currentSnapshot } from "./fhirValidationSnapshot.
 import { generateSnapshotAsync } from "./fhirSnapshotGenerator.js";
 import { fixPackageResource } from "./fhirPackageHacker.js";
 import { logWarning } from "./logger.js";
-import { txCodeVerdict, txKnowsSystem, type TxCodeVerdict } from "./txCodeTables.js";
+import { txCodeVerdict, type TxCodeVerdict } from "./txCodeTables.js";
 import { enumeratedCodes, installedEnumeratedDisplay } from "./codeAcceptance.js";
 
 const SD_TTL_MS = 30 * 60 * 1000;
@@ -318,42 +318,6 @@ export function unknownCodeSystemVersion(system: string, version: string, displa
   };
 }
 
-/**
- * standalone ValueSetValidator.SERVER_SIDE_LIST (tag 7.0.1:1131) — systems validated on the terminology server even
- * without a local CodeSystem — plus CPT (tx.fhir.org reports unknown CPT codes as errors; licensed, never held here).
- */
-export const SERVER_SIDE_SYSTEMS = new Set([
-  "http://fdasis.nlm.nih.gov",
-  "http://hl7.org/fhir/sid/ndc",
-  "http://loinc.org",
-  "http://snomed.info/sct",
-  "http://unitsofmeasure.org",
-  "http://unstats.un.org/unsd/methods/m49/m49.htm",
-  "http://varnomen.hgvs.org",
-  "http://www.nlm.nih.gov/research/umls/rxnorm",
-  "https://www.usps.com/",
-  "urn:ietf:bcp:13",
-  "urn:ietf:bcp:47",
-  "urn:ietf:rfc:3986",
-  "urn:iso:std:iso:3166",
-  "urn:iso:std:iso:4217",
-  "urn:oid:1.2.36.1.2001.1005.17",
-  "http://www.ama-assn.org/go/cpt",
-  // not in that list, but official outcomes answer their codes and no package holds them: undecided here, never a silent pass
-  "http://standardterms.edqm.eu",
-  "http://terminology.hl7.org/CodeSystem/icd-o-3",
-  "http://id.who.int/icd/release/11/mms",
-  "http://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets",
-  "https://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets",
-  "http://www.ada.org/snodent",
-  "http://nucc.org/provider-taxonomy",
-  "http://fhir.de/CodeSystem/dimdi/icd-10-gm",
-  "http://fhir.de/CodeSystem/bfarm/atc",
-]);
-
-export function serverSideSystem(system: string): boolean {
-  return SERVER_SIDE_SYSTEMS.has(system);
-}
 
 /**
  * Code checks for the systems fhirSpecialSystems.ts decides locally (BCP-47 language tags, BCP-13 MIME types):
@@ -403,10 +367,9 @@ function noLocalDisplay(system: string, display: string | null): CodeCheck {
  * though no package in the closure defines them as a CodeSystem resource.
  */
 function txKnownSystem(system: string): boolean {
-  if (txKnowsSystem(system) !== null) return terminologyServerKnows(system);
+  if (serverPrefers(system) !== null) return terminologyServerKnows(system);
   if (SILENT_SYSTEMS.includes(system)) return true;
   if ([ISO3166, ICD10CM, CVX, ICD10_WHO, RXNORM, "http://snomed.info/sct", "http://loinc.org", "http://unitsofmeasure.org"].includes(system)) return true;
-  if (serverSideSystem(system)) return true;
   // an OID nobody holds is unknown to the server as well (official corpus)
   if (system.startsWith("urn:") && !system.startsWith("urn:oid:")) return true;
   return /^https?:\/\/(terminology\.)?hl7\.org\//.test(system) || system.startsWith("http://snomed.info/") || system.startsWith("http://dicom.nema.org/");
@@ -811,7 +774,7 @@ export class DbValidatorResolver implements ValidatorResolver {
       // reference server (txCodeTables.ts, ISSUES_v15.2) for the codes the installed data carries.
       const tx = txCodeVerdict(system, code);
       if (tx) return this.checkTxTable(system, code, display, tx);
-      if (txKnowsSystem(system) === false) return { status: "unknown-system" };
+      if (serverPrefers(system) === false) return { status: "unknown-system" };
       return { ...noLocalDisplay(system, display), undecided: true };
     }
     let idx = await terminology.loadCodeSystemIndex(system, this.pkg, true);
@@ -819,7 +782,7 @@ export class DbValidatorResolver implements ValidatorResolver {
     // A system neither held nor listed by the terminology server ends in UNKNOWN_CODESYSTEM like any other (official corpus).
     if ((system.startsWith("urn:oid:") || system.startsWith("urn:uuid:")) && !(idx && idx.url && idx.url.split("|")[0] === system)) {
       // An OID the terminology server does not list is unknown there as well: a definite UNKNOWN_CODESYSTEM
-      return txKnowsSystem(system) === false ? { status: "unknown-system" } : noLocalDisplay(system, display);
+      return serverPrefers(system) === false ? { status: "unknown-system" } : noLocalDisplay(system, display);
     }
     // The terminology loader falls back to a CodeSystem with the same id (for
     // bare ids from tool callers); a Coding.system must match the canonical
@@ -941,7 +904,7 @@ export class DbValidatorResolver implements ValidatorResolver {
     // (an error there for a bad code), not UNKNOWN_CODESYSTEM. The server's published list decides, as in validator_cli
     // (preferServerSide); only a system it does not list ends in the warning, which is all the validator does either.
     // No list available: undecided, never a silent pass.
-    if (txKnowsSystem(system) !== false) return { ...noLocalDisplay(system, display), undecided: true };
+    if (serverPrefers(system) !== false) return { ...noLocalDisplay(system, display), undecided: true };
     return { status: "unknown-system" };
   }
 

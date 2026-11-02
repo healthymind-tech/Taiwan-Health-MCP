@@ -5894,6 +5894,18 @@ export class InstanceValidator {
   ): Promise<void> {
     const b = el.binding;
     if (!b || !b.valueSet) return;
+    // a value of another type validated as a primitive of the profile (Extension_EXT_Type): checkPrimitive's blank value
+    // (IV:3250 Terminology_TX_Code_ValueSet_MISSING), its children are not in that type (Validation_VAL_Profile_NotAllowed)
+    if (item.profileType && ["code", "string", "uri", "url", "canonical"].includes(typeCode) && isObject(v)) {
+      if (b.strength === "required") issues.push({ severity: "error", path: item.path, code: "code-invalid", message: "No code provided, and a code is required from the value set" });
+      const tsdx = await this.sdx(CORE + typeCode);
+      for (const key of Object.keys(v)) {
+        if (key !== "value" && key !== "extension" && key !== "id") issues.push({ severity: "error", path: `${item.path}.${key}`, code: "structure", message: `This element is not allowed by the profile ${CORE}${typeCode}${tsdx?.sd?.version ? `|${tsdx.sd.version}` : ""}` });
+      }
+      return;
+    }
+    // the parser reports `coding` not being an array and keeps the value
+    if (typeCode === "CodeableConcept" && isObject(v) && isObject(v.coding)) v = { ...v, coding: [v.coding] };
     const strength = b.strength;
     if (typeCode !== "Coding" && (strength === "required" || strength === "extensible" || strength === "preferred")) this.boundValueSets.add(stripVersion(String(b.valueSet)));
     if ((strength === "required" || strength === "extensible" || strength === "preferred") && (typeCode === "Coding" || typeCode === "CodeableConcept")) {
@@ -6157,11 +6169,15 @@ export class InstanceValidator {
     const i = list.findIndex((c) => isObject(c) && typeof c.system === "string" && c.system !== "" && c.code === undefined && c._code === undefined);
     if (i < 0) return false;
     const system = String(list[i].system);
-    if (!this.resolver.codeSystemLocal || (await this.resolver.codeSystemLocal(system).catch(() => true))) return false;
-    const message = `Coding has no code for system ${system} and cannot be validated`;
-    issues.push({ severity: "warning", path: item.path, code: "invalid", message });
-    issues.push({ severity: "error", path: `${item.path}.coding[${i}]`, code: "code-invalid", message });
-    return true;
+    // checkCoding reports it (codelessCoding); a system nobody answers has nothing to report
+    return !(await this.heldCodeSystem(list[i], system)) && (await this.systemResolvable(system));
+  }
+
+  /** A CodeSystem the validator judges itself (ValueSetValidator l. 279): complete, fragment or supplement content. */
+  private async heldCodeSystem(v: Record<string, any>, system: string): Promise<Record<string, any> | null> {
+    const version = typeof v.version === "string" && v.version ? v.version : null;
+    const cs = this.resolver.fetchCodeSystem ? await this.resolver.fetchCodeSystem(version ? `${system}|${version}` : system).catch(() => null) : null;
+    return cs && ["complete", "fragment", "supplement"].includes(String(cs.content)) ? cs : null;
   }
 
   private async checkMaxValueSet(maxUrl: string, codings: Array<[string | null, string | null]>, typeCode: string, item: Item, issues: Issue[]): Promise<void> {
@@ -6376,9 +6392,8 @@ export class InstanceValidator {
    * coding, reported as a warning on the CodeableConcept too (official corpus: v2-0360|2.7, BCP-47, ISO 3166).
    */
   private async codelessCoding(v: Record<string, any>, system: string, item: Item, issues: Issue[]): Promise<void> {
-    const version = typeof v.version === "string" && v.version ? v.version : null;
-    const cs = this.resolver.fetchCodeSystem ? await this.resolver.fetchCodeSystem(version ? `${system}|${version}` : system).catch(() => null) : null;
-    if (cs && ["complete", "fragment", "supplement"].includes(String(cs.content))) {
+    const cs = await this.heldCodeSystem(v, system);
+    if (cs) {
       const message = cs.version ? `No code provided for CodeSystem '${system}' version '${cs.version}'` : `No code provided for CodeSystem '${system}'`;
       issues.push({ severity: "warning", path: item.path, code: "code-invalid", message });
     } else if (await this.systemResolvable(system)) {
@@ -6399,6 +6414,8 @@ export class InstanceValidator {
     }
     // isSystemReferenceValid; a value with whitespace only gets the URI rule (official corpus), a number is read as its text
     const written = typeof system === "number" || typeof system === "boolean" ? String(system) : system;
+    // an empty system is one too (a Coding on its own reports it on itself, official corpus: ImagingStudy…sopClass)
+    if (written === "" && !inCC) issues.push({ severity: "error", path: item.path, code: "code-invalid", message: "Coding.system must be an absolute reference, not a local reference" });
     if (typeof written === "string" && written && !/\s/.test(written)) {
       if (!/^[a-z][a-z0-9+.-]*:/i.test(written)) {
         issues.push({ severity: "error", path: `${item.path}.system`, code: "code-invalid", message: "Coding.system must be an absolute reference, not a local reference" });
@@ -6590,7 +6607,13 @@ export class InstanceValidator {
       if (dp > Number(maxDp)) issues.push({ severity: "error", path, code: "structure", message: `Found ${dp} decimal places which exceeds the stated limit of ${maxDp} digits` });
     }
 
-    if (system !== null && code !== null) {
+    if (system === "") err("Coding.system must be an absolute reference, not a local reference", "code-invalid"), (issues[issues.length - 1].path = `${path}.system`);
+    if (system && code === "") {
+      // the server's answer to a unit without a code; Terminology_PassThrough_TX_Message names system#code
+      const message = `Coding has no code for system ${system} and cannot be validated`;
+      warn(false, message);
+      err(`${message} (for '${system}#')`, "code-invalid");
+    } else if (system !== null && code !== null) {
       let checked = false;
       const b = el && isObject(el.binding) ? el.binding : null;
       if (b && typeof b.valueSet === "string" && b.valueSet) {

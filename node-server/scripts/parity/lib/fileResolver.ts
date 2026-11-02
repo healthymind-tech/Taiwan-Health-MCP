@@ -15,9 +15,9 @@
  */
 import { indexCodeSystem, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains, type CodeSystemIndex, type TerminologyDeps } from "../../../src/fhirCodeSystem.js";
 import { SNOMED_TX_VERSION, judgeCvx, loincUnknownMessage } from "../../../src/fhirExternalTerminology.js";
-import { terminologyServerKnows } from "../../../src/fhirSpecialSystems.js";
+import { serverPrefers, terminologyServerKnows } from "../../../src/fhirSpecialSystems.js";
 import { rankHl7Current } from "../../../src/fhirTerminology.js";
-import { judgeHeldCodeSystem, judgeSpecialSystem, serverSideSystem, unknownCodeSystemVersion } from "../../../src/fhirValidationResolver.js";
+import { judgeHeldCodeSystem, judgeSpecialSystem, unknownCodeSystemVersion } from "../../../src/fhirValidationResolver.js";
 import { SnapshotGenerator } from "../../../src/fhirSnapshotGenerator.js";
 import { fixPackageResource } from "../../../src/fhirPackageHacker.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "../../../src/fhirValidator.js";
@@ -216,7 +216,7 @@ export class FileValidatorResolver implements ValidatorResolver {
       return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}' version '${SNOMED_TX_VERSION}' (International Edition)` };
     }
     if (system === "http://loinc.org" && !/^L[APGL]\d+-\d$/.test(code) && !loincCheckDigitValid(code)) return { status: "invalid-code", severity: "error", message: loincUnknownMessage(code) };
-    if (txServedSystem(system) || serverSideSystem(system)) {
+    if (txServedSystem(system) || serverPrefers(system) === true) {
       this.txLookups++;
       return display === null ? { status: "silent", undecided: true } : { status: "display-unchecked", message: `Display not checked: no local terminology for ${system}`, undecided: true };
     }
