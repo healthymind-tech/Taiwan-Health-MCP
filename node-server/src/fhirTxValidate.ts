@@ -61,7 +61,7 @@ function checkIssue(r: CodeCheck, path: string, lenient: boolean): TxIssue[] {
     if (id) out.push({ severity: x.severity, type: "code-comment", id, path, message: x.message });
   }
   if (r.status === "invalid-code") {
-    const id = /\(the CodeSystem is a fragment\)/u.test(r.message) ? "UNKNOWN_CODE_IN_FRAGMENT" : / version '/u.test(r.message) ? "Unknown_Code_in_Version" : "Unknown_Code_in";
+    const id = /labeled as a fragment/u.test(r.message) ? "UNKNOWN_CODE_IN_FRAGMENT" : / version '/u.test(r.message) ? "Unknown_Code_in_Version" : "Unknown_Code_in";
     out.push({ severity: r.severity, type: "invalid-code", id, path: at("code"), message: r.message });
   } else if (r.status === "invalid-display") {
     const id = /is no longer considered a correct display/u.test(r.message)
@@ -157,7 +157,7 @@ export async function txValidateCode(
       vsUrl = req.valueSetVersion ? `${req.url}|${req.valueSetVersion}` : req.url;
       vs = await deps.loadValueSet(vsUrl);
       if (!vs) {
-        issues.push({ severity: "error", type: "not-found", id: "Unable_to_resolve_value_Set_", path: "", message: `Unable to resolve value set ${vsUrl}` });
+        issues.push({ severity: "error", type: "not-found", id: "Unable_to_resolve_value_Set_", path: "", message: `A definition for the value Set '${vsUrl}' could not be found` });
         return { result: undefined, outcome: "error", issues };
       }
       // pin the resolved version for nested lookups

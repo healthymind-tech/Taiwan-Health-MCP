@@ -75,6 +75,7 @@ test("F20 maxValueSet: an extensible binding's max value set must hold the code 
   assert.ok(!errors(ok).some((i) => /maximum value set/.test(i.message)), JSON.stringify(errors(ok)));
   const bad = await new InstanceValidator(new MaxResolver()).validate({ resourceType: "Patient", id: "p", meta: { profile: [P] }, gender: "other" });
   assert.ok(errors(bad).some((i) => i.path === "Patient.gender" && /^The code provided is not in the maximum value set 'Max' \(http:\/\/x\/ValueSet\/max\)/.test(i.message)), JSON.stringify(bad));
+  assert.ok(errors(bad).some((i) => i.message.endsWith("(code = null#other), error = The System URI could not be determined for the code 'other' in the ValueSet 'http://x/ValueSet/max'; The provided code '#other' was not found in the value set 'http://x/ValueSet/max')")), JSON.stringify(bad));
 });
 
 test("F9 memberOf discriminator: a member coding with a wrong display does not match (opMemberOf isOk)", async () => {

@@ -259,8 +259,13 @@ export function judgeHeldCodeSystem(idx: CodeSystemIndex, system: string, code: 
       // REVIEW_port_2 G11: the validator judges a held complete CodeSystem (DICOM included) locally — an error
       return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}'${ver}` };
     }
-    if (idx.content === "fragment" || idx.content === "example") {
-      return { status: "invalid-code", severity: "warning", message: `Unknown code '${code}' in the CodeSystem '${system}'${ver} (the CodeSystem is a ${idx.content})` };
+    // ValueSetValidator l. 1266-1270 UNKNOWN_CODE_IN_FRAGMENT
+    if (idx.content === "fragment") {
+      return { status: "invalid-code", severity: "warning", message: `Unknown Code '${code}' in the CodeSystem '${system}' version '${idx.version ?? "null"}' - note that the code system is labeled as a fragment, so the code may be valid in some other fragment` };
+    }
+    // ValueSetValidator l. 864-888: not judged on example content, the exception's warningMessage
+    if (idx.content === "example") {
+      return { status: "invalid-code", severity: "warning", message: `Resolved system ${system}${idx.version ? ` (v${idx.version})` : ""}, but the definition only has example content, so the code has not been validated` };
     }
     return null;
   }

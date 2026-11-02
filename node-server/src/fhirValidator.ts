@@ -5248,7 +5248,7 @@ export class InstanceValidator {
           severity: "warning",
           path: item.path,
           code: "not-found",
-          message: `ValueSet ${url} not found; the binding could not be checked`,
+          message: `ValueSet '${url}' not found`,
           unchecked: { kind: "valueSet", canonical: url },
         });
       }
@@ -5468,7 +5468,24 @@ export class InstanceValidator {
     } else if (typeCode === "Coding" || typeCode === "Quantity") {
       message = `The code provided is not in the maximum value set ${desc} specified in the max binding, and a code from this value set is required) (code = ${shown})`;
     } else {
-      message = `The code provided is not in the maximum value set ${desc}, and a code from this value set is required) (code = null#${codings[0]?.[1] ?? ""}), error = null)`;
+      // Terminology_TX_NoValid_11 (IV tag 7.0.1:2358): {1} is the literal null, {3} is vr.getMessage() — the ValueSetValidator
+      // answer for a code with no system; the inference failure is also an issue of its own (calculateSeverityForTxIssuesAndUpdateErrors)
+      const value = String(codings[0]?.[1] ?? "");
+      const vsv = `${mvs.url}${mvs.version ? `|${mvs.version}` : ""}`;
+      const inferred = await this.inferCodeSystems(mvs, value);
+      const notFound = (sys: string): string => `The provided code '${sys}#${value}' was not found in the value set '${vsv}'`;
+      let error = notFound("");
+      if (inferred !== null && inferred.size === 0) {
+        const infer = `The System URI could not be determined for the code '${value}' in the ValueSet '${vsv}'`;
+        issues.push({ severity: "error", path: item.path, code: "code-invalid", message: infer });
+        error = `${infer}; ${error}`;
+      } else if (inferred !== null && inferred.size > 1) {
+        error = `The System URI could not be determined for the code '${value}' in the ValueSet '${vsv}': value set expansion has multiple matches: ${[...inferred].sort().join(",")}`;
+        issues.push({ severity: "error", path: item.path, code: "code-invalid", message: error });
+      } else if (inferred !== null) {
+        error = notFound([...inferred][0].split("|")[0]);
+      }
+      message = `The code provided is not in the maximum value set ${desc}, and a code from this value set is required) (code = null#${value}), error = ${error})`;
     }
     issues.push({ severity: "error", path: item.path, code: "code-invalid", message });
   }

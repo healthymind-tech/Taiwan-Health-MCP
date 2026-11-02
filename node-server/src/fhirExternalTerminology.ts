@@ -281,7 +281,7 @@ export function judgeSnomed(
       const bad = judgeExternalDisplay(SNOMED, code, display, valid, valid);
       if (bad) return { ...bad, extra: notes };
       if (!valid.length) {
-        return { status: "invalid-display", severity: "error", message: `Wrong Display Name '${display}' for ${SNOMED}#${code}: the concept has no valid English display`, extra: notes };
+        return { status: "invalid-display", severity: "error", message: `Cannot validate display '${display}' for ${SNOMED}#${code} in language en: No displays are known`, extra: notes };
       }
     }
   }
@@ -426,12 +426,12 @@ export function judgeRxnorm(code: string, display: string | null, row: RxnormCon
       // with the preferred name, or not an English RxNorm string at all). tx.fhir.org
       // rejects it as Wrong Display Name; an unknown PSN / SY atom cannot explain it,
       // so it is an error even though only the preferred name is held locally.
-      return { ...bad, severity: "error", message: `${bad.message}; ${different}` };
+      return { ...bad, severity: "error" };
     }
     return {
       status: "invalid-display",
       severity: "warning",
-      message: `${bad.message}; only the preferred RxNorm name is held locally, so another RxNorm name (PSN / SY) could not be ruled out — re-run the RxNorm import to check displays fully`,
+      message: bad.message,
     };
   }
   return bad;

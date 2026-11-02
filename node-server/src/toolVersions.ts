@@ -254,11 +254,12 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.48.0 (parity v3 round 5 corpus): ele-1 on JSON "" and non-choice {} and on a value-less primitive whose shadow holds only an id (message with its "(defined in …)" source); meta.profile example URLs reported; a 'Type/' reference under a urn fullUrl is an error.
   // 1.49.0 (parity v3 profile matching): reference / conformsTo() sub-validations = validateResource (own meta.profile profiles, parser-emptied elements), bad primitives dropped as JsonParser does (_x not an object, object / array for a single primitive), CantMatchChoice lists every target profile sorted, NotSlice details.
   // 1.49.0 (parity v3 tx-validator-wiring, round 2; REVIEW_port_2 G1 G3 G19-G21 G24-G28, REVIEW_port_1 F5 F9 F20): Coding.version against the CodeSystem of that version (determineVersion: VALUESET_VALUE_MISMATCH*, UNKNOWN_CODESYSTEM_VERSION), versioned includes, maxValueSet, several inferred systems, enumerated codes need the CodeSystem, membership filters as codeInFilter, hierarchy only from the concept-properties#parent property, expansion before compose, alternateCode, deprecated designations, Terminology_TX_NoValid_1_CC wording; a Coding without a system is not bound; unevaluated invariants → checked_fully false (invariants_unchecked).
-  fhir_validate_bundle: "1.54.0",
+  fhir_validate_bundle: "1.55.0",
   // 1.49.0 (parity v3 json-xhtml, round 6): JSON parser wording of primitives (empty / non-object _x shadows, null entries and scalars, [x] paths, no error on an empty primitive array), hasValue() false on "", no fixed / display finding on "", Resource.id without value or with extensions, fixed primitives with extensions, txt-1 / txt-2 on a value-less div.
   // 1.50.0 (parity v3): sub-validations with imposeProfile and conformsTo() specials, StructureDefinition rules, matchetype status, ids in eld-* failures, FHIRPath boundaries and Quantity rules, opAs case-insensitive.
   // 1.51.0 (parity v3 tx-validator-wiring, round 3): CodeSystem / ValueSet resources validated as CodeSystemValidator / ValueSetValidator, defining canonical urls absolute, The code provided / The Coding provided, an unknown system on a Coding element, Unknown code naming the version a value set pins.
   // 1.52.0 (parity v3 tx-validator-wiring, round 4): ConceptMapValidator (held source / target codes, scope value sets), SNOMED filter properties as SnomedCTChecker lists them, value[x] in the parser's path of a primitive choice.
+  // 1.53.0 (parity v3 tx-validator-wiring, round 7): official Messages.properties wording for Terminology_TX_NoValid_11 (error = the value set answer), Terminology_TX_ValueSet_NotFound, UNKNOWN_CODE_IN_FRAGMENT, the example-content warning, Wrong Display Name of RxNorm without added text.
   // 1.40.0 (parity v3 snapshot): a differential-only StructureDefinition gets its snapshot generated (fhirSnapshotGenerator.ts, ProfileUtilities port) instead of being ignored.
   // 1.37.0 (parity v3 fhirpath-2): an invariant whose evaluation raises an exception the Java engine raises too fails (message + log); unknown functions → Problem processing expression; dom-3 enforced in code (CONTAINED_ORPHAN_DOM3); Java boolean / comparison / date-arithmetic semantics.
   // 1.36.1 (parity v3 xml): base64Binary checked linearly — a multi-MB attachment no longer overflows the regex stack (was a validator crash / fatal exception issue).
@@ -307,11 +308,12 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.45.0: validation as fhir_validate_bundle 1.48.0 (parity v3 round 5 corpus).
   // 1.46.0: validation as fhir_validate_bundle 1.49.0 (parity v3 profile matching).
   // 1.46.0: terminology as fhir_validate_bundle 1.49.0 (parity v3 tx-validator-wiring, round 2).
-  fhir_validate_resource: "1.51.0",
+  fhir_validate_resource: "1.52.0",
   // 1.46.0: validation as fhir_validate_bundle 1.49.0 (parity v3 json-xhtml, round 6).
   // 1.47.0: validation as fhir_validate_bundle 1.50.0.
   // 1.48.0: as fhir_validate_bundle 1.51.0 (parity v3 tx-validator-wiring, round 3).
   // 1.49.0: as fhir_validate_bundle 1.52.0 (parity v3 tx-validator-wiring, round 4).
+  // 1.50.0: as fhir_validate_bundle 1.53.0 (parity v3 tx-validator-wiring, round 7).
   // 1.37.0 (parity v3 snapshot): differential-only profiles validated through a generated snapshot, as fhir_validate_bundle 1.40.0.
   // 1.34.0 (parity v3 fhirpath-2): invariant evaluation as fhir_validate_bundle 1.37.0.
   // 1.33.1 (parity v3 xml): base64Binary as fhir_validate_bundle 1.36.1.
