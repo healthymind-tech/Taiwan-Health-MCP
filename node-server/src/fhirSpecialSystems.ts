@@ -201,6 +201,7 @@ export function terminologyServerKnows(system: string): boolean {
     "http://standardterms.edqm.eu",
     "http://fhir.de/CodeSystem/dimdi/icd-10-gm",
     "http://fhir.de/CodeSystem/bfarm/atc",
+    "http://id.who.int/icd/release/11/mms",
   ];
   if (listed.includes(system)) return true;
   if (system.startsWith("urn:ietf:") || system.startsWith("urn:iso:")) return true;

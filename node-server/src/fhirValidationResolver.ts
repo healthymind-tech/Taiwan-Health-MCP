@@ -338,6 +338,16 @@ export const SERVER_SIDE_SYSTEMS = new Set([
   "urn:iso:std:iso:4217",
   "urn:oid:1.2.36.1.2001.1005.17",
   "http://www.ama-assn.org/go/cpt",
+  // not in that list, but official outcomes answer their codes and no package holds them: undecided here, never a silent pass
+  "http://standardterms.edqm.eu",
+  "http://terminology.hl7.org/CodeSystem/icd-o-3",
+  "http://id.who.int/icd/release/11/mms",
+  "http://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets",
+  "https://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets",
+  "http://www.ada.org/snodent",
+  "http://nucc.org/provider-taxonomy",
+  "http://fhir.de/CodeSystem/dimdi/icd-10-gm",
+  "http://fhir.de/CodeSystem/bfarm/atc",
 ]);
 
 export function serverSideSystem(system: string): boolean {
@@ -394,8 +404,15 @@ function noLocalDisplay(system: string, display: string | null): CodeCheck {
 function txKnownSystem(system: string): boolean {
   if (SILENT_SYSTEMS.includes(system)) return true;
   if ([ISO3166, ICD10CM, CVX, ICD10_WHO, RXNORM, "http://snomed.info/sct", "http://loinc.org", "http://unitsofmeasure.org"].includes(system)) return true;
-  if (system.startsWith("urn:")) return true;
+  if (serverSideSystem(system)) return true;
+  // an OID nobody holds is unknown to the server as well (official corpus)
+  if (system.startsWith("urn:") && !system.startsWith("urn:oid:")) return true;
   return /^https?:\/\/(terminology\.)?hl7\.org\//.test(system) || system.startsWith("http://snomed.info/") || system.startsWith("http://dicom.nema.org/");
+}
+
+/** The answer for `base`, naming the system the way the Coding wrote it (`url|version`). */
+export function nameSystemAsWritten(r: CodeCheck, base: string, written: string): CodeCheck {
+  return "message" in r ? { ...r, message: r.message.split(`'${base}'`).join(`'${written}'`).split(`${base}#`).join(`${written}#`) } : r;
 }
 
 /** LOINC strict mode: the local release is at least the version tx.fhir.org serves. */
@@ -728,6 +745,14 @@ export class DbValidatorResolver implements ValidatorResolver {
   }
 
   private async checkCodeUncached(system: string, code: string, display: string | null, version: string | null = null, langs?: string[]): Promise<CodeCheck> {
+    // A Coding.system spelled `url|version` (only the URL check rejects it): the server takes it as that version and names
+    // the system as written (official: Unknown code 'X' in the CodeSystem '…/v2-0360|2.7' version '2.7')
+    const bar = system.indexOf("|");
+    if (bar > 0 && version === null) {
+      const base = system.slice(0, bar);
+      const r = await this.checkCodeUncached(base, code, display, system.slice(bar + 1), langs);
+      return nameSystemAsWritten(r, base, system);
+    }
     if (system === ISO3166) return this.checkIso3166(code, display);
     // CVX: bundled tx.fhir.org table (fhirCvx.ts).
     if (system === CVX) return judgeCvx(code, display, langs);

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { applyFilter, codeInFilter, composeContains, conceptInactive, expandComposeWith, findConcept, indexCodeSystem, type TerminologyDeps } from "./fhirCodeSystem.js";
 import { externalFilterMatches } from "./fhirTerminology.js";
 import { txValidateCode } from "./fhirTxValidate.js";
-import { judgeHeldCodeSystem } from "./fhirValidationResolver.js";
+import { judgeHeldCodeSystem, nameSystemAsWritten, serverSideSystem } from "./fhirValidationResolver.js";
 
 type Json = Record<string, any>;
 function depsWith(cs: Json | null, extra: Partial<TerminologyDeps> = {}): TerminologyDeps {
@@ -169,4 +169,16 @@ test("CVX and ISO 3166 as whole-system includes: decided by the bundled tables",
   assert.equal(await composeContains(cvx, "http://hl7.org/fhir/sid/cvx", "9999", depsWith(null)), false);
   const iso = { include: [{ system: "urn:iso:std:iso:3166" }] };
   assert.equal(await composeContains(iso, "urn:iso:std:iso:3166", "TW", depsWith(null)), true);
+});
+
+test("a Coding.system spelled url|version: the messages name it as written (official Unknown_Code_in_Version)", () => {
+  const base = "http://terminology.hl7.org/CodeSystem/v2-0360";
+  const r = nameSystemAsWritten({ status: "invalid-code", severity: "error", message: `Unknown code 'ZZZ-9' in the CodeSystem '${base}' version '2.7'` }, base, `${base}|2.7`);
+  assert.equal("message" in r && r.message, `Unknown code 'ZZZ-9' in the CodeSystem '${base}|2.7' version '2.7'`);
+  assert.deepEqual(nameSystemAsWritten({ status: "ok" }, base, `${base}|2.7`), { status: "ok" });
+});
+
+test("systems official outcomes answer but no package holds are server-side: undecided, not UNKNOWN_CODESYSTEM", () => {
+  for (const s of ["http://standardterms.edqm.eu", "http://terminology.hl7.org/CodeSystem/icd-o-3", "http://id.who.int/icd/release/11/mms"]) assert.equal(serverSideSystem(s), true, s);
+  assert.equal(serverSideSystem("http://hospital.example/cs"), false);
 });
