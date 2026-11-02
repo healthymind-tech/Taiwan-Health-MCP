@@ -26,7 +26,7 @@
  *   PW=$(grep '^POSTGRES_PASSWORD=' ../.env | cut -d= -f2-); DATABASE_URL="postgresql://mcp:$PW@127.0.0.1:5432/taiwan_health" \
  *   systemd-run --user --scope -q -p MemoryMax=3G -p CPUQuota=150% nice -n 10 \
  *     node --max-old-space-size=2500 --import tsx scripts/parity/corpus/run.ts [<corpus dir> (default ~/ref/parity_corpus)] \
- *       [--format evaluator|repro|dirs|jsonl] [--engine db|file] [--only id[,id]] [--json out.json] [--start n] [--count n] [--shard k/n]
+ *       [--format evaluator|repro|dirs|jsonl] [--engine db|file] [--only id[,id]] [--family a[,b]] [--json out.json] [--start n] [--count n] [--shard k/n]
  *       [--repro <dir>] [--repro-plan plan.json] [--max-steps n (minimizer budget, default 250)]
  *       [--timeout-ms n (per item, default 180000)] [--exclude-from done.json[,…]] [--crash-only] [--limit n] [-v] [--package id#ver[,id#ver]] [--profile url]
  *       [--raw-text]   (file engine: raw items validated from their text with InstanceValidator.validateText; db engine: see above)
@@ -51,7 +51,7 @@ import { ResultWriter, readResults } from "./results.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const opt = (k: string): string | null => (args.includes(k) ? args[args.indexOf(k) + 1] ?? null : null);
-const valued = new Set(["--format", "--only", "--json", "--repro", "--repro-plan", "--limit", "--package", "--profile", "--engine", "--start", "--count", "--shard", "--max-steps", "--timeout-ms", "--exclude-from"]);
+const valued = new Set(["--format", "--only", "--family", "--json", "--repro", "--repro-plan", "--limit", "--package", "--profile", "--engine", "--start", "--count", "--shard", "--max-steps", "--timeout-ms", "--exclude-from"]);
 const positional = args.filter((a, i) => !a.startsWith("-") && !valued.has(args[i - 1] ?? ""));
 const dir = positional[0] ?? join(homedir(), "ref", "parity_corpus");
 const outFile = opt("--json") ?? join(HERE, "results.json");
@@ -74,6 +74,8 @@ interface PlanTarget extends Target {
   bucket?: string;
 }
 const reproPlan: PlanTarget[] | null = reproPlanFile ? (JSON.parse(readFileSync(reproPlanFile, "utf8")) as PlanTarget[]) : null;
+/** --family a,b: only the manifest families named (a family rerun without an id list). */
+const families = opt("--family")?.split(",").filter(Boolean) ?? null;
 const only = opt("--only")?.split(",") ?? (reproPlan ? [...new Set(reproPlan.map((t) => t.id))] : null);
 
 type Validate = (item: CorpusItem, instance: Res) => Promise<{ issues: SimpleIssue[]; flags: string[]; unchecked?: Res }>;
@@ -244,6 +246,7 @@ async function main(): Promise<void> {
     idx++;
     if (idx < start || idx >= start + count || idx % shardN !== shardK) continue;
     if (only && !only.includes(item.id)) continue;
+    if (families && !families.includes(String(item.meta?.family ?? ""))) continue;
     if (excluded.has(item.source) || (crashOnly && !item.officialCrash)) continue;
     if (n++ >= limit) break;
     if (!item.packages.length) item.packages = defaultPackages;
