@@ -5141,6 +5141,28 @@ export class InstanceValidator {
    * includes by their concept list, whole-system includes by the CodeSystem. null when undecidable here (imports,
    * filters, an unknown CodeSystem: the HL7 validator reports other messages for those, which are not reproduced).
    */
+  /**
+   * A value set pinning the version of a system validates the code in that version (determineVersion): the message names
+   * it — instead of the unbound one for a coding of a CodeableConcept, besides it for a Coding element, which the
+   * validator also checks on its own (official corpus: v3-RoleCode '3.0.0', Encounter.class v3-ActCode '9.0.0' and '11.0.0').
+   */
+  private async pinnedUnknownCode(vs: Record<string, any>, list: any[], typeCode: string, item: Item, issues: Issue[]): Promise<void> {
+    if (typeCode !== "Coding" && typeCode !== "CodeableConcept") return;
+    const includes: any[] = isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
+    for (const [i, c] of list.entries()) {
+      if (!isObject(c) || typeof c.system !== "string" || typeof c.code !== "string" || !c.code || c.version) continue;
+      const pins = new Set(includes.filter((x) => isObject(x) && x.system === c.system && typeof x.version === "string" && x.version).map((x) => String(x.version)));
+      if (pins.size !== 1) continue;
+      const r = await this.codeCheck(c.system, c.code, null, null);
+      if (r.status !== "invalid-code" || r.severity !== "error" || !r.message.startsWith("Unknown code") || c.system === "http://snomed.info/sct" || c.system === "http://loinc.org") continue;
+      const message = `Unknown code '${c.code}' in the CodeSystem '${c.system}' version '${[...pins][0]}'`;
+      const at = typeCode === "Coding" ? `${item.path}.code` : `${item.path}.coding[${i}].code`;
+      const held = issues.find((x) => x.path === at && x.message === r.message);
+      if (held && typeCode === "CodeableConcept") held.message = message;
+      else if (!issues.some((x) => x.path === at && x.message === message)) issues.push({ severity: "error", path: at, code: "code-invalid", message });
+    }
+  }
+
   /** "; <code system message>" for a Coding its CodeSystem rejects (the {1} of Terminology_TX_NoValid_12). */
   private async codeProblem(c: any): Promise<string> {
     if (!isObject(c) || typeof c.system !== "string" || typeof c.code !== "string") return "";
@@ -5295,6 +5317,7 @@ export class InstanceValidator {
         }
       }
     }
+    await this.pinnedUnknownCode(vs, list, typeCode, item, issues);
     if (anyMember && codingError === null) return;
     if (wrongDisplay && strength === "required") {
       const vsDesc = `'${vs.title || vs.name || url}' (${vs.url}${vs.version ? `|${vs.version}` : ""})`;

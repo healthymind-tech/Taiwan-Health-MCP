@@ -136,3 +136,23 @@ test("a system-less coding is a member only of a single include enumerating it (
   assert.equal(await v.bindingClause(VSE, [{ code: "1-8" }]), true);
   assert.equal(await v.bindingClause(VSE, [{ code: "2-6" }]), false);
 });
+
+test("a value set pinning the system version names that version in Unknown code (coding of a CodeableConcept: instead; Coding element: besides)", async () => {
+  const VSP = "http://x/ValueSet/pinned";
+  class R extends FakeResolver {
+    async fetchValueSet(url: string): Promise<Json | null> {
+      return url === VSP ? { resourceType: "ValueSet", url: VSP, compose: { include: [{ system: "http://x/cs", version: "3.0.0" }] } } : super.fetchValueSet(url);
+    }
+    async checkCode(system: string, code: string, display: string | null): Promise<CodeCheck> {
+      return system === "http://x/cs" ? { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}' version '4.0.0'` } : super.checkCode(system, code, display);
+    }
+  }
+  const v = new InstanceValidator(new R()) as any;
+  const vs = await new R().fetchValueSet(VSP);
+  const held: Issue[] = [{ severity: "error", path: "X.coding[0].code", code: "code-invalid", message: "Unknown code 'a' in the CodeSystem 'http://x/cs' version '4.0.0'" }];
+  await v.pinnedUnknownCode(vs, [{ system: "http://x/cs", code: "a" }], "CodeableConcept", { path: "X" }, held);
+  assert.deepEqual(held.map((i) => i.message), ["Unknown code 'a' in the CodeSystem 'http://x/cs' version '3.0.0'"]);
+  const el: Issue[] = [];
+  await v.pinnedUnknownCode(vs, [{ system: "http://x/cs", code: "a" }], "Coding", { path: "Y" }, el);
+  assert.deepEqual(el.map((i) => `${i.path} ${i.message}`), ["Y.code Unknown code 'a' in the CodeSystem 'http://x/cs' version '3.0.0'"]);
+});
