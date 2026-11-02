@@ -5313,11 +5313,10 @@ export class InstanceValidator {
     if (typeCode === "Coding" && strength === "required" && isObject(list[0]) && typeof list[0].system === "string") {
       const r = await this.codeCheck(list[0].system, String(list[0].code), null, null);
       if (r.status === "unknown-system") {
-        // validateBindingCodedElement (IV tag 7.0.1:2497-2512): error class CODESYSTEM_UNSUPPORTED — a system outside the
-        // value set is only UNKNOWN_CODESYSTEM (checkCoding; empd Coverage.type.coding); a system the value set itself
-        // includes fails as Terminology_TX_Confirm_4a (mimic Encounter.class)
-        const includes: any[] = isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
-        if (!includes.some((i) => isObject(i) && i.system === list[0].system)) return;
+        // A coding of a CodeableConcept (validateBindingTerminologyCoding): only UNKNOWN_CODESYSTEM from checkCoding, the
+        // CodeableConcept's own binding answers (empd Coverage.type.coding). A Coding element (validateBindingCodedElement,
+        // IV tag 7.0.1:2497-2512): Terminology_TX_Confirm_4a, an error (official corpus: Encounter.class, mimic)
+        if (isObject(el.base) ? el.base.path === "CodeableConcept.coding" : String(el.path ?? "").endsWith(".coding")) return;
         unknownInVs = `A definition for CodeSystem '${list[0].system}' could not be found, so the code cannot be validated; `;
         problem = "";
       }
@@ -5333,12 +5332,14 @@ export class InstanceValidator {
               `None of the codings provided are in the value set ${vsRef}, and a coding from this value set is required) (codes = ${ccSummary})`
             : typeCode === "Coding"
               ? // validateBindingCodedElement / validateBindingTerminologyCoding with the server's messages (official corpus
-                // text): Terminology_TX_NoValid_12 for a coding of a CodeableConcept, Terminology_TX_Confirm_4a for a Coding element
+                // text)
                 (() => {
                   const c0 = isObject(list[0]) ? list[0] : {};
                   const provided = `${unknownInVs}The provided code '${shown}${typeof c0.display === "string" && c0.display ? ` ('${c0.display}')` : ""}' was not found in the value set '${vs.url}${vs.version ? `|${vs.version}` : ""}'${problem}`;
-                  const inCC = (isObject(el.base) && el.base.path === "CodeableConcept.coding") || String(el.path ?? "").endsWith(".coding");
-                  return inCC && !unknownInVs
+                  // Terminology_TX_Confirm_4a when the server answered with an error class (SNOMED CT, LOINC, an unknown system);
+                  // Terminology_TX_NoValid_12 for a CodeSystem validated locally (official corpus, unknown-code family)
+                  const server = !!unknownInVs || c0.system === "http://snomed.info/sct" || c0.system === "http://loinc.org";
+                  return !server
                     ? `The Coding provided (${shown}) was not found in the value set ${vsRef}, and a code is required from this value set.  (error message = ${provided})`
                     : `The code provided (${shown}) was not found in the value set ${vsRef}, and a code from this value set is required: ${provided}`;
                 })()
