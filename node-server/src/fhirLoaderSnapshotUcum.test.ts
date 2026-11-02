@@ -518,7 +518,7 @@ test("sort errors carry the expression (FHIRPATH_MUTIPLE_VALUES_IN_SORT, FHIRPAT
   const p = { resourceType: "Patient", name: [{ given: ["a", "b"] }, { given: ["c"] }] };
   const run = (e: string): unknown => evaluateConstraint(p, "Patient", e, {} as FhirPathEnv);
   assert.deepEqual(run("Patient.name.sort(  given ).exists()"), { status: "fail", error: "Multiple values found in return from sort expression 'given'" });
-  assert.deepEqual(run("Patient.name.sort(-given.where( $this  =  'a' or  true )).exists()"), { status: "fail", error: "Multiple values found in return from sort expression 'given.where($this = 'a' or true)'" });
+  assert.deepEqual(run("Patient.name.sort(-given.where( $this  =  'a' or  true )).exists()"), { status: "fail", error: "Multiple values found in return from sort expression 'given.where(($this = 'a') or true)'" });
   assert.deepEqual(run("(1 | 'a').sort().exists()"), { status: "fail", error: "Cannot sort a list that contains both a 'string' and a 'integer' using natural sort order" }, "TimSort's first compare is (a[1], a[0])");
 });
 
@@ -606,4 +606,19 @@ test("the session view of a resolver forwards a code system's content (ValueSetV
   await view.fetchCodeSystem!("http://x");
   assert.equal(inner.calls, 1, "pinned for the run");
   assert.equal(sessionResolver(new FakeResolver(), new LookupSession()).fetchCodeSystem, undefined);
+});
+
+test("StructureDefinitionHacker.fixSD: vs-1 of vitalsigns and its direct children", () => {
+  const fixed = "$this is dateTime implies $this.toString().length() >= 10";
+  const sdOf = (url: string, base: string) => ({
+    resourceType: "StructureDefinition",
+    url,
+    baseDefinition: base,
+    type: "Observation",
+    snapshot: { element: [{ path: "Observation.effective[x]", constraint: [{ key: "vs-1", expression: "($this as dateTime).toString().length() >= 8" }] }] },
+  });
+  const child = fixPackageResource(sdOf(`${CORE}bodyweight`, `${CORE}vitalsigns`), "hl7.fhir.r4.core");
+  assert.equal(child.snapshot.element[0].constraint[0].expression, fixed);
+  const other = fixPackageResource(sdOf("http://ex.org/x", `${CORE}bodyweight`), "x.y");
+  assert.notEqual(other.snapshot.element[0].constraint[0].expression, fixed, "only direct children");
 });

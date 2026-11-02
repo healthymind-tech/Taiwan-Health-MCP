@@ -165,7 +165,7 @@ function convertToBoolean(items: any[]): boolean {
 interface Item { type: string; value?: string; leaves?: string[] }
 /** What the engine returned for a case: the shared shape of ours and the jar's. */
 interface Observed { threw: boolean; items: Item[]; ordered: boolean }
-interface Row { key: string; group: string; name: string; outcome: "pass" | "fail" | "error" | "skip" | "na"; why?: string; expr: string; observed?: Observed }
+interface Row { key: string; group: string; name: string; outcome: "pass" | "fail" | "error" | "skip" | "na"; why?: string; thrown?: string; expr: string; observed?: Observed }
 const rows: Row[] = [];
 const expectedOf = new Map<string, { t: XmlEl; outputs: XmlEl[]; invalid: string | null }>();
 
@@ -226,6 +226,7 @@ for (const g of suite.children.filter((c) => c.name === "group")) {
       check(row, t, result, outputs);
     } catch (e) {
       row.observed = { threw: true, items: [], ordered: true };
+      row.thrown = String((e as Error)?.message ?? e);
       if (invalid) continue; // expected an error
       row.outcome = "error";
       row.why = (e instanceof Error ? e.message : String(e)).split("\n")[0].slice(0, 200);
@@ -379,16 +380,26 @@ if (oracleFile) {
   const reasons = (existsSync(reasonsFile) ? JSON.parse(readFileSync(reasonsFile, "utf8")) : {}) as Record<string, { java: string; reason: string }>;
   const judged = rows.filter((r) => jar[r.key] && !jar[r.key].skip);
   const disagree: Row[] = [];
+  const textDiffers: string[] = [];
+  let bothThrew = 0;
   const jarSuite: Array<{ key: string; name: string; why: string; java: string; reason?: string }> = [];
   for (const r of judged) {
     const j = jar[r.key];
     const jo: Observed = { threw: j.parse === "threw" || j.eval === "threw", items: j.items ?? [], ordered: expectedOf.get(r.key)?.t.attrs.ordered !== "false" };
     if (!r.observed || !sameResult(jo, r.observed)) disagree.push(r);
+    else if (j.eval === "threw" && r.thrown !== undefined) {
+      // the exception's text reaches the invariant's message (checkInvariant, IV:8895-8908)
+      bothThrew++;
+      const javaText = (j.error ?? "").replace(/^[A-Za-z.]*(Exception|Error): /, "");
+      if (javaText !== r.thrown) textDiffers.push(`  [text] ${r.key}: ${r.expr.trim().slice(0, 70)}\n     jar ${javaText.slice(0, 170)}\n     ts  ${r.thrown.slice(0, 170)}`);
+    }
     const why = jarVsSuite(j, r.key);
     if (why) jarSuite.push({ key: r.key, name: r.name, why, java: reasons[r.key]?.java ?? j.frames?.[0] ?? "(no reason recorded)", reason: reasons[r.key]?.reason });
   }
   const unexplained = jarSuite.filter((x) => x.java === "(no reason recorded)").length;
   console.log(`\nagreement with validator_cli 7.0.1: ${judged.length - disagree.length}/${judged.length} (${((100 * (judged.length - disagree.length)) / judged.length).toFixed(1)}%), target 100%`);
+  console.log(`exception text, both threw: ${bothThrew - textDiffers.length}/${bothThrew} the same`);
+  if (verbose) for (const t of textDiffers) console.log(t);
   console.log(`suite pass rate (reference only): ${tot.pass}/${rows.length}`);
   console.log(`jar vs suite: ${jarSuite.length} cases differ (${unexplained} without a Java reason)`);
   if (verbose) {

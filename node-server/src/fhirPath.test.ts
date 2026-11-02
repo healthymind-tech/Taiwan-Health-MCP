@@ -162,8 +162,8 @@ test("Java exception semantics of invariant evaluation", () => {
   assert.deepEqual(st("false and name.family"), { status: "fail" });
   assert.deepEqual(st("true or name.family"), { status: "pass" });
   assert.deepEqual(st("name.empty() implies name.family"), { status: "pass" });
-  assert.equal((st("true and name.family") as any).error, "Unable to evaluate as a boolean: a,b");
-  assert.equal((st("name.family.not()") as any).error, "Unable to evaluate as a boolean: a,b");
+  assert.equal((st("true and name.family") as any).error, "Unable to evaluate as a boolean: a,b (@char 1)", "validator_cli 7.0.1: PathEngineException.getMessage carries the position");
+  assert.equal((st("name.family.not()") as any).error, "Unable to evaluate as a boolean: a,b (@char 13)");
   assert.equal(st("name.where(family).exists()").status, "pass");
   assert.equal(st("name.family.iif(true, 1, 2) = 1").status, "fail");
   assert.match((st("name.family.iif(true, 1, 2) = 1") as any).error, /iif/);

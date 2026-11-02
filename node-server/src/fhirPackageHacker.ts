@@ -26,6 +26,14 @@
  *    the R5 snapshot3 link / binding-definition markdown fixes change no verdict.
  *  - fixBindingDescriptions (PHR:312): rendering only.
  *
+ * Also StructureDefinitionHacker.fixSD (org.hl7.fhir.services.conformance), which the R4 package loader runs on every
+ * StructureDefinition (R4ToRNLoader in the validator_cli jar; the convertors module is not in the hl7-core source tree):
+ *  - vitalsigns and its direct children: vs-1 becomes `$this is dateTime implies $this.toString().length() >= 10` (the
+ *    published `($this as dateTime)…` fails on an effectivePeriod; jar check: Observation with effectivePeriod, 0 errors);
+ *  - ExplanationOfBenefit: the binding to the CodeSystem url `processpriority` goes to the ValueSet `process-priority`;
+ *  - example-composition: the type profile document-section-library becomes example-section-library.
+ * Its text-only fixes (bidi comment, example identifier, R4B links) change no verdict.
+ *
  * Like the Java original only package content is fixed — loose resources (test `supporting` files, uploads that
  * are not package members) are not (PackageHackerRN class comment).
  *
@@ -130,6 +138,21 @@ export function fixPackageResource<T extends Json | null | undefined>(res: T, pa
       for (const els of elementLists(r))
         for (const ed of els)
           if (ed.path === "Observation.component.value[x]" && ed.binding && ed.binding.valueSet === UCUM_VITALS_COMMON_401) ed.binding.strength = "extensible";
+    }
+    // StructureDefinitionHacker.fixSD
+    if (url === VITALSIGNS || String(r.baseDefinition ?? "").split("|")[0] === VITALSIGNS) {
+      for (const els of elementLists(r))
+        for (const ed of els)
+          for (const c of Array.isArray(ed.constraint) ? ed.constraint : []) if (c?.key === "vs-1") c.expression = "$this is dateTime implies $this.toString().length() >= 10";
+    }
+    if (url === CORE_SD + "ExplanationOfBenefit" && String(r.fhirVersion ?? version ?? "").startsWith("4.0")) {
+      for (const els of elementLists(r)) for (const ed of els) if (ed.binding?.valueSet === "http://terminology.hl7.org/CodeSystem/processpriority") ed.binding.valueSet = "http://hl7.org/fhir/ValueSet/process-priority";
+    }
+    if (url === CORE_SD + "example-composition" && String(r.fhirVersion ?? version ?? "").startsWith("4.0")) {
+      for (const els of elementLists(r))
+        for (const ed of els)
+          for (const t of Array.isArray(ed.type) ? ed.type : [])
+            if (Array.isArray(t?.profile)) t.profile = t.profile.map((p: string) => (p === CORE_SD + "document-section-library" ? CORE_SD + "example-section-library" : p));
     }
     if (packageId === "hl7.fhir.r2b.core") {
       for (const ed of Array.isArray(r.snapshot?.element) ? r.snapshot.element : [])

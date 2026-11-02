@@ -273,7 +273,7 @@ function javaListString(items: any[]): string {
 /** FHIRPathEngine.asBool(List<Base>, …): empty → null; one boolean → it; one other item → true; more → exception. */
 function javaAsBool(items: any[]): boolean | null {
   if (!items || items.length === 0) return null;
-  if (items.length > 1) throw new JavaFhirPathError(`Unable to evaluate as a boolean: ${javaListString(items)}`);
+  if (items.length > 1) throw new JavaFhirPathError(`Unable to evaluate as a boolean: ${javaListString(items)}${javaLocation(/Expression$/.test(String(evaluating[evaluating.length - 1]?.type)) ? "left" : "self")}`);
   const v = fpUtil.valData(items[0]);
   return typeof v === "boolean" ? v : true;
 }
@@ -349,6 +349,36 @@ const JAVA_OPERATORS: Record<string, any> = {
   },
 };
 
+/** The NullPointerExceptions of Java 17's helpful messages, which reach the invariant's message. */
+const NPE_NO_PRIMITIVE = 'Cannot invoke "org.hl7.fhir.model.Base.isPrimitive()" because the return value of "java.util.List.get(int)" is null';
+const NPE_EQUIVALENT =
+  'Cannot invoke "java.lang.Boolean.booleanValue()" because the return value of "org.hl7.fhir.services.fhirpath.FHIRPathEngine.qtyEquivalent(org.hl7.fhir.model.core.Quantity, org.hl7.fhir.model.core.Quantity)" is null';
+
+
+/** FHIRPATH_LEFT_VALUE / FHIRPATH_RIGHT_VALUE (makeExceptionPlural) of the arithmetic operators and `&`. */
+function javaSingleOperands(op: string, a: any[], b: any[]): void {
+  if (a.length > 1) throw new JavaFhirPathError(`Error evaluating FHIRPath expression: left operand to ${op} can only have 1 value, but has ${a.length} values (${a.map((x) => itemString(x)).join(",")})${javaLocation("left")}`);
+  if (b.length > 1) throw new JavaFhirPathError(`Error evaluating FHIRPath expression: right operand to ${op} can only have 1 value, but has ${b.length} values${javaLocation("left")}`);
+}
+
+/** The operator / function being evaluated: PathEngineException.getMessage appends holder.getStart() (`@char n`). */
+const evaluating: any[] = [];
+
+function javaLocation(at: "left" | "self"): string {
+  let n = evaluating[evaluating.length - 1];
+  if (!n) return "";
+  let parens = 0; // a Group starts at its `(`, which has no node of its own
+  if (at === "left") {
+    while (n.children?.length && (n.start === undefined || n.type !== "LiteralTerm")) {
+      if (n.type === "ParenthesizedTerm") parens++;
+      const c = n.children[0];
+      if (!c) break;
+      n = c;
+    }
+  }
+  return n.start?.column ? ` (@char ${n.start.column - parens})` : "";
+}
+
 /**
  * Wraps a stock operator: comparisons of collections (more than one item) are empty in Java (opLessThan … l. 2590ff).
  * Two Quantities: the same units compare the values, otherwise the canonical decimals (qtyToCanonicalDecimal, l. 2471-2482),
@@ -365,15 +395,31 @@ function javaComparison(orig: any, op: string): any {
         const l = javaQuantity(a[0]);
         const r = javaQuantity(b[0]);
         if (l && r) {
-          if (op === "<=" && l.unit === null && r.unit !== null) throw new JavaFhirPathError("null");
+          if (op === "<=" && l.unit === null && r.unit !== null) throw new JavaFhirPathError(NPE_NO_PRIMITIVE);
           if (op === "<" ? l.code === r.code : l.unit === r.unit) {
             if (l.value === undefined || r.value === undefined) return [];
             return orig.fn.call(this, [Number(l.value)], [Number(r.value)]);
           }
           const lc = qtyCanonical(l);
           const rc = qtyCanonical(r);
-          if (!lc || !rc) throw new JavaFhirPathError("null");
+          if (!lc || !rc) throw new JavaFhirPathError(NPE_NO_PRIMITIVE);
           return orig.fn.call(this, [Number(lc.value)], [Number(rc.value)]);
+        }
+        // the primitive branches (l. 2594-2610): a text that is not a number or a date fails in Double.valueOf / new DateTimeType
+        const tl = javaFhirType(a[0]);
+        const tr = javaFhirType(b[0]);
+        const number = (t: string): boolean => ["integer", "decimal", "unsignedInt", "positiveInt"].includes(t);
+        if (itemString(a[0]) !== null && itemString(b[0]) !== null && tl.type && tr.type) {
+          if (FHIR_TYPES_STRING.has(tl.type) && FHIR_TYPES_STRING.has(tr.type)) return orig.fn.call(this, a, b);
+          if (number(tl.type) && number(tr.type)) {
+            javaDoubleValue(sourceNumberText(a[0]) ?? (itemString(a[0]) as string));
+            javaDoubleValue(sourceNumberText(b[0]) ?? (itemString(b[0]) as string));
+          } else if (javaIsDate(a[0]) && javaIsDate(b[0])) {
+            if (!tl.literal) javaDateTimeType(a[0]);
+            if (!tr.literal) javaDateTimeType(b[0]);
+          } else if (!(tl.type === "time" && tr.type === "time")) {
+            throw new JavaFhirPathError(`Error evaluating FHIRPath expression: Unable to compare values of type ${tl.type} and ${tr.type}${javaLocation("left")}`);
+          }
         }
       }
       return orig.fn.call(this, a, b);
@@ -627,13 +673,83 @@ function decEqualText(l: string, r: string): boolean {
 
 const javaIsDate = (item: any): boolean => ["date", "dateTime", "instant"].includes(javaFhirType(item).type);
 
-/** new DateTimeType(primitiveValue()): a time needs its seconds (BaseDateTimeType:166, 1048). */
+/** BaseDateTimeType.parse (BaseDateTimeType.java:685-791) + the precision check of DateTimeType: new DateTimeType(text). */
+function javaParseDateTime(text: string): void {
+  const value = text.startsWith(" ") || text.endsWith(" ") ? text.trim() : text;
+  const bad = (detail?: string): never => {
+    throw new JavaFhirPathError(`Invalid date/time format: "${value}"${detail ? `: ${detail}` : ""}`);
+  };
+  const int = (t: string, lo: number, hi: number): number => {
+    if (!/^[+-]?\d+$/.test(t)) bad();
+    const n = Number(t);
+    if (n < lo || n > hi) bad();
+    return n;
+  };
+  const char = (i: number, c: string): void => {
+    if (value[i] !== c) bad(`Expected character '${c}' at index ${i} but found ${value[i]}`);
+  };
+  const atLeast = (n: number): void => {
+    if (value.length < n) bad();
+  };
+  const length = value.length;
+  if (length === 0) return;
+  if (length < 4) bad();
+  const year = int(value.slice(0, 4), 0, 9999);
+  if (length <= 4) return;
+  char(4, "-");
+  atLeast(7);
+  const month = int(value.slice(5, 7), 1, 12);
+  if (length <= 7) return;
+  char(7, "-");
+  atLeast(10);
+  int(value.slice(8, 10), 1, new Date(Date.UTC(year, month, 0)).getUTCDate());
+  if (length <= 10) return;
+  atLeast(17);
+  char(10, "T");
+  const offsetIndex = (): number => {
+    const [p, m2, z] = [value.indexOf("+", 16), value.indexOf("-", 16), value.indexOf("Z", 16)];
+    const r = Math.max(p, m2, z);
+    if (r !== -1 && r - 2 !== p + m2 + z) bad();
+    return r;
+  };
+  const off = offsetIndex();
+  const time = off === -1 ? value.slice(11) : value.slice(11, off);
+  if (off !== -1) {
+    const o = value.slice(off);
+    if (o[0] !== "Z") {
+      const form = 'Timezone offset must be in the form "Z", "-HH:mm", or "+HH:mm"';
+      if (o.length !== 6 || o[3] !== ":" || !(o[0] === "+" || o[0] === "-")) bad(form);
+      int(o.slice(1, 3), 0, 23);
+      int(o.slice(4, 6), 0, 59);
+    }
+  }
+  char(13, ":");
+  int(value.slice(11, 13), 0, 23);
+  int(value.slice(14, 16), 0, 59);
+  if (time.length <= 5) throw new JavaFhirPathError(`Invalid date/time string (datatype DateTimeType does not support MINUTE precision): ${value}`);
+  atLeast(19);
+  char(16, ":");
+  int(value.slice(17, 19), 0, 60);
+  if (time.length > 8) {
+    char(19, ".");
+    atLeast(20);
+    const end = offsetIndex() === -1 ? value.length : offsetIndex();
+    int(value.slice(20, Math.min(end, 23)), 0, 999);
+  }
+}
+
+/** new DateTimeType(primitiveValue()). */
 function javaDateTimeType(item: any): void {
-  const s = String(fpUtil.valData(item)?.asStr ?? itemString(item) ?? "").replace(/^@/, "");
-  const m = /T\d{2}(?::\d{2})?(Z|[+-]\d{2}:\d{2})?$/.exec(s);
-  if (!m) return;
-  if (m[1]) throw new JavaFhirPathError(`Invalid date/time string (datatype DateTimeType does not support MINUTE precision): ${s}`);
-  throw new JavaFhirPathError(`Invalid date/time format: "${s}"`);
+  javaParseDateTime(String(fpUtil.valData(item)?.asStr ?? itemString(item) ?? "").replace(/^@/, ""));
+}
+
+/** Double.valueOf (FloatingDecimal.readJavaFormatString): the text of a number that is not one fails the comparison. */
+function javaDoubleValue(text: string): void {
+  const t = text.trim();
+  if (t === "") throw new JavaFhirPathError("empty String");
+  if (/^[+-]?(NaN|Infinity|(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?[fFdD]?)$/.test(t)) return;
+  if (/^[+-]?\d*\.\d*\./.test(t)) throw new JavaFhirPathError("multiple points");
+  throw new JavaFhirPathError(`For input string: "${text}"`);
 }
 
 /**
@@ -718,9 +834,29 @@ function javaExpressionText(n: any): string {
     case "Identifier":
       return String(n.text);
   }
-  if (typeof n.text === "string") return kids.length === 2 ? `${javaExpressionText(kids[0])} ${n.text} ${javaExpressionText(kids[1])}` : n.text;
+  if (typeof n.text === "string" && kids.length === 2) {
+    // gatherPrecedence (FHIRPathEngine.java:1314-1322) groups what binds tighter than the operator next to it
+    const side = (c: any): string => {
+      const t = javaExpressionText(c);
+      const b = binaryNode(c);
+      return b && PRECEDENCE[b.text] !== undefined && PRECEDENCE[b.text] !== PRECEDENCE[n.text] ? `(${t})` : t;
+    };
+    return `${side(kids[0])} ${n.text} ${side(kids[1])}`;
+  }
+  if (typeof n.text === "string" && kids.length === 0) return n.text;
   return all("");
 }
+
+/** The binary operator a node stands for, through its single-child wrappers. */
+function binaryNode(n: any): any {
+  let c = n;
+  while (c?.children?.length === 1 && c.type !== "ParenthesizedTerm") c = c.children[0];
+  return c?.children?.length === 2 && typeof c.text === "string" && c.type !== "IndexerExpression" ? c : null;
+}
+
+const PRECEDENCE: Record<string, number> = Object.fromEntries(
+  [["*", "/", "div", "mod"], ["+", "-", "&"], ["is", "as"], ["|"], ["<", ">", "<=", ">="], ["=", "~", "!=", "!~"], ["in", "contains"], ["and"], ["xor", "or"], ["implies"]].flatMap((g, i) => g.map((o) => [o, i])),
+);
 
 /** FHIRPathBaseSorter.isComparableTypes (FHIRPathEngine.java:6634-6656). */
 function sortComparable(t1: string, t2: string): boolean {
@@ -831,7 +967,7 @@ function javaDateAdd(left: any, q: any, negate: boolean): any {
       break;
     case "a":
     case "mo":
-      throw new JavaFhirPathError(`Error in date arithmetic: attempt to add a definite quantity duration time unit ${key}`);
+      throw new JavaFhirPathError(`Error in date arithmetic: attempt to add a definite quantity duration time unit ${key}${javaLocation("self")}`);
     case "weeks":
     case "week":
     case "wk":
@@ -866,7 +1002,7 @@ function javaDateAdd(left: any, q: any, negate: boolean): any {
       wall += value;
       break;
     default:
-      throw new JavaFhirPathError(`Error in date arithmetic: unrecognized time unit ${key}`);
+      throw new JavaFhirPathError(`Error in date arithmetic: unrecognized time unit ${key}${javaLocation("self")}`);
   }
   const out = formatParts(p, wall);
   const v = fpUtil.valDataConverted ? fpUtil.valDataConverted(left) : fpUtil.valData(left);
@@ -912,7 +1048,16 @@ if (loaded.engine) {
       fn: function (this: any, a: any[], b: any[]): any {
         if (a.length === 1 && b.length === 1 && dateTimeParts(a[0])) {
           const q = fpUtil.valData(b[0]);
-          if (q instanceof fpTypes.FP_Quantity) return [javaDateAdd(a[0], q, negate)];
+          if (q instanceof fpTypes.FP_Quantity) {
+            // dateAdd copies the value: DateTimeType.copy (l. 238) checks the precision of the literal, a bare hour reads as minutes
+            const t = String(fpUtil.valData(a[0])?.asStr ?? itemString(a[0]) ?? "").replace(/^@/, "");
+            const m = /^(.*T\d{2})(:\d{2})?(Z|[+-]\d{2}:\d{2})?$/.exec(t);
+            if (m) {
+              const minutes = `${m[1]}${m[2] ?? ":00"}${m[3] ?? ""}`;
+              throw new JavaFhirPathError(m[3] ? `Invalid date/time string (datatype DateTimeType does not support MINUTE precision): ${minutes}` : `Invalid date/time format: "${minutes}"`);
+            }
+            return [javaDateAdd(a[0], q, negate)];
+          }
         }
         return orig.fn.call(this, a, b);
       },
@@ -934,7 +1079,7 @@ if (loaded.engine) {
             javaDateTimeType(r);
           }
           const q = javaQtyCompare(l, r, true);
-          if (q === null) throw new JavaFhirPathError('Cannot invoke "java.lang.Boolean.booleanValue()"');
+          if (q === null) throw new JavaFhirPathError(NPE_EQUIVALENT);
           return q;
         };
         if (a.length === 1 && b.length === 1) {
@@ -1013,7 +1158,7 @@ if (loaded.engine) {
     ...table.sort,
     fn: function (this: any, data: any[], ...sortArgs: Array<{ expr: (d: any) => any[]; direction: { desc: boolean; text: string } }>): any[] {
       const key = (item: any, arg: { expr: (d: any) => any[]; direction: { text: string } }): any => {
-        const r = fpUtil.arraify(arg.expr(item));
+        const r = fpUtil.arraify(arg.expr([item])); // $this is a collection: an operator's operands evaluate on it
         if (r.length > 1) throw new JavaFhirPathError(`Multiple values found in return from sort expression '${arg.direction.text}'`);
         return r.length ? r[0] : null;
       };
@@ -1040,6 +1185,7 @@ if (loaded.engine) {
       ...stock,
       arity: { 2: ["Any", "Any"] }, // the stock `Number` parameters of div / mod hide the operand's type
       fn: function (this: any, a: any[], b: any[]): any {
+        javaSingleOperands(op, a, b);
         if (a.length === 1 && b.length === 1 && !(ints && javaFhirType(a[0]).type === "integer" && javaFhirType(b[0]).type === "integer")) {
           const d = decimals(a[0], b[0], set);
           if (d) return run(this, d[0], d[1]);
@@ -1063,13 +1209,20 @@ if (loaded.engine) {
     table[op] = {
       ...stock,
       fn: function (this: any, a: any[], b: any[]): any {
+        javaSingleOperands(op, a, b);
         if (a.length === 1 && b.length === 1) {
           const [tx, ty] = [javaFhirType(a[0]).type, javaFhirType(b[0]).type];
           if (DIV_TYPES.has(tx) && DIV_TYPES.has(ty) && !(tx === "integer" && ty === "integer")) {
             return [javaDecimal(this, bigToText(f(bigFromText(sourceNumberText(a[0]) ?? itemString(a[0]) ?? "0"), bigFromText(sourceNumberText(b[0]) ?? itemString(b[0]) ?? "0"))))];
           }
         }
-        return stock.fn.call(this, a, b);
+        try {
+          return stock.fn.call(this, a, b);
+        } catch (e) {
+          // FHIRPATH_OP_INCOMPATIBLE
+          if (e instanceof JavaFhirPathError || a.length !== 1 || b.length !== 1 || !/^(?:Cannot |For date\/time arithmetic)/.test(String((e as Error).message))) throw e;
+          throw new JavaFhirPathError(`Error evaluating FHIRPath expression ${op}: left and right operand have incompatible or invalid types (${javaFhirType(a[0]).type}, ${javaFhirType(b[0]).type})${javaLocation("left")}`);
+        }
       },
     };
   };
@@ -1153,16 +1306,58 @@ if (loaded.engine) {
       return isFn.fn.call(this, coll, info);
     },
   };
+  // funcAllTrue and its siblings: Base.castToBoolean of a primitive that is not one
+  for (const name of ["allTrue", "anyTrue", "allFalse", "anyFalse"]) {
+    const stock = table[name];
+    table[name] = {
+      ...stock,
+      fn: function (this: any, coll: any[]): any {
+        for (const x of coll) if (javaFhirType(x).type !== "boolean" && itemString(x) !== null) throw new JavaFhirPathError(`Unable to convert '${itemString(x)}' to a boolean`);
+        return stock.fn.call(this, coll);
+      },
+    };
+  }
+  // funcSingle (l. 5509): FHIRPATH_NO_COLLECTION
+  const single = table.single;
+  table.single = {
+    ...single,
+    fn: function (this: any, coll: any[]): any {
+      if (coll.length > 1) throw new JavaFhirPathError(`Error evaluating FHIRPath expression: The function single can only be used on a singleton value but found ${coll.length}${javaLocation("self")}`);
+      return single.fn.call(this, coll);
+    },
+  };
+  // opConcatenate (l. 3060): FHIRPATH_LEFT_VALUE
+  table["&"] = {
+    ...table["&"],
+    arity: { 2: ["Any", "Any"] },
+    fn: function (this: any, a: any[], b: any[]): any {
+      javaSingleOperands("&", a, b);
+      for (const [side, x] of [["left", a], ["right", b]] as Array<[string, any[]]>) {
+        if (x.length && !FHIR_TYPES_STRING.has(javaFhirType(x[0]).type)) throw new JavaFhirPathError(`Error evaluating FHIRPath expression: ${side} operand to & has the wrong type ${javaFhirType(x[0]).type}${javaLocation("left")}`);
+      }
+      return [(a.length ? itemString(a[0]) ?? "" : "") + (b.length ? itemString(b[0]) ?? "" : "")];
+    },
+  };
   const patchEval = (name: string, fn: (stock: any) => any): void => {
     const stock = loaded.engine.evalTable?.[name] ?? loaded.engine[name];
     const replaced = fn(stock);
     loaded.engine[name] = replaced;
     if (loaded.engine.evalTable) loaded.engine.evalTable[name] = replaced;
   };
+  for (const name of ["AdditiveExpression", "MultiplicativeExpression", "InequalityExpression", "EqualityExpression", "UnionExpression", "AndExpression", "OrExpression", "ImpliesExpression", "FunctionInvocation"]) {
+    patchEval(name, (stock) => function (ctx: any, parentData: any, node: any): any {
+      evaluating.push(node);
+      try {
+        return stock.call(loaded.engine, ctx, parentData, node);
+      } finally {
+        evaluating.pop();
+      }
+    });
+  }
   // funcItem (l. 6726): Integer.parseInt(s) < focus.size(), so a negative index reaches List.get
   patchEval("IndexerExpression", (stock) => function (ctx: any, parentData: any, node: any): any {
     const idx = loaded.engine.doEval(ctx, parentData, node.children[1]);
-    if (idx.length === 1 && Number(itemString(idx[0])) < 0) throw new JavaFhirPathError(`Index ${itemString(idx[0])} out of bounds`);
+    if (idx.length === 1 && Number(itemString(idx[0])) < 0) throw new JavaFhirPathError(`Index ${itemString(idx[0])} out of bounds for length ${loaded.engine.doEval(ctx, parentData, node.children[0]).length}`);
     return stock.call(loaded.engine, ctx, parentData, node);
   });
   // FHIRLexer.processConstant (l. 500-505): Integer.parseInt takes a sign; processFixedName (l. 550-554) reads radix 32
@@ -1529,7 +1724,7 @@ const USER_FUNCTIONS: Record<string, any> = {
     fn: function (this: any, coll: any[], cond: (d: any) => any[], ok: (d: any) => any[], fail?: (d: any) => any[]): any[] {
       const focus = coll || [];
       if (focus.length > 1) {
-        throw new JavaFhirPathError(`Error evaluating FHIRPath expression: The function iif can only be used on a singleton value but found ${focus.length}`);
+        throw new JavaFhirPathError(`Error evaluating FHIRPath expression: The function iif can only be used on a singleton value but found ${focus.length}${javaLocation("self")}`);
       }
       const v = javaAsBool(fpUtil.arraify(cond(focus)));
       if (v === true) return fpUtil.arraify(ok(focus));
@@ -1731,6 +1926,11 @@ export function evaluateExpression(
     const vars = { ...emptyConstants(expression), ...javaConstants(expression), ...extraVars, resource: typedNode(env.resource)[0], rootResource: typedNode(env.rootResource)[0] };
     const data = typeof node === "number" || typeof node === "bigint" ? numericRoot(node, base) : node;
     return opts.internal ? fn(data, vars, { resolveInternalTypes: false }) : fn(data, vars);
+  } catch (e) {
+    // funcAs / funcOfType: FHIRPATH_INVALID_TYPE
+    const m = /^"(\w+)" cannot be resolved to a valid type identifier/.exec(String((e as Error)?.message));
+    if (m) throw new JavaFhirPathError(`The type FHIR.${m[1]} is not valid`);
+    throw e;
   } finally {
     current = prev;
   }
