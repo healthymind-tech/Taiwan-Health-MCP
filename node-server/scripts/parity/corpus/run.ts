@@ -68,7 +68,7 @@ interface PlanTarget extends Target {
 const reproPlan: PlanTarget[] | null = reproPlanFile ? (JSON.parse(readFileSync(reproPlanFile, "utf8")) as PlanTarget[]) : null;
 const only = opt("--only")?.split(",") ?? (reproPlan ? [...new Set(reproPlan.map((t) => t.id))] : null);
 
-type Validate = (item: CorpusItem, instance: Res) => Promise<{ issues: SimpleIssue[]; flags: string[] }>;
+type Validate = (item: CorpusItem, instance: Res) => Promise<{ issues: SimpleIssue[]; flags: string[]; unchecked?: Res }>;
 
 /** --engine file: InstanceValidator over the offline package cache. */
 function fileEngine(): Validate {
@@ -126,7 +126,15 @@ async function dbEngine(): Promise<{ validate: Validate; close: () => Promise<vo
     const flags: string[] = [];
     if (d.checked_fully === false) flags.push("not-checked-fully");
     if (raw.some((i) => i.code === "exception" || /lookups? failed|internal error/u.test(String(i.message ?? "")))) flags.push("lookup-failure");
-    return { issues: raw.map((i) => ({ severity: String(i.severity), path: String(i.path ?? ""), message: String(i.message ?? ""), code: i.code })), flags };
+    // why an item is not fully checked (report: not-checked-fully breakdown)
+    const unchecked: Res = {};
+    if (d.checked_fully === false) {
+      for (const k of ["profiles_unchecked", "valuesets_unchecked", "codes_unchecked", "slices_unchecked", "invariants_unchecked", "lookups_failed", "deps_missing", "unverified", "fallback_reason"]) {
+        const x = d[k];
+        if (x !== undefined && !(Array.isArray(x) && x.length === 0)) unchecked[k] = x;
+      }
+    }
+    return { issues: raw.map((i) => ({ severity: String(i.severity), path: String(i.path ?? ""), message: String(i.message ?? ""), code: i.code })), flags, unchecked };
   };
   return { validate, close: closePool };
 }
@@ -155,6 +163,8 @@ interface ItemResult {
   officialErrors?: ErrKey[];
   ourErrors?: ErrKey[];
   flags: string[];
+  /** the service's reasons when checked_fully is false */
+  unchecked?: Res;
   error?: string;
   repro?: string[];
 }
@@ -214,6 +224,7 @@ async function main(): Promise<void> {
       try {
         const v = await withTimeout(validate(item, item.instance), timeoutMs);
         r.flags.push(...v.flags);
+        if (v.unchecked && Object.keys(v.unchecked).length) r.unchecked = v.unchecked;
         const issues = v.issues.filter((i) => !isContentCheck(i));
         r.ourErrors = issues.filter(isError).map(keyOf);
         r.comparison = compareIssues(official, issues);
