@@ -168,12 +168,13 @@ test("Unrecognized property below a choice type the profile does not allow (HL7 
     code: { coding: [{ system: "http://loinc.org", code: "29463-7" }] },
     valueCodeableConcept: { coding: [{ system: "http://loinc.org", code: "x", slice: "loinc" }] },
   };
-  assert.deepEqual(unknownAt(await run(r)), ["Observation.valueCodeableConcept.coding[0]: Unrecognized property 'slice'"]);
+  // JsonParser reports at its npath, the [x] name of the property (validator_cli 7.0.1: MedicationDispense.medication[x], Observation.component[0].value[x])
+  assert.deepEqual(unknownAt(await run(r)), ["Observation.value[x].coding[0]: Unrecognized property 'slice'"]);
 });
 
 test("Unrecognized property inside an unknown extension's value and inside a primitive's extension object", async () => {
   const r = obs({ extension: [{ url: "http://example.tw/fhir/StructureDefinition/nope", valueCodeableConcept: { coding: [{ code: "a", slice: "x" }] } }] });
-  assert.ok(unknownAt(await run(r)).includes("Observation.extension[0].valueCodeableConcept.coding[0]: Unrecognized property 'slice'"));
+  assert.ok(unknownAt(await run(r)).includes("Observation.extension[0].value[x].coding[0]: Unrecognized property 'slice'"));
   const p = obs();
   p.code.coding[0]._code = { slice: "x" };
   assert.deepEqual(unknownAt(await run(p)), ["Observation.code.coding[0].code: Unrecognized property 'slice'"]);

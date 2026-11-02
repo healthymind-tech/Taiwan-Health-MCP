@@ -526,6 +526,25 @@ test("checkExtensionContext: the element list of an embedded resource has the li
   assert.ok(m.includes("(this element is [Organization, Patient.contained, Patient.contained/*Organization/k*/];"), m);
 });
 
+test("wrong choice: a value of another type, validated as the extension's (jar on core extensions)", async () => {
+  const E = "http://example.org/fhir/StructureDefinition/wc-string";
+  EXTRA[E] = sd(E, "Extension", "complex-type", [
+    el("Extension", 0, "*", []),
+    el("Extension.url", 1, "1", ["uri"], { fixedUri: E }),
+    el("Extension.value[x]", 1, "1", ["string"]),
+  ], { baseDefinition: CORE + "Extension", derivation: "constraint", context: [{ type: "element", expression: "Element" }] });
+  const on = async (v: Json) => errs(await run({ resourceType: "Patient", extension: [{ url: E, ...v }] }));
+  // no parser error: the base allows the type; the children are walked against `string`
+  const cc = await on({ valueCodeableConcept: { text: "x" } });
+  assert.ok(cc.some(([, m]) => m.startsWith("This element is not allowed by the profile " + CORE + "string")), JSON.stringify(cc));
+  assert.ok(!cc.some(([, m]) => m.startsWith("This property must be a simple value")), JSON.stringify(cc));
+  // a complex type written as a primitive is no element: nothing is there for the extension
+  const q = await on({ valueQuantity: 3 });
+  assert.ok(q.some(([, m]) => m.startsWith("The property valueQuantity must be an Object, not a Primitive property (at ")), JSON.stringify(q));
+  assert.ok(q.some(([, m]) => m === `The Extension '${E}' definition is for a simple extension, so it must contain a value`), JSON.stringify(q));
+  assert.ok(!q.some(([, m]) => m.includes("definition allows for the types")), JSON.stringify(q));
+});
+
 test("F10 invariants with memberOf() / conformsTo() are evaluated (FHIRPathEngine.funcMemberOf, funcConformsTo)", async () => {
   const NEED = "http://example.org/fhir/StructureDefinition/pat-need-birth";
   EXTRA[NEED] = sd(NEED, "Patient", "resource", [

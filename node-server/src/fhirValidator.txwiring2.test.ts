@@ -289,6 +289,7 @@ test("a value of another type on a bound primitive, coding as an object, an empt
   const a: Issue[] = [];
   await v.checkBinding({ path: "Extension.value[x]", binding: { strength: "required", valueSet: "http://x/vs" } }, { start: "2020" }, "code", { path: "X.valuePeriod", value: {}, profileType: true }, a, null);
   assert.equal(a[0].message, "No code provided, and a code is required from the value set");
+  await v.complexAsPrimitive({ start: "2020" }, { path: "X.valuePeriod", value: {}, profileType: true, actualType: "Period" }, "code", a);
   assert.ok(a[1].path === "X.valuePeriod.start" && a[1].message.startsWith("This element is not allowed by the profile http://hl7.org/fhir/StructureDefinition/code"), JSON.stringify(a));
   const c: Issue[] = [];
   await v.checkCoding({ system: "", code: "a" }, { path: "X.sopClass" }, c);
