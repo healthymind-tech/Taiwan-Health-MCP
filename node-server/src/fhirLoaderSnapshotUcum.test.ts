@@ -12,7 +12,7 @@ import { checkUcumCode, ucumCanonicalForm, ucumDisplayIssue, ucumDisplays } from
 import { evaluateConstraint, evaluateExpression, type FhirPathEnv } from "./fhirPath.js";
 import { setNumberText } from "./fhirJsonLiterals.js";
 import { LookupSession, sessionResolver } from "./fhirValidatorSession.js";
-import { completenessOf, InstanceValidator, type Issue } from "./fhirValidator.js";
+import { completenessOf, InstanceValidator, withChoiceLiterals, type Issue } from "./fhirValidator.js";
 import { CORE, FakeResolver, SDS, el, sd } from "./fhirTestKit.test.js";
 
 type Json = Record<string, any>;
@@ -621,4 +621,13 @@ test("StructureDefinitionHacker.fixSD: vs-1 of vitalsigns and its direct childre
   assert.equal(child.snapshot.element[0].constraint[0].expression, fixed);
   const other = fixPackageResource(sdOf("http://ex.org/x", `${CORE}bodyweight`), "x.y");
   assert.notEqual(other.snapshot.element[0].constraint[0].expression, fixed, "only direct children");
+});
+
+test("NodeStack literal path: a choice element on the way is <stem>.ofType(<type>), indexes kept", () => {
+  assert.equal(
+    withChoiceLiterals("Bundle.entry[19].resource.ingredient[0].substanceCodeableConcept.coding[0]", "Bundle.entry.resource.ingredient.substance.ofType(CodeableConcept).coding"),
+    "Bundle.entry[19].resource.ingredient[0].substance.ofType(CodeableConcept).coding[0]",
+  );
+  assert.equal(withChoiceLiterals("Patient.name[0]", "Patient.name"), "Patient.name[0]");
+  assert.equal(withChoiceLiterals("Patient.name[0]", undefined), "Patient.name[0]");
 });

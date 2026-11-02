@@ -1495,6 +1495,25 @@ function isConstraintDefinition(s: SdIndex): boolean {
   return s.sd?.derivation === "constraint";
 }
 
+/** The literal path of an item with its indexes: the choice elements on the way are `<stem>.ofType(<type>)` (NodeStack). */
+export function withChoiceLiterals(path: string, lit: string | undefined): string {
+  if (!lit?.includes(".ofType(")) return path;
+  const segments = path.split(".");
+  const parts = lit.split(/\.(?![^()]*\))/u);
+  const out: string[] = [];
+  let j = parts.length - 1;
+  for (let i = segments.length - 1; i >= 0; i--) {
+    if (parts[j]?.startsWith("ofType(")) {
+      out.unshift(`${parts[j - 1]}.${parts[j]}`);
+      j -= 2;
+    } else {
+      out.unshift(segments[i]);
+      j--;
+    }
+  }
+  return out.join(".");
+}
+
 function stripIndexes(path: string): string {
   return path.replace(/\[[^\]]*\]/g, "");
 }
@@ -1635,6 +1654,8 @@ function isHl7ValueSetUrl(url: string): boolean {
 
 export class InstanceValidator {
   private sdCache = new Map<string, Promise<SdIndex | null>>();
+  /** Resource → profiles whose pass began as a sub-validation. */
+  private firstAsSub = new WeakMap<object, Set<string>>();
   private conformCache = new WeakMap<object, Map<string, Promise<Issue[]>>>();
   private inProgress = new WeakMap<object, Set<string>>();
   private viewSource = new WeakMap<object, object>();
@@ -3187,7 +3208,7 @@ export class InstanceValidator {
   }
 
   /** Issues of `rctx.resource` against one StructureDefinition (memoised per resource object). */
-  private conformance(rctx: ResourceCtx, url: string, path: string, depth: number): Promise<Issue[]> {
+  private conformance(rctx: ResourceCtx, url: string, path: string, depth: number, subValidation = false): Promise<Issue[]> {
     let byUrl = this.conformCache.get(rctx.resource);
     if (!byUrl) {
       byUrl = new Map();
@@ -3201,6 +3222,7 @@ export class InstanceValidator {
       return Promise.resolve([]);
     }
     if (!p) {
+      if (subValidation) (this.firstAsSub.get(rctx.resource) ?? this.firstAsSub.set(rctx.resource, new Set()).get(rctx.resource)!).add(url);
       let running = this.inProgress.get(element);
       if (!running) {
         running = new Set();
@@ -3260,7 +3282,9 @@ export class InstanceValidator {
         let message = i.message.includes(ROOT_TOKEN) ? i.message.split(ROOT_TOKEN).join(path) : i.message;
         // validateContains l. 7516: stack.pathComment(type/id) on an embedded resource
         const r = rctx.resource;
-        const comment = path.includes(".") ? `/*${this.typeOfResource(r)}/${typeof r.id === "string" ? r.id : "null"}*/` : "";
+        // startInner hands back the first pass's messages (l. 7153-7165): a pass that began as a sub-validation
+        // (conformsToProfile, IV:431) ran on a new NodeStack, without that comment
+        const comment = path.includes(".") && !this.firstAsSub.get(rctx.resource)?.has(url) ? `/*${this.typeOfResource(r)}/${typeof r.id === "string" ? r.id : "null"}*/` : "";
         if (message.includes(PLIST_TOKEN)) message = expandPlist(message, path, comment);
         if (message.includes(LITERAL_ROOT_TOKEN)) {
           const outer = path.startsWith(ROOT_TOKEN) ? LITERAL_ROOT_TOKEN + path.slice(ROOT_TOKEN.length) : path;
@@ -4465,12 +4489,12 @@ export class InstanceValidator {
         if (!r.match) {
           // NodeStack literal path: a choice element is `<stem>.ofType(<type>)`
           const literal = (x: string): string => (x.startsWith(ROOT_TOKEN) ? LITERAL_ROOT_TOKEN + x.slice(ROOT_TOKEN.length) : x);
-          const lit = literal(String(base.path).endsWith("[x]") && it.path.endsWith(`.${it.key}`) ? `${it.path.slice(0, -it.key.length - 1)}.${String(base.path).split(".").pop()!.slice(0, -3)}.ofType(${it.actualType ?? type})` : it.path);
+          const lit = literal(String(base.path).endsWith("[x]") && it.path.endsWith(`.${it.key}`) ? `${withChoiceLiterals(it.path.slice(0, -it.key.length - 1), it.lit?.replace(/\.[^.]*(\.ofType\([^)]*\))?$/u, ""))}.${String(base.path).split(".").pop()!.slice(0, -3)}.ofType(${it.actualType ?? type})` : withChoiceLiterals(it.path, it.lit));
           sliceInfo.push(`${lit}: Does not match slice '${sliceNameOf(s)}' (discriminator: ${groupedExpression(r.expression)})`);
           // IV:6518-6527: a DETAILS_FOR__MATCHING_AGAINST_PROFILE_ hint per failed conformsTo() profile (HashMap order)
           for (const u of javaHashOrder(r.notes ?? [])) {
             const sdt = await this.sdx(u);
-            sliceInfo.push(`${lit}: Details for ${literal(parent.path)} matching against profile ${sdt ? this.versionedUrl(sdt) : u}`);
+            sliceInfo.push(`${lit}: Details for ${literal(withChoiceLiterals(parent.path, parent.lit))} matching against profile ${sdt ? this.versionedUrl(sdt) : u}`);
           }
           continue;
         }
@@ -4997,14 +5021,14 @@ export class InstanceValidator {
     // start (IV:6905-7001) never stops at a failure: `ok = startInner(…) && ok` for defn, its dependencies and every
     // meta.profile. Order matters: what each of them visits fills the tracker and validator_contained_Id for later ones
     const passes = async (u: string): Promise<boolean> => {
-      let ok = isValid((await this.conformance(ctx, u, path, depth)).filter(counted));
+      let ok = isValid((await this.conformance(ctx, u, path, depth, !forReference)).filter(counted));
       // start, IV:6917-6937 / 6981-7001: the profile's imposeProfile dependencies (one level); an unresolved one is a warning
       const sdx = await this.sdx(u);
       for (const x of Array.isArray(sdx?.sd.extension) ? sdx!.sd.extension : []) {
         if (!isObject(x) || x.url !== IMPOSE_PROFILE_EXT) continue;
         const ip = typeof x.valueCanonical === "string" ? x.valueCanonical : typeof x.valueUri === "string" ? x.valueUri : null;
         if (!ip || !(await this.sdx(ip))) continue;
-        if (!isValid((await this.conformance(ctx, ip, path, depth)).filter(counted))) ok = false;
+        if (!isValid((await this.conformance(ctx, ip, path, depth, !forReference)).filter(counted))) ok = false;
       }
       return ok;
     };
