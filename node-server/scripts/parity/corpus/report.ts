@@ -267,6 +267,8 @@ interface ReleaseRow {
   releasableWithTx: number;
   blockedTsErrors: number;
   blockedToolBoundary: number;
+  /** TS 0 errors, fully checked, stopped by extended_findings (errors, or an incomplete extended pass). */
+  blockedExtended: number;
   blocked: Record<UncheckedClass, number>;
   unsafe: number;
 }
@@ -279,12 +281,16 @@ for (const it of items) {
   const off: ErrKey[] = it.officialErrors ?? [];
   const ours: ErrKey[] = it.ourErrors ?? [];
   {
-    const row = releaseRows.get(ig) ?? { valid: 0, releasable: 0, releasableWithTx: 0, blockedTsErrors: 0, blockedToolBoundary: 0, blocked: { other: 0, dependency: 0, tx: 0, local: 0 }, unsafe: 0 };
+    const row = releaseRows.get(ig) ?? { valid: 0, releasable: 0, releasableWithTx: 0, blockedTsErrors: 0, blockedToolBoundary: 0, blockedExtended: 0, blocked: { other: 0, dependency: 0, tx: 0, local: 0 }, unsafe: 0 };
     releaseRows.set(ig, row);
     const ran = !!it.comparison && it.status !== "crash";
     const boundaryItem = isToolBoundary(it);
     const incomplete = (it.flags ?? []).includes("not-checked-fully");
-    const wouldRelease = ran && !boundaryItem && !ours.length && !incomplete;
+    const parityClean = ran && !boundaryItem && !ours.length && !incomplete;
+    // ROUND 9: release = parity 0 errors + checked_fully + extended 0 errors (`unverifiable` never blocks). The extended
+    // layer is not compared with the jar: results keep it in `extended`, outside the issues the comparison reads
+    const extendedBlocks = (it.extended?.errors ?? 0) > 0 || !!it.extended?.incomplete;
+    const wouldRelease = parityClean && !extendedBlocks;
     if (wouldRelease && (off.length || isOfficialCrash(it))) {
       row.unsafe++;
       unsafeReleases.push(it);
@@ -296,6 +302,7 @@ for (const it of items) {
         row.releasableWithTx++;
       } else if (boundaryItem || !ran) row.blockedToolBoundary++;
       else if (ours.length) row.blockedTsErrors++;
+      else if (parityClean) row.blockedExtended++;
       else {
         const cls = new Set(classifyUnchecked(it).map(([c]) => c));
         row.blocked[UNCHECKED_ORDER.find((c) => cls.has(c))!]++;
@@ -426,16 +433,17 @@ lines.push(
   "- **jar valid**: 0 official errors; official-crash items are excluded.",
   "- **releasable without outbound (measured)**: of those, TS 0 errors and checked_fully=true. The corpus TS run has no live tx, so this is a direct measurement.",
   "- **releasable with outbound (ESTIMATE, not run)**: the measured column plus items with TS 0 errors whose only undecided reasons are class tx. It assumes tx decides each of them and finds no error.",
+  "- **blocked by extended**: parity clean (TS 0 errors, checked_fully=true) but extended_findings has errors or is incomplete. Extended findings are never compared with the jar; `unverifiable` does not block. Result files without `extended` (before ROUND 9) show 0.",
   "- **blocked columns** split the jar-valid items that do not release without outbound; an item counts under its worst reason (other > dependency > tx > local).",
   "- **unsafe release**: TS 0 errors and checked_fully=true, but the jar judged the item invalid or crashed on it. Must be 0.",
   "",
 );
-lines.push("| IG | jar valid | releasable, no outbound (measured) | % | releasable, outbound (estimate) | % | blocked: TS errors | blocked: other | blocked: dependency | blocked: tx | blocked: local | blocked: tool-boundary | unsafe release |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+lines.push("| IG | jar valid | releasable, no outbound (measured) | % | releasable, outbound (estimate) | % | blocked: TS errors | blocked: other | blocked: dependency | blocked: tx | blocked: local | blocked: tool-boundary | blocked by extended | unsafe release |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
 const rr = [...releaseRows].sort((a, b) => a[0].localeCompare(b[0]));
-const rrLine = (ig: string, r: ReleaseRow): string => `| ${ig} | ${r.valid} | ${r.releasable} | ${pct(r.releasable, r.valid)} | ${r.releasableWithTx} | ${pct(r.releasableWithTx, r.valid)} | ${r.blockedTsErrors} | ${r.blocked.other} | ${r.blocked.dependency} | ${r.blocked.tx} | ${r.blocked.local} | ${r.blockedToolBoundary} | ${r.unsafe} |`;
+const rrLine = (ig: string, r: ReleaseRow): string => `| ${ig} | ${r.valid} | ${r.releasable} | ${pct(r.releasable, r.valid)} | ${r.releasableWithTx} | ${pct(r.releasableWithTx, r.valid)} | ${r.blockedTsErrors} | ${r.blocked.other} | ${r.blocked.dependency} | ${r.blocked.tx} | ${r.blocked.local} | ${r.blockedToolBoundary} | ${r.blockedExtended} | ${r.unsafe} |`;
 for (const [ig, r] of rr) lines.push(rrLine(ig, r));
 const rrSum = (f: (r: ReleaseRow) => number): number => rr.reduce((a, [, r]) => a + f(r), 0);
-lines.push(rrLine("**all**", { valid: rrSum((r) => r.valid), releasable: rrSum((r) => r.releasable), releasableWithTx: rrSum((r) => r.releasableWithTx), blockedTsErrors: rrSum((r) => r.blockedTsErrors), blockedToolBoundary: rrSum((r) => r.blockedToolBoundary), blocked: { other: rrSum((r) => r.blocked.other), dependency: rrSum((r) => r.blocked.dependency), tx: rrSum((r) => r.blocked.tx), local: rrSum((r) => r.blocked.local) }, unsafe: rrSum((r) => r.unsafe) }));
+lines.push(rrLine("**all**", { valid: rrSum((r) => r.valid), releasable: rrSum((r) => r.releasable), releasableWithTx: rrSum((r) => r.releasableWithTx), blockedTsErrors: rrSum((r) => r.blockedTsErrors), blockedToolBoundary: rrSum((r) => r.blockedToolBoundary), blockedExtended: rrSum((r) => r.blockedExtended), blocked: { other: rrSum((r) => r.blocked.other), dependency: rrSum((r) => r.blocked.dependency), tx: rrSum((r) => r.blocked.tx), local: rrSum((r) => r.blocked.local) }, unsafe: rrSum((r) => r.unsafe) }));
 lines.push("", `Unsafe releases (${unsafeReleases.length}):`, "");
 for (const it of unsafeReleases) lines.push(`- \`${it.ig}/${it.id}\` (${it.family}, ${String(it.mutation).slice(0, 60)})${isOfficialCrash(it) ? ": jar crashed" : `: jar ${(it.officialErrors ?? []).length} errors, first: ${String(it.officialErrors?.[0]?.msg ?? "").slice(0, 110)}`}`);
 lines.push("");
