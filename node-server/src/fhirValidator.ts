@@ -3135,7 +3135,9 @@ export class InstanceValidator {
         out[k] = v;
         continue;
       }
-      const child = async (x: unknown): Promise<unknown> => (isObject(x) && typeof x.resourceType !== "string" ? this.constraintView(x, owner, d, types[0]) : x);
+      // a value of a type the element does not have is its own type's element, not one of the profile's inline children
+      const inline = !choiceType || ((d.type || []) as any[]).some((t) => typeCodeOf(t) === choiceType);
+      const child = async (x: unknown): Promise<unknown> => (isObject(x) && typeof x.resourceType !== "string" ? this.constraintView(x, owner, inline ? d : { id: "", path: "" }, types[0]) : x);
       const y = Array.isArray(v) ? await Promise.all(v.map(child)) : await child(v);
       if (Array.isArray(v) ? (y as unknown[]).some((e, i) => e !== v[i]) : y !== v) changed = true;
       out[k] = y;
@@ -7514,7 +7516,7 @@ export class InstanceValidator {
     };
     env.memberOf = (value, url) => ask("member", value, url, () => this.hostMemberOf(value, url));
     env.conformsTo = (value, url) => ask("conforms", value, url, () => this.hostConformsTo(value, url, item, rctx));
-    const base = fhirPathBase(String(el.path || sdx.type), typeCode);
+    const base = fhirPathBase(String(el.path || sdx.type), item.actualType && isPrimitive(typeCode) ? item.actualType : typeCode);
     // the element model: a resource's dropped properties are not there for FHIRPath (bdl-9 on an `identifier` array …)
     let constraintNode = item.primitiveValue !== undefined ? { value: item.primitiveValue } : this.fhirPathView(item.value);
     if (item.value === rctx.resource && isObject(item.value) && typeof item.value.resourceType === "string") {
