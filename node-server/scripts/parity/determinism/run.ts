@@ -87,6 +87,9 @@ function corpusItems(): Item[] {
 
 type Validate = (item: Item) => Promise<string>;
 
+/** DB round-trips so far (db engine): shows that a tiny-quota mode really goes back to the database. */
+let queries: () => number = () => 0;
+
 /** Canonical text of one result: the whole tool result. */
 function canonical(env: Json): string {
   return JSON.stringify(env);
@@ -94,7 +97,8 @@ function canonical(env: Json): string {
 
 async function dbEngine(): Promise<{ validate: Validate; close: () => Promise<void> }> {
   process.env.OFFICIAL_VALIDATOR_URLS = ""; // the built-in validator is the judge
-  const { closePool, initPool } = await import("../../../src/db.js");
+  const { closePool, initPool, queryCount } = await import("../../../src/db.js");
+  queries = queryCount;
   const { FHIRIGService } = await import("../../../src/fhirIgService.js");
   initPool({ maxSize: 4 });
   const svc = new FHIRIGService(null);
@@ -204,6 +208,7 @@ async function determinism(items: Item[], validate: Validate): Promise<{ rows: R
     const width = mode === "concurrent4" ? 4 : mode === "expired" ? 2 : 1;
     for (const item of items) {
       const t0 = performance.now();
+      const q0 = queries();
       const seen = new Set<string>();
       const texts = await pool(Array.from({ length: runs }, () => () => validate(item)), width);
       for (const text of texts) {
@@ -211,6 +216,7 @@ async function determinism(items: Item[], validate: Validate): Promise<{ rows: R
         check(item, mode, text);
       }
       record(item.id, mode, runs, seen, t0);
+      console.log(`  ${queries() - q0} queries`);
     }
     setCacheLimits({});
   }
