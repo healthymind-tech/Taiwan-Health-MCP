@@ -72,7 +72,8 @@ export interface Issue {
    * `code`: a code / binding membership local terminology cannot decide (canonical = ValueSet or system);
    * `slice`: slice membership / cardinality that could not be decided (canonical = profile#element id).
    */
-  unchecked?: { kind: "profile" | "valueSet" | "code" | "slice" | "invariant"; canonical: string };
+  /** `causes`: what could not be decided, as `system|valueSet` (a slicing or a binding names the terminology behind it). */
+  unchecked?: { kind: "profile" | "valueSet" | "code" | "slice" | "invariant"; canonical: string; causes?: string[] };
 }
 
 export function issue(severity: string, path: string, code: string, message: string, extra: Partial<Issue> = {}): Record<string, any> {
@@ -106,6 +107,8 @@ export interface Completeness {
   slices_unchecked?: string[];
   /** (parity v3, REVIEW F5) Invariants (profile#key) that could not be evaluated locally. */
   invariants_unchecked?: string[];
+  /** What the undecided codes and slices depended on: `system|valueSet` (an empty system: a bare code). */
+  undecided_causes?: string[];
 }
 
 /** Issue code of the "validation incomplete: lookups failed" error (v8). */
@@ -147,6 +150,7 @@ export function completenessOf(issues: Array<Record<string, any>>, depsMissing: 
   const codes = new Set<string>();
   const slices = new Set<string>();
   const invariants = new Set<string>();
+  const causes = new Set<string>();
   let lookupsFailed = 0;
   for (const i of issues) {
     if (i && i.code === LOOKUP_FAILURE_CODE) {
@@ -155,6 +159,7 @@ export function completenessOf(issues: Array<Record<string, any>>, depsMissing: 
     }
     const u = i && i.unchecked;
     if (!u || typeof u.canonical !== "string") continue;
+    for (const c of Array.isArray(u.causes) ? u.causes : []) causes.add(String(c));
     (u.kind === "valueSet" ? valueSets : u.kind === "code" ? codes : u.kind === "slice" ? slices : u.kind === "invariant" ? invariants : profiles).add(u.canonical);
   }
   return {
@@ -165,6 +170,7 @@ export function completenessOf(issues: Array<Record<string, any>>, depsMissing: 
     ...(codes.size ? { codes_unchecked: [...codes] } : {}),
     ...(slices.size ? { slices_unchecked: [...slices] } : {}),
     ...(invariants.size ? { invariants_unchecked: [...invariants] } : {}),
+    ...(causes.size ? { undecided_causes: [...causes].sort() } : {}),
   };
 }
 
@@ -1448,6 +1454,8 @@ export class InstanceValidator {
   /** (v13) Any IG ValueSet canonical written as a Coding.system (issues carry VS_SYSTEM) — decided at the end of validate(). */
   private pendingVsSystems = false;
   private memberCache = new Map<string, Promise<boolean | undefined>>();
+  /** While a slicing is evaluated: the `system|valueSet` pairs its discriminators could not decide. */
+  private undecidedCauses: Set<string> | null = null;
   private codeCache = new Map<string, Promise<CodeCheck>>();
   /** Values that matched a slice (their url / discriminators are known to the slice definition). */
   private sliceMatched = new WeakSet<object>();
@@ -3756,6 +3764,7 @@ export class InstanceValidator {
     for (const s of grp.slices) counts.set(s, 0);
     let lastSlice = -1;
 
+    const groupCauses = new Set<string>();
     for (let idx = 0; idx < typedItems.length; idx++) {
       const { item: it, type } = typedItems[idx];
       let matched: Record<string, any> | null = null;
@@ -3764,9 +3773,12 @@ export class InstanceValidator {
       const sliceInfo: string[] = [];
       for (const s of grp.slices) {
         let r: SliceMatch;
+        const outerCauses = this.undecidedCauses;
+        this.undecidedCauses = groupCauses;
         try {
           r = await this.sliceMatches(sdx, base, grp.slices, s, discs, it, type, idx, rctx, depth);
         } catch (e) {
+          this.undecidedCauses = outerCauses;
           if (!(e instanceof SlicingDefinitionError)) throw e;
           // matchSlice: FHIRException → SLICING_CANNOT_BE_EVALUATED, unsupportedSlicing
           issues.push({ severity: "error", path: it.path, code: "processing", message: `Slicing cannot be evaluated: ${e.message}`, element: s.id, profile: sdx.url });
@@ -3774,6 +3786,7 @@ export class InstanceValidator {
           failedHere = true;
           continue;
         }
+        this.undecidedCauses = outerCauses;
         if (r.match === undefined) {
           indeterminate.add(s);
           undecided = true;
@@ -3844,7 +3857,7 @@ export class InstanceValidator {
               path: it.path,
               code: "informational",
               message: `Slice membership could not be decided with local terminology (slicing is CLOSED in ${sdx.url})`,
-              unchecked: { kind: "slice", canonical: `${sdx.url}#${base.id ?? base.path}` },
+              unchecked: { kind: "slice", canonical: `${sdx.url}#${base.id ?? base.path}`, causes: [...groupCauses] },
             });
           } else if (undecided) {
             // REVIEW F5: the element may belong to a slice whose constraints were not applied
@@ -3853,7 +3866,7 @@ export class InstanceValidator {
               path: it.path,
               code: "informational",
               message: `Slice membership could not be decided with local terminology (${sdx.url}#${base.id ?? base.path})`,
-              unchecked: { kind: "slice", canonical: `${sdx.url}#${base.id ?? base.path}` },
+              unchecked: { kind: "slice", canonical: `${sdx.url}#${base.id ?? base.path}`, causes: [...groupCauses] },
             });
           } else if (rules === "closed") {
             issues.push({
@@ -3893,7 +3906,7 @@ export class InstanceValidator {
               path: parent.path,
               code: "informational",
               message: `Cardinality of slice ${String(s.id ?? s.path)} could not be checked: slice membership undecidable with local terminology (from ${vurl})`,
-              unchecked: { kind: "slice", canonical: `${sdx.url}#${String(s.id ?? s.path)}` },
+              unchecked: { kind: "slice", canonical: `${sdx.url}#${String(s.id ?? s.path)}`, causes: [...groupCauses] },
             });
           }
           continue;
@@ -4404,6 +4417,7 @@ export class InstanceValidator {
           continue;
         }
         const m = await this.member(valueSet, system, code);
+        if (m === undefined) this.undecidedCauses?.add(`${system ?? ""}|${valueSet}`);
         if (m === true) {
           // FHIRPathEngine.opMemberOf (services, tag 7.0.1:2792): validateCode(…).isOk() — a wrong display (error) of
           // the member coding makes it not ok (REVIEW_port_1 F9; the operator form is "any value", not size == 1)
@@ -5346,7 +5360,7 @@ export class InstanceValidator {
         path: item.path,
         code: "code-invalid",
         message: `The code(s) ${shown} could not be confirmed as members of the value set ${label} (not fully expandable locally)`,
-        unchecked: { kind: "code", canonical: url },
+        unchecked: { kind: "code", canonical: url, causes: [...new Set(codings.map(([s]) => `${s ?? ""}|${url}`))] },
       });
       return;
     }

@@ -2478,6 +2478,12 @@ export class FHIRIGService {
       checked_fully: core.checked_fully,
       profiles_unchecked: core.profiles_unchecked,
       valuesets_unchecked: core.valuesets_unchecked,
+      // the reasons checked_fully is false, as fhir_validate_resource reports them
+      ...(core.codes_unchecked ? { codes_unchecked: core.codes_unchecked } : {}),
+      ...(core.slices_unchecked ? { slices_unchecked: core.slices_unchecked } : {}),
+      ...(core.invariants_unchecked ? { invariants_unchecked: core.invariants_unchecked } : {}),
+      ...(core.lookups_failed ? { lookups_failed: core.lookups_failed } : {}),
+      ...(core.undecided_causes ? { undecided_causes: core.undecided_causes } : {}),
       ...(core.official_verdict !== undefined ? { official_verdict: core.official_verdict } : {}),
       ...(core.fallback_reason ? { fallback_reason: core.fallback_reason } : {}),
       ...(core.unverified ? { unverified: core.unverified } : {}),
