@@ -1520,7 +1520,7 @@ export class InstanceValidator {
     if (!isObject(resource0) || typeof resource0.resourceType !== "string") {
       return [{ severity: "fatal", path: "", code: "structure", message: "resource must be a JSON object with a resourceType" }];
     }
-    const resource = dropBadPrimitiveForks(resource0, resource0.resourceType, issues) as Record<string, any>;
+    const resource = await this.dropBadPrimitiveValues(dropBadPrimitiveForks(resource0, resource0.resourceType, issues), resource0.resourceType, issues, 0);
     const bundle = resource.resourceType === "Bundle" ? this.bundleCtx(resource) : null;
     const rctx: ResourceCtx = { resource, container: null, root: resource, bundle, entry: null };
     // `|version` is kept: HL7 resolves a versioned canonical to that version only.
@@ -5967,6 +5967,90 @@ export class InstanceValidator {
    * value of the wrong JSON shape (array for a single element, object for a
    * primitive) nor into a second value of the same choice element.
    */
+  /**
+   * JsonParser.parseChildPrimitiveInstance (JsonParser.java:683-685): a non-repeating primitive whose JSON value is an
+   * object or an array logs THIS_PROPERTY_MUST_BE_AN_SIMPLE_VALUE_NOT_ at the element's path (`value[x]` for a choice)
+   * and creates no element — dropped here before validation, copy-on-write, walking the base definitions.
+   */
+  private async dropBadPrimitiveValues(resource: Record<string, any>, path: string, issues: Issue[], depth: number): Promise<Record<string, any>> {
+    if (depth > MAX_DEPTH || typeof resource.resourceType !== "string") return resource;
+    const sdx = await this.sdx(CORE + resource.resourceType);
+    return sdx ? this.dropBadPrimitivesIn(sdx, sdx.root, resource, path, issues, depth) : resource;
+  }
+
+  private async dropBadPrimitivesIn(sdx: SdIndex, el: Record<string, any>, node: Record<string, any>, path: string, issues: Issue[], depth: number): Promise<Record<string, any>> {
+    const groups = sdx.children(el);
+    if (depth > MAX_DEPTH || !groups || groups.size === 0) return node;
+    let out: Record<string, any> | null = null;
+    for (const key of Object.keys(node)) {
+      if (key.startsWith("_") || key === "resourceType") continue;
+      let def: Record<string, any> | null = null;
+      let typeCode = "";
+      let propName = key;
+      const direct = groups.get(key);
+      if (direct && !key.endsWith("[x]")) {
+        def = direct.base || direct.slices[0] || null;
+        const types: string[] = (def?.type || []).map(typeCodeOf);
+        typeCode = types.length === 1 ? types[0] : types[0] || "BackboneElement";
+      } else {
+        for (const g of groups.values()) {
+          if (!g.name.endsWith("[x]")) continue;
+          const stem = g.name.slice(0, -3);
+          if (!(key.startsWith(stem) && key.length > stem.length && /[A-Z]/.test(key[stem.length]))) continue;
+          const d = g.base || g.slices[0];
+          const suffix = key.slice(stem.length);
+          const t = ((d?.type || []) as any[]).map(typeCodeOf).find((a: string) => a[0].toUpperCase() + a.slice(1) === suffix);
+          if (d && t) {
+            def = d;
+            typeCode = t;
+            propName = g.name;
+          }
+          break;
+        }
+      }
+      if (!def) continue;
+      const raw = node[key];
+      const baseMax = String((def.base && def.base.max) ?? def.max ?? "*");
+      const expectArray = baseMax !== "1" && baseMax !== "0";
+      if (isPrimitive(typeCode)) {
+        if (!expectArray && raw !== null && typeof raw === "object") {
+          const at = `${path}.${propName}`;
+          issues.push({ severity: "error", path: at, code: "structure", message: `This property must be a simple value, not ${describeJson(raw)} (${key} at ${at})` });
+          out ??= { ...node };
+          delete out[key];
+          delete out[`_${key}`];
+        }
+        continue;
+      }
+      if (expectArray !== Array.isArray(raw)) continue;
+      const one = async (v: any, p: string): Promise<any> => {
+        if (!isObject(v)) return v;
+        if (typeCode === "Resource" || typeCode === "DomainResource" || (typeof v.resourceType === "string" && !COMPLEX_TYPES.includes(typeCode) && !(await this.isDatatype(typeCode)))) {
+          return this.dropBadPrimitiveValues(v, p, issues, depth + 1);
+        }
+        if (def!.contentReference) {
+          const target = sdx.byId.get(String(def!.contentReference).replace(/^.*#/, ""));
+          return target ? this.dropBadPrimitivesIn(sdx, target, v, p, issues, depth + 1) : v;
+        }
+        if (sdx.hasChildren(def!)) return this.dropBadPrimitivesIn(sdx, def!, v, p, issues, depth + 1);
+        const tsdx = await this.sdx(CORE + typeCode);
+        return tsdx ? this.dropBadPrimitivesIn(tsdx, tsdx.root, v, p, issues, depth + 1) : v;
+      };
+      if (Array.isArray(raw)) {
+        let arr: any[] | null = null;
+        for (let i = 0; i < raw.length; i++) {
+          const r = await one(raw[i], `${path}.${key}[${i}]`);
+          if (r !== raw[i]) (arr ??= [...raw])[i] = r;
+        }
+        if (arr) (out ??= { ...node })[key] = arr;
+      } else {
+        const r = await one(raw, `${path}.${key}`);
+        if (r !== raw) (out ??= { ...node })[key] = r;
+      }
+    }
+    return out ?? node;
+  }
+
   private async structuralPass(resource: Record<string, any>, path: string, issues: Issue[], depth: number): Promise<void> {
     if (depth > MAX_DEPTH || typeof resource.resourceType !== "string") return;
     const sdx = await this.sdx(CORE + resource.resourceType);

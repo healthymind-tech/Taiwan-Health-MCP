@@ -382,3 +382,11 @@ test("JsonParser.java:682-688: a primitive with a non-object _x is not an elemen
   assert.ok(issues.some((i) => /Patient\.identifier\.system: minimum required = 1, but only found 0/.test(i.message)), JSON.stringify(issues));
   assert.equal(res.identifier[0].system, "http://ex.org", "the caller's object is not changed");
 });
+
+test("JsonParser.java:683-685: a non-repeating primitive holding an object is not an element", async () => {
+  const P = "http://example.tw/fhir/StructureDefinition/pat";
+  const res = { resourceType: "Patient", meta: { profile: [P] }, identifier: [{ system: { a: 1 }, value: "A123456789" }] };
+  const issues = errors(await new InstanceValidator(new FakeResolver()).validate(res));
+  assert.equal(issues.filter((i) => /^This property must be a simple value, not an Object \(system at Patient\.identifier\[0\]\.system\)$/.test(i.message)).length, 1, JSON.stringify(issues));
+  assert.ok(issues.some((i) => /Patient\.identifier\.system: minimum required = 1, but only found 0/.test(i.message)), JSON.stringify(issues));
+});
