@@ -11,6 +11,7 @@ import { generateSnapshotAsync, makeBaseDefinition, SnapshotGenerator } from "./
 import { checkUcumCode, ucumCanonicalForm, ucumDisplayIssue, ucumDisplays } from "./fhirUcum.js";
 import { evaluateConstraint, evaluateExpression, type FhirPathEnv } from "./fhirPath.js";
 import { setNumberText } from "./fhirJsonLiterals.js";
+import { LookupSession, sessionResolver } from "./fhirValidatorSession.js";
 import { completenessOf, InstanceValidator, type Issue } from "./fhirValidator.js";
 import { CORE, FakeResolver, SDS, el, sd } from "./fhirTestKit.test.js";
 
@@ -588,4 +589,20 @@ test("FHIRPath outcomes checked on validator_cli 7.0.1 (fhirpath-jar.json)", () 
   assert.deepEqual(value("1.8 - 1.2 = 0.6"), [true]);
   assert.deepEqual(value("Patient.active.is(Boolean)"), [true]);
   assert.deepEqual(value("Patient.active.type().namespace"), ["System"]);
+});
+
+test("the session view of a resolver forwards a code system's content (ValueSetValidator filter checks need it)", async () => {
+  class R extends FakeResolver {
+    calls = 0;
+    async fetchCodeSystem(url: string): Promise<Record<string, any> | null> {
+      this.calls++;
+      return { url };
+    }
+  }
+  const inner = new R();
+  const view = sessionResolver(inner, new LookupSession());
+  assert.deepEqual(await view.fetchCodeSystem!("http://x"), { url: "http://x" });
+  await view.fetchCodeSystem!("http://x");
+  assert.equal(inner.calls, 1, "pinned for the run");
+  assert.equal(sessionResolver(new FakeResolver(), new LookupSession()).fetchCodeSystem, undefined);
 });
