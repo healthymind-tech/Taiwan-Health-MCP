@@ -280,7 +280,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.114.0 (parity v3): an invalid resource language fails every locally answered binding (INVALID_DISPLAY_NAME)
   // 1.115.0 (parity v3): a UCUM unit the grammar rejects is Unknown code on .code also when a binding checks the Quantity
   // 1.116.0 (parity v3): BCP-47 `<part> exists` filters decided from the parsed tag
-  fhir_validate_bundle: "1.116.0",
+  // 1.117.0 (parity v3): implicit LOINC answer-list ValueSets (loinc.org/vs/LL…) answered from the held LOINC release when it is the server's
+  fhir_validate_bundle: "1.117.0",
   // 1.105.0 (parity v3 round 12 / blind wave 1): findProfile(url, source) at every remaining site; a null code is no code; wildcard dependency versions resolve to the installed match; no example-URL error for a urn or a communications url.
   // 1.100.0 (parity v3): the SNOMED CT parser message follows the value set's filter (tx.fhir.org probe), not the display
   // 1.101.0 (parity v3): the fixed / pattern check repeated against the element's own definition (checkChildByDefinition l. 8173); an unpinned include's Unknown code in the version of the value set's package
@@ -387,7 +388,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.111.0 (parity v3): an invalid resource language fails every locally answered binding (INVALID_DISPLAY_NAME)
   // 1.112.0 (parity v3): a UCUM unit the grammar rejects is Unknown code on .code also when a binding checks the Quantity
   // 1.113.0 (parity v3): BCP-47 `<part> exists` filters decided from the parsed tag
-  fhir_validate_resource: "1.113.0",
+  // 1.114.0 (parity v3): implicit LOINC answer-list ValueSets (loinc.org/vs/LL…) answered from the held LOINC release when it is the server's
+  fhir_validate_resource: "1.114.0",
   // 1.102.0: validation as fhir_validate_bundle 1.105.0.
   // 1.97.0 (parity v3): the SNOMED CT parser message follows the value set's filter (tx.fhir.org probe), not the display
   // 1.98.0 (parity v3): the fixed / pattern check repeated against the element's own definition (checkChildByDefinition l. 8173); an unpinned include's Unknown code in the version of the value set's package

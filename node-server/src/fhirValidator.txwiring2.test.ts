@@ -672,3 +672,13 @@ test("BCP-47 part filters (us-core simple-language: ext-lang / script / variant 
   assert.equal(languageTagParts("en-u-ca-gregory")?.extension, true);
   assert.equal(languageTagParts("zz-not-a-tag"), null);
 });
+
+test("the implicit LOINC answer-list ValueSet: titled as tx.fhir.org names it, the answers in list order", async () => {
+  const { loincAnswerListValueSet } = await import("./fhirTerminology.js");
+  const vs = loincAnswerListValueSet("LL1971-2", [{ answer_code: "LA6668-3", display: "Pathogenic" }, { answer_code: "LA26332-9", display: null }]);
+  assert.equal(vs?.title, "LOINC Answer Codes for LL1971-2");
+  assert.equal(vs?.url, "http://loinc.org/vs/LL1971-2");
+  assert.equal(vs?.version, undefined);
+  assert.deepEqual(vs?.compose.include, [{ system: "http://loinc.org", concept: [{ code: "LA6668-3", display: "Pathogenic" }, { code: "LA26332-9" }] }]);
+  assert.equal(loincAnswerListValueSet("LL1-1", []), null);
+});

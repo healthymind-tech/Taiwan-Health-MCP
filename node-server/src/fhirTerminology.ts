@@ -26,6 +26,7 @@ import {
 
 export type { Coding, ExpandResult } from "./fhirCodeSystem.js";
 import type { Icd10WhoRow, LoincOtherRow, SnomedConceptRow, SnomedDescriptionRow, SnomedEditionInfo } from "./fhirExternalTerminology.js";
+import { LOINC_TX_VERSION } from "./fhirExternalTerminology.js";
 import { CVX_CODES } from "./fhirCvx.js";
 import { ISO3166_DISPLAY } from "./fhirIso3166.js";
 import { parseSimpleEcl, simpleEclContains } from "./fhirSimpleEcl.js";
@@ -490,9 +491,41 @@ export async function loadValueSet(url: string, pkg: PackageRow): Promise<Record
   const key = closureKey(pkg) + "|" + url.split("|")[0];
   const cached = vsCache.get(key);
   if (cached !== undefined) return cached;
-  const vs = await loadByCanonical("ValueSet", url, pkg);
+  const vs = (await loadByCanonical("ValueSet", url, pkg)) ?? (await implicitLoincAnswerList(url.split("|")[0]));
   vsCache.set(key, vs);
   return vs;
+}
+
+/** The implicit ValueSet tx.fhir.org serves for LOINC answer list `ll`, from its answers in list order; null without answers. */
+export function loincAnswerListValueSet(ll: string, rows: Array<{ answer_code: string; display: string | null }>): Record<string, any> | null {
+  if (!rows.length) return null;
+  return {
+    resourceType: "ValueSet",
+    url: `http://loinc.org/vs/${ll}`,
+    name: `LOINC_Answer_Codes_for_${ll.replace(/-/g, "_")}`,
+    title: `LOINC Answer Codes for ${ll}`,
+    status: "active",
+    compose: { include: [{ system: "http://loinc.org", concept: rows.map((r) => (r.display ? { code: r.answer_code, display: r.display } : { code: r.answer_code })) }] },
+  };
+}
+
+/**
+ * The implicit ValueSet of a LOINC answer list (http://loinc.org/vs/LL…): tx.fhir.org serves it as 'LOINC Answer Codes for
+ * <LL>' (official corpus: 1355 + 109 + … messages, no version in the reference) with the list's answers. Built from
+ * loinc.answer_list_items only when the local LOINC release is the one the terminology server uses (LOINC_TX_VERSION), so
+ * the answers are the server's; otherwise null (the ValueSet stays with the terminology server).
+ */
+async function implicitLoincAnswerList(url: string): Promise<Record<string, any> | null> {
+  const m = /^http:\/\/loinc\.org\/vs\/(LL\d+-\d)$/.exec(url);
+  if (!m) return null;
+  try {
+    if ((await loincEdition())?.version !== LOINC_TX_VERSION) return null;
+    const rows = (await query<{ answer_code: string; display: string | null }>("SELECT answer_code, display FROM loinc.answer_list_items WHERE list_id = $1 ORDER BY seq", [m[1]])).rows;
+    return loincAnswerListValueSet(m[1], rows);
+  } catch (e) {
+    if (schemaMissing(e)) return null;
+    throw e;
+  }
 }
 
 /** A permanent "this table / column is not on this database" (a migration not applied), as opposed to a transient failure. */
