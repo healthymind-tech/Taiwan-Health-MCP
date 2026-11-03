@@ -1528,6 +1528,11 @@ function withoutDroppedCodes(v: any): any {
   return Array.isArray(v.coding) ? { ...v, coding: v.coding.map(coding) } : coding(v);
 }
 
+function holdsNullObjectItem(v: unknown): boolean {
+  if (Array.isArray(v)) return (v.includes(null) && v.some(isObject)) || v.some(holdsNullObjectItem);
+  return isObject(v) && Object.values(v).some(holdsNullObjectItem);
+}
+
 /** The text JsonParser keeps for a number or boolean written where a string belongs (after "must be a string"). */
 function jsonText(v: unknown): unknown {
   return typeof v === "number" || typeof v === "boolean" ? String(v) : v;
@@ -1734,6 +1739,10 @@ export class InstanceValidator {
   /** Objects with content in the source that lost all of it in the parser (dropBadPrimitivesIn). */
   private parserEmptied = new WeakSet<object>();
   private parserEmptiedAny = false;
+  /** The instance holds a null among the objects of an array. */
+  private nullItems = false;
+  /** The requested profile was of another type: the root was not validated. */
+  private notValidated = false;
   /** > 0 while a slice discriminator's conformsTo validates a resource (its messages are discarded). */
   /** validator_contained_Id (IV:7533): the contained resources whose id has been checked in this run */
   private containedIdChecked = new WeakSet<object>();
@@ -1797,13 +1806,15 @@ export class InstanceValidator {
   }
 
   private fhirPathView(v: any): any {
-    if ((!this.unparsed.size && !this.parserEmptiedAny) || v === null || typeof v !== "object") return v;
+    if ((!this.unparsed.size && !this.parserEmptiedAny && !this.nullItems) || v === null || typeof v !== "object") return v;
     const hit = this.strippedCache.get(v);
     if (hit !== undefined) return hit;
     let out: any;
     if (Array.isArray(v)) {
-      const mapped = v.map((x) => this.fhirPathView(x));
-      out = mapped.some((x, i) => x !== v[i]) ? mapped : v;
+      // a null among objects is no element (THIS_PROPERTY_MUST_BE__NOT_); among primitives it keeps its `_x` partner's place
+      const items = v.some((x) => x === null) && v.some(isObject) ? v.filter((x) => x !== null) : v;
+      const mapped = items.map((x) => this.fhirPathView(x));
+      out = items !== v || mapped.some((x, i) => x !== v[i]) ? mapped : v;
     } else {
       let changed = false;
       const o: Record<string, any> = {};
@@ -1943,11 +1954,18 @@ export class InstanceValidator {
     this.extensionDomains = Array.isArray(opts.extensionDomains) ? opts.extensionDomains : [];
     this.referencePolicy = opts.validateReference ?? null;
     this.unparsed = unparsedResources(resource);
+    this.notValidated = false;
+    this.nullItems = holdsNullObjectItem(resource);
     this.strippedCache = new WeakMap();
     this.emptiedCache = new WeakMap();
     await this.validateResource(rctx, resource.resourceType, extra, issues, 0);
     if (bundle) await this.validateBundleRules(bundle, resource.resourceType, issues);
-    await this.structuralPass(resource, resource.resourceType, issues, 0);
+    if (this.notValidated) {
+      // the profile is for another type: the resource is not validated (checkResourceName l. 9045-9050), the parser's findings stand
+      const found: Issue[] = [];
+      await this.structuralPass(resource, resource.resourceType, found, 0);
+      issues.push(...found.filter((i) => i.message !== ELE1_MESSAGE));
+    } else await this.structuralPass(resource, resource.resourceType, issues, 0);
     await this.settleVsSystems(issues);
     return dedupe(issues);
   }
@@ -3055,6 +3073,7 @@ export class InstanceValidator {
     if (requested && requested.type !== rt && requested.type.split("/").pop() !== rt) {
       // l. 9045-9050 (checkResourceName): VALIDATION_VAL_PROFILE_WRONGTYPE — and the resource is not validated at all
       issues.push({ severity: "error", path, code: "invalid", message: `Specified profile type was '${requested.type}' in profile '${this.versionedUrl(requested)}', but found type '${rt}'` });
+      this.notValidated = path === String(resource.resourceType);
       // the parser has run: its shape errors stand
       pushAll(issues, (await this.conformance(rctx, CORE + rt, path, depth)).filter(isParseIssue));
       return;
@@ -7130,7 +7149,9 @@ export class InstanceValidator {
       const ft = target ? this.typeOfResource(target) : conditional ? ref.slice(0, ref.indexOf("?")) : tryParseRefType(ref);
       const tu = /^[a-z][a-z0-9+.-]*:/iu.test(v.type) ? v.type : CORE + v.type;
       const tps: string[] = targetProfilesForR4(refTypeDef);
-      if (tps.length && !tps.includes(tu) && !tps.includes(CORE + "Resource")) {
+      // ElementDefinition.hasTargetProfile compares without the version
+      const unversioned = tps.map(stripVersion);
+      if (tps.length && !unversioned.includes(tu) && !unversioned.includes(CORE + "Resource")) {
         let matching = false;
         for (const tp of tps) {
           const psdx = await this.sdx(tp);

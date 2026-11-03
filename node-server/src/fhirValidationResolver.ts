@@ -681,7 +681,9 @@ export class DbValidatorResolver implements ValidatorResolver {
   }
 
   async codeSystemLocal(system: string): Promise<boolean> {
-    if (txKnownSystem(system)) return false; // validated server-side by the HL7 validator
+    // validated server-side by the HL7 validator; a THO CodeSystem the closure holds is answered locally (jar: a Coding
+    // with system v3-orderableDrugForm and no code matches both Medication.form.coding slices)
+    if (txKnownSystem(system) && !/^http:\/\/terminology\.hl7\.org\/CodeSystem\//.test(system)) return false;
     return guarded(async () => {
       try {
         const cs = await terminology.loadArtifactByCanonical("CodeSystem", system, this.pkg);

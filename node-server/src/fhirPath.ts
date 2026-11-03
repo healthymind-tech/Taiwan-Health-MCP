@@ -420,6 +420,7 @@ function javaComparison(orig: any, op: string): any {
           if (number(tl.type) && number(tr.type)) {
             javaDoubleValue(sourceNumberText(a[0]) ?? (itemString(a[0]) as string));
             javaDoubleValue(sourceNumberText(b[0]) ?? (itemString(b[0]) as string));
+            return orig.fn.call(this, [Number(itemString(a[0]))], [Number(itemString(b[0]))]); // Double.valueOf on the two texts
           } else if (javaIsDate(a[0]) && javaIsDate(b[0])) {
             if (!tl.literal) javaDateTimeType(a[0]);
             if (!tr.literal) javaDateTimeType(b[0]);

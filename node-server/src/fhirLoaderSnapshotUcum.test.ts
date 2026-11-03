@@ -707,3 +707,9 @@ test("a meta.profile of another type walks the element model in its own type's o
   const issues = await new InstanceValidator(new R()).validate({ resourceType: "Patient", meta: { profile: [P] }, active: true, gender: "male" });
   assert.ok(issues.some((i) => /Element 'gender' is out of order \(found after active\)/.test(i.message) || /Element 'active' is out of order/.test(i.message)), JSON.stringify(issues.map((i) => i.message)));
 });
+
+test("a number written as a string compares through Double.valueOf", () => {
+  const r = { resourceType: "Patient" };
+  const a = { value: "32", system: "http://unitsofmeasure.org", code: "a" };
+  assert.deepEqual(evaluateConstraint(a, "Age", "value > 0", { resource: r, rootResource: r }), { status: "pass" });
+});
