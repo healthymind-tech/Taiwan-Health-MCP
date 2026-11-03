@@ -5876,6 +5876,19 @@ export class InstanceValidator {
       this.fixedValuePort(out, item.path, v, pattern.value, pattern.field.replace(/^pattern/u, ""), source, String(el.sliceName ?? ""), true, context);
       tag(out);
     }
+    // checkChildByDefinition l. 8173-8184: when the next snapshot element's path starts with this one (a plain string test, so
+    // Encounter.classHistory after Encounter.class counts) the element is validated again against its own definition, and
+    // validateElement l. 7725-7730 repeats the fixed / pattern check naming that definition; equal messages collapse
+    if (primitive || (!fixed && !pattern)) return;
+    const list: any[] = Array.isArray(sdx.sd?.snapshot?.element) ? sdx.sd.snapshot.element : [];
+    const at = list.findIndex((e) => e.id === el.id);
+    const nextPath = at >= 0 && at < list.length - 1 ? String(list[at + 1].path) : "";
+    if (!nextPath || nextPath === el.path || !nextPath.startsWith(String(el.path))) return;
+    const again: Issue[] = [];
+    const own = `${source}#${ownId}`;
+    if (fixed) this.fixedValuePort(again, item.path, v, fixed.value, fixed.field.replace(/^fixed/u, ""), source, String(el.sliceName ?? ""), false, own, isObject(item.ext) ? item.ext : undefined);
+    if (pattern) this.fixedValuePort(again, item.path, v, pattern.value, pattern.field.replace(/^pattern/u, ""), source, String(el.sliceName ?? ""), true, own);
+    tag(again.filter((i) => !issues.some((x) => x.path === i.path && x.message === i.message)));
   }
 
   private fixedValuePort(issues: Issue[], path: string, focus: any, fixed: any, type: string, source: string, propName: string, pattern: boolean, context: string, shadow?: any): void {
@@ -6094,8 +6107,20 @@ export class InstanceValidator {
     for (const [i, c] of list.entries()) {
       if (!isObject(c) || typeof c.system !== "string" || typeof c.code !== "string" || !c.code || c.version) continue;
       const pins = new Set(includes.filter((x) => isObject(x) && x.system === c.system && typeof x.version === "string" && x.version).map((x) => String(x.version)));
-      if (pins.size !== 1) continue;
       const r = await this.codeCheck(c.system, c.code, null, null);
+      if (!pins.size && r.status === "invalid-code" && r.severity === "error" && !c.system.startsWith("http://snomed.info/") && c.system !== "http://loinc.org") {
+        // ValueSetValidator.resolveCodeSystem (standalone tag 7.0.1:654-668): the value set is the `source` of the fetch, so an
+        // unpinned include resolves in the value set's own package, whose dependency may hold another version
+        const scoped = this.resolver.scopedDefinitionVersion ? await this.resolver.scopedDefinitionVersion(c.system, { ...vs, resourceType: "ValueSet" }, "CodeSystem") : null;
+        const m = /^(Unknown code '.*' in the CodeSystem '[^']*' version ')([^']*)('.*)$/su.exec(r.message);
+        if (scoped && m && m[2] !== scoped) {
+          const message = `${m[1]}${scoped}${m[3]}`;
+          const at = typeCode === "Coding" ? `${item.path}.code` : `${item.path}.coding[${i}].code`;
+          if (!issues.some((x) => x.path === at && x.message === message)) issues.push({ severity: "error", path: at, code: "code-invalid", message });
+        }
+        continue;
+      }
+      if (pins.size !== 1) continue;
       if (r.status !== "invalid-code" || r.severity !== "error" || !r.message.startsWith("Unknown code") || c.system === "http://snomed.info/sct" || c.system === "http://loinc.org") continue;
       const message = `Unknown code '${c.code}' in the CodeSystem '${c.system}' version '${[...pins][0]}'`;
       const at = typeCode === "Coding" ? `${item.path}.code` : `${item.path}.coding[${i}].code`;

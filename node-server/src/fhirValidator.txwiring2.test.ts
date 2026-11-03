@@ -482,3 +482,53 @@ test("SNOMED CT display choices carry their language (official corpus)", () => {
   const two = judgeExternalDisplay(SCT, "1", "x", ["A", "B"], ["A", "B"], undefined, "en");
   assert.ok(two?.status === "invalid-display" && two.message.includes("one of 2 choices: 'A' (en) or 'B' (en) (for"));
 });
+
+const NEXTP = "http://x/StructureDefinition/cond-next";
+class NextElementResolver extends RequiredCodingResolver {
+  constructor(private readonly next: Json | null) {
+    super();
+  }
+  async fetchStructureDefinition(url: string): Promise<Json | null> {
+    if (url.split("|")[0] !== NEXTP) return super.fetchStructureDefinition(url);
+    const base = JSON.parse(JSON.stringify(await super.fetchStructureDefinition(PATP)));
+    base.url = NEXTP;
+    const at = base.snapshot.element.findIndex((e: Json) => e.path === "Condition.code");
+    if (this.next) base.snapshot.element.splice(at + 1, 0, this.next);
+    return base;
+  }
+}
+
+test("checkChildByDefinition l. 8173-8184: a next snapshot element whose path starts with this one repeats the fixed / pattern check against the element's own definition", async () => {
+  const run = async (next: Json | null): Promise<string[]> => {
+    const r = await new InstanceValidator(new NextElementResolver(next)).validate(cond(NEXTP, { system: "http://x/other", code: "male" }));
+    return r.filter((i) => i.path === "Condition.code" && i.message.startsWith("The pattern [")).map((i) => /in the profile \S+#([^\],]+)/u.exec(i.message)?.[1] ?? "");
+  };
+  // a string prefix, not a child (Encounter.class / Encounter.classHistory)
+  assert.deepEqual(await run({ id: "Condition.codeHistory", path: "Condition.codeHistory", min: 0, max: "*", type: [{ code: "string" }] }), ["Condition", "Condition.code"]);
+  // a real child
+  assert.deepEqual(await run({ id: "Condition.code.text", path: "Condition.code.text", min: 0, max: "1", type: [{ code: "string" }] }), ["Condition", "Condition.code"]);
+  assert.deepEqual(await run(null), ["Condition"]);
+});
+
+const CS203 = "http://x/CodeSystem/v2";
+class ScopedCsResolver extends RequiredCodingResolver {
+  async fetchValueSet(url: string): Promise<Json | null> {
+    if (url.split("|")[0] === SMALL) return { resourceType: "ValueSet", url: SMALL, version: "1.0", title: "Small", compose: { include: [{ system: CS203 }] } };
+    return super.fetchValueSet(url);
+  }
+  async valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
+    return url.split("|")[0] === SMALL ? false : super.valueSetContains(url, system, code);
+  }
+  async checkCode(system: string, code: string, display: string | null): Promise<CodeCheck> {
+    return system === CS203 ? { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${CS203}' version '5.0.0'` } : super.checkCode(system, code, display);
+  }
+  async scopedDefinitionVersion(url: string, source: Json, type?: string): Promise<string | null> {
+    return url === CS203 && source.url === SMALL && type === "CodeSystem" ? "4.0.0" : null;
+  }
+}
+
+test("resolveCodeSystem with the value set as source: an unpinned include answers with the version of the value set's package", async () => {
+  const r = errors(await new InstanceValidator(new ScopedCsResolver()).validate(cond(CCP, { system: CS203, code: "zz" })));
+  const at = r.filter((i) => i.path === "Condition.code.coding[0].code").map((i) => i.message);
+  assert.ok(at.includes(`Unknown code 'zz' in the CodeSystem '${CS203}' version '4.0.0'`), JSON.stringify(r));
+});
