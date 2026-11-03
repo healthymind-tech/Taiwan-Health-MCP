@@ -650,6 +650,16 @@ export function pickCanonicalVersion<T extends { version: string | null | undefi
 }
 
 /** Effective type code of an ElementDefinition.type entry (handles System.String + fhir-type ext). */
+/**
+ * The systems a bare code (code / string / uri) of `vs` would be inferred from (ValueSetValidator.systemForCodeInValueSet: the
+ * includes' systems): what an undecided membership waits on. [""] when the value set names none.
+ */
+function bareCodeSystems(vs: Record<string, any> | null): string[] {
+  const includes: any[] = vs && isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
+  const systems = [...new Set(includes.filter((i) => isObject(i) && typeof i.system === "string" && i.system).map((i) => String(i.system)))];
+  return systems.length ? systems : [""];
+}
+
 /** The focus of fixedValuePort for a primitive that exists without a value. */
 const VALUELESS_PRIMITIVE = Symbol("valueless primitive");
 
@@ -5288,7 +5298,7 @@ export class InstanceValidator {
         // member", so no slice matches.
         if (m === undefined && (system === null || (await this.systemResolvable(system)))) {
           unknown = true;
-          this.undecidedCauses?.add(`${system ?? ""}|${valueSet}`);
+          for (const sys of system === null ? bareCodeSystems(await this.vsHeader(valueSet)) : [system]) this.undecidedCauses?.add(`${sys}|${valueSet}`);
         }
       }
     }
@@ -6474,7 +6484,7 @@ export class InstanceValidator {
         path: item.path,
         code: "informational",
         message: `The code(s) ${shown} could not be confirmed as members of the value set ${label} (not fully expandable locally)`,
-        unchecked: { kind: "code", canonical: url, causes: [...new Set(codings.map(([s]) => `${s ?? ""}|${url}`))] },
+        unchecked: { kind: "code", canonical: url, causes: [...new Set(codings.flatMap(([s]) => (s === null ? bareCodeSystems(vs) : [s]).map((x) => `${x}|${url}`)))] },
       });
       return;
     }
@@ -6690,12 +6700,51 @@ export class InstanceValidator {
         }
         continue;
       }
-      const msg = codingVersionIssue(vs, c.system, c.version);
+      // A system the value set reaches only through imported value sets: their includes give the version (official corpus: a
+      // SNOMED CT US edition version under a value set importing one without a SNOMED CT version → VALUESET_VALUE_MISMATCH_CHANGED).
+      // An import not held here leaves the version undecided: reported as not checked, never as a pass.
+      const reach = vs ? await this.includesReaching(vs, c.system) : { includes: [], missing: [] };
+      if (!reach.includes.length && reach.missing.length) {
+        issues.push({
+          severity: "information",
+          path: `${path}.version`,
+          code: "informational",
+          message: `The version '${c.version}' of '${c.system}' could not be checked against the value set: it imports ${reach.missing.join(", ")}, not held locally`,
+          unchecked: { kind: "valueSet" as const, canonical: reach.missing[0] },
+        });
+        continue;
+      }
+      const msg = codingVersionIssue(reach.includes.length ? { compose: { include: reach.includes } } : vs, c.system, c.version);
       if (!msg) continue;
       const at = `${path}.version`;
       if (issues.some((i) => i.path === at && i.message === msg)) continue;
       issues.push({ severity: "error", path: at, code: "invalid", message: msg });
     }
+  }
+
+  /** The includes of `vs` for `system`, else those of the value sets it imports (depth-first); `missing`: imports not held. */
+  private async includesReaching(vs: Record<string, any>, system: string, seen = new Set<string>()): Promise<{ includes: any[]; missing: string[] }> {
+    const includes: any[] = Array.isArray(vs.compose?.include) ? vs.compose.include.filter((i: any) => isObject(i)) : [];
+    const own = includes.filter((i) => i.system === system);
+    if (own.length) return { includes: own, missing: [] };
+    const out: any[] = [];
+    const missing: string[] = [];
+    for (const inc of includes) {
+      for (const ref of Array.isArray(inc.valueSet) ? inc.valueSet : []) {
+        const url = String(ref);
+        if (seen.has(url)) continue;
+        seen.add(url);
+        const sub = await this.vsHeader(url);
+        if (!sub) {
+          missing.push(url);
+          continue;
+        }
+        const r = await this.includesReaching(sub, system, seen);
+        out.push(...r.includes);
+        missing.push(...r.missing);
+      }
+    }
+    return { includes: out, missing: out.length ? [] : missing };
   }
 
   private resolvableCache = new Map<string, Promise<boolean>>();

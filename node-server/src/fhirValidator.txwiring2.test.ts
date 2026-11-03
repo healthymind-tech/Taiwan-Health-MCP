@@ -543,3 +543,60 @@ test("an empty code of a held CodeSystem: NO_CODE_PROVIDED_VERSION only, no Term
   const r = errors(await new InstanceValidator(new HeldGenderResolver()).validate(cond(RP, { system: GENDER, code: "" })));
   assert.ok(!r.some((i) => i.message.startsWith(`The code provided (${GENDER}#)`)), JSON.stringify(r));
 });
+
+const IMPP = "http://x/StructureDefinition/cond-import";
+const OUTER = "http://x/ValueSet/outer";
+const INNER = "http://x/ValueSet/inner";
+class ImportResolver extends FakeResolver {
+  constructor(private readonly innerHeld: boolean) {
+    super();
+  }
+  async fetchStructureDefinition(url: string): Promise<Json | null> {
+    if (url.split("|")[0] !== IMPP) return super.fetchStructureDefinition(url);
+    const base = JSON.parse(JSON.stringify(await super.fetchStructureDefinition(CORE + "Condition")));
+    base.url = IMPP;
+    base.derivation = "constraint";
+    for (const e of base.snapshot.element) if (e.path === "Condition.code") e.binding = { strength: "preferred", valueSet: OUTER };
+    return base;
+  }
+  async fetchValueSet(url: string): Promise<Json | null> {
+    const u = url.split("|")[0];
+    if (u === OUTER) return { resourceType: "ValueSet", url: OUTER, compose: { include: [{ valueSet: [INNER] }, { system: "http://x/cs", concept: [{ code: "a" }] }] } };
+    if (u === INNER) return this.innerHeld ? { resourceType: "ValueSet", url: INNER, compose: { include: [{ system: SCT, concept: [{ code: "77386006" }] }] } } : null;
+    return super.fetchValueSet(url);
+  }
+}
+
+test("Coding.version under a value set reaching SNOMED CT through an import: the import's includes decide; an import not held is not checked", async () => {
+  const c = { resourceType: "Condition", id: "c", meta: { profile: [IMPP] }, code: { coding: [{ system: SCT, version: "http://snomed.info/sct/731000124108", code: "77386006" }] }, subject: { reference: "Patient/p" } };
+  const held = await new InstanceValidator(new ImportResolver(true)).validate(c);
+  assert.ok(held.some((i) => i.severity === "error" && i.path === "Condition.code.coding[0].version" && i.message === `The code system '${SCT}' version 'http://snomed.info/sct/900000000000207008' resulting from the version '' in the ValueSet include is different to the one in the value ('http://snomed.info/sct/731000124108')`), JSON.stringify(held));
+  const away = await new InstanceValidator(new ImportResolver(false)).validate(c);
+  const note = away.find((i) => i.path === "Condition.code.coding[0].version");
+  assert.ok(note && note.severity === "information" && note.unchecked?.kind === "valueSet" && note.unchecked.canonical === INNER, JSON.stringify(away));
+});
+
+const BAREP = "http://x/StructureDefinition/pat-bare";
+const BAREVS = "http://x/ValueSet/bare";
+class BareCodeResolver extends FakeResolver {
+  async fetchStructureDefinition(url: string): Promise<Json | null> {
+    if (url.split("|")[0] !== BAREP) return super.fetchStructureDefinition(url);
+    const base = JSON.parse(JSON.stringify(await super.fetchStructureDefinition(CORE + "Patient")));
+    base.url = BAREP;
+    base.derivation = "constraint";
+    for (const e of base.snapshot.element) if (e.path === "Patient.gender") e.binding = { strength: "extensible", valueSet: BAREVS };
+    return base;
+  }
+  async fetchValueSet(url: string): Promise<Json | null> {
+    return url.split("|")[0] === BAREVS ? { resourceType: "ValueSet", url: BAREVS, compose: { include: [{ system: "https://x.example/states" }] } } : super.fetchValueSet(url);
+  }
+  async valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
+    return url.split("|")[0] === BAREVS ? undefined : super.valueSetContains(url, system, code);
+  }
+}
+
+test("an undecided bare code names the system it would be inferred from, not an empty one", async () => {
+  const r = await new InstanceValidator(new BareCodeResolver()).validate({ resourceType: "Patient", id: "p", meta: { profile: [BAREP] }, gender: "CA" });
+  const note = r.find((i) => i.path === "Patient.gender" && i.unchecked?.kind === "code");
+  assert.deepEqual(note?.unchecked?.causes, [`https://x.example/states|${BAREVS}`], JSON.stringify(r));
+});
