@@ -2022,8 +2022,11 @@ export class InstanceValidator {
     if (bundle && firstEntry) {
       const ectx: ResourceCtx = { resource: firstEntry, container: null, root: resource, bundle, entry: bundle.entryOf.get(firstEntry) ?? null };
       await this.validateResource(ectx, `${resource.resourceType}.entry[0].resource`, extra, issues, 0);
-      // the parser has run over the whole Bundle: its shape errors stand
+      // the parser has run over the whole Bundle: its shape errors stand (a pass for them only — nothing it reaches throws)
+      const threw = this.threw;
+      this.threw = [];
       pushAll(issues, (await this.conformance(rctx, CORE + resource.resourceType, resource.resourceType, 0)).filter(isParseIssue));
+      this.threw = threw;
       const found: Issue[] = [];
       await this.structuralPass(resource, resource.resourceType, found, 0);
       issues.push(...found.filter((i) => i.message !== ELE1_MESSAGE));
@@ -2440,7 +2443,7 @@ export class InstanceValidator {
         if (rb.length < 2) {
           // refBaseParts[1] (l. 1519-1521) throws in Java (validation fails): reported, never passed
           push("error", "invalid", `Relative URLs must be of the format [ResourceName]/[id]. Encountered ${ref}`);
-          this.javaThrew(b, fullUrl, path, `Relative URLs must be of the format [ResourceName]/[id]. Encountered ${ref}`);
+          if (issues) this.javaThrew(b, fullUrl, path, `Relative URLs must be of the format [ResourceName]/[id]. Encountered ${ref}`);
           return null;
         }
         resourceType = rb[0];
@@ -2452,7 +2455,7 @@ export class InstanceValidator {
           // validator_cli fails the whole validation (evaluator corpus: official-crash). The resource must not pass:
           // the reference is reported with the relative-URL format message (Reference_REF_Format2).
           push("error", "invalid", `Relative URLs must be of the format [ResourceName]/[id]. Encountered ${ref}`);
-          this.javaThrew(b, fullUrl, path, `Relative URLs must be of the format [ResourceName]/[id]. Encountered ${ref}`);
+          if (issues) this.javaThrew(b, fullUrl, path, `Relative URLs must be of the format [ResourceName]/[id]. Encountered ${ref}`);
           return null;
         }
         resourceType = rp[0];
@@ -3162,8 +3165,11 @@ export class InstanceValidator {
       // l. 9045-9050 (checkResourceName): VALIDATION_VAL_PROFILE_WRONGTYPE — and the resource is not validated at all
       issues.push({ severity: "error", path, code: "invalid", message: `Specified profile type was '${requested.type}' in profile '${this.versionedUrl(requested)}', but found type '${rt}'` });
       this.notValidated = path === String(resource.resourceType);
-      // the parser has run: its shape errors stand
+      // the parser has run: its shape errors stand (a pass for them only — nothing it reaches throws)
+      const threw = this.threw;
+      this.threw = [];
       pushAll(issues, (await this.conformance(rctx, CORE + rt, path, depth)).filter(isParseIssue));
+      this.threw = threw;
       return;
     }
     const defn = requested ? extraProfiles[0] : CORE + rt;
