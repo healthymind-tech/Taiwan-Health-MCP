@@ -6112,15 +6112,24 @@ export class InstanceValidator {
   }
 
   /**
-   * tx.fhir.org's SNOMED CT expression parser, first of the server's messages (official corpus: Terminology_TX_Confirm_4a
-   * and the information beside it) for a code that starts with no digit, asked without a display; the character is
-   * the first non-blank one, counted from 1.
+   * tx.fhir.org's SNOMED CT expression parser, first in the $validate-code message of a value set with a filter on SNOMED CT:
+   * the server parses the code as an expression to evaluate the filter, so an enumerated or whole-system include never
+   * says this and the display plays no part (probed live on tx.fhir.org, 2026-11-03: every code × enumerated / filter /
+   * filter + concept / whole system × with and without display). Only the answers that do not depend on the concept
+   * existing are written here; another expression shape stays without the prefix.
    */
-  private snomedParseError(c: any): string {
-    if (!isObject(c) || c.system !== "http://snomed.info/sct" || typeof c.code !== "string" || c.display) return "";
-    const at = c.code.search(/\S/u);
-    if (at < 0 || /\d/u.test(c.code[at])) return "";
-    return `Not a valid expression: Concept not found (next char = "${c.code[at]}", in "${c.code}") at character ${at + 1}; `;
+  private snomedParseError(c: any, vs: Record<string, any>): string {
+    if (!isObject(c) || c.system !== "http://snomed.info/sct" || typeof c.code !== "string") return "";
+    const includes: any[] = isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
+    if (!includes.some((x) => isObject(x) && x.system === c.system && Array.isArray(x.filter) && x.filter.length)) return "";
+    const m = /^(\s*)(\d*)(\s*)(.?)/su.exec(c.code)!;
+    const [, lead, digits, gap, next] = m;
+    if (!digits) {
+      if (!/^[\p{L}(]$/u.test(next)) return "";
+      return `Not a valid expression: Concept not found (next char = "${next}", in "${c.code}") at character ${lead.length + 1}; `;
+    }
+    if (!next || "|+:".includes(next)) return "";
+    return `Not a valid expression: Found content ("${next}") after end of expression at character ${lead.length + digits.length + gap.length + 1}; `;
   }
 
   /** "; <code system message>" for a Coding its CodeSystem rejects (the {1} of Terminology_TX_NoValid_12). */
@@ -6491,7 +6500,7 @@ export class InstanceValidator {
                 // text)
                 (() => {
                   const c0 = isObject(list[0]) ? list[0] : {};
-                  const provided = `${unknownInVs}${this.snomedParseError(c0)}${codingNotFound(c0)}`;
+                  const provided = `${unknownInVs}${this.snomedParseError(c0, vs)}${codingNotFound(c0)}`;
                   // Terminology_TX_Confirm_4a when the server answered with an error class (SNOMED CT, LOINC, an unknown system);
                   // Terminology_TX_NoValid_12 for a CodeSystem validated locally (official corpus, unknown-code family)
                   const server = !!unknownInVs || c0.system === "http://snomed.info/sct" || c0.system === "http://loinc.org";

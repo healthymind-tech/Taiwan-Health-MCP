@@ -380,6 +380,9 @@ const SP = "http://x/StructureDefinition/cond-coding-sct";
 const SCTVS = "http://x/ValueSet/sct";
 const SCT = "http://snomed.info/sct";
 class SnomedBindingResolver extends FakeResolver {
+  constructor(private readonly filtered: boolean) {
+    super();
+  }
   async fetchStructureDefinition(url: string): Promise<Json | null> {
     if (url.split("|")[0] !== SP) return super.fetchStructureDefinition(url);
     const base = JSON.parse(JSON.stringify(await super.fetchStructureDefinition(CORE + "Condition")));
@@ -391,7 +394,9 @@ class SnomedBindingResolver extends FakeResolver {
     return base;
   }
   async fetchValueSet(url: string): Promise<Json | null> {
-    return url.split("|")[0] === SCTVS ? { resourceType: "ValueSet", url: SCTVS, title: "Sct", compose: { include: [{ system: SCT, concept: [{ code: "1234" }] }] } } : super.fetchValueSet(url);
+    if (url.split("|")[0] !== SCTVS) return super.fetchValueSet(url);
+    const include: Json = this.filtered ? { system: SCT, filter: [{ property: "concept", op: "is-a", value: "1234" }] } : { system: SCT, concept: [{ code: "1234" }] };
+    return { resourceType: "ValueSet", url: SCTVS, title: "Sct", compose: { include: [include] } };
   }
   async valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
     return url.split("|")[0] === SCTVS ? code === "1234" : super.valueSetContains(url, system, code);
@@ -401,16 +406,20 @@ class SnomedBindingResolver extends FakeResolver {
   }
 }
 
-test("Terminology_TX_Confirm_4a: the server's expression parser comes first for a SNOMED CT code with no leading digit, asked without a display (official corpus)", async () => {
-  const run = async (coding: Json): Promise<string> => {
-    const r = await new InstanceValidator(new SnomedBindingResolver()).validate({ resourceType: "Condition", id: "c", meta: { profile: [SP] }, code: { coding: [coding] }, subject: { reference: "Patient/p" } });
+test("Terminology_TX_Confirm_4a: the server's expression parser comes first when the value set filters SNOMED CT, display or not (tx.fhir.org probe)", async () => {
+  const run = async (filtered: boolean, coding: Json): Promise<string> => {
+    const r = await new InstanceValidator(new SnomedBindingResolver(filtered)).validate({ resourceType: "Condition", id: "c", meta: { profile: [SP] }, code: { coding: [coding] }, subject: { reference: "Patient/p" } });
     return r.find((i) => i.path === "Condition.code.coding[0]" && i.severity === "error")?.message ?? "";
   };
   const after = (shown: string, code: string): string => `The provided code '${shown}' was not found in the value set '${SCTVS}'; Unknown code '${code}'`;
-  assert.ok((await run({ system: SCT, code: "zz-x" })).endsWith(`required: Not a valid expression: Concept not found (next char = "z", in "zz-x") at character 1; ${after(`${SCT}#zz-x`, "zz-x")}`));
-  assert.ok((await run({ system: SCT, code: " lead" })).includes(`(next char = "l", in " lead") at character 2; `));
-  assert.ok((await run({ system: SCT, code: "zz-x", display: "d" })).endsWith(`required: ${after(`${SCT}#zz-x ('d')`, "zz-x")}`));
-  assert.ok((await run({ system: SCT, code: "999" })).endsWith(`required: ${after(`${SCT}#999`, "999")}`));
+  assert.ok((await run(true, { system: SCT, code: "zz-x" })).endsWith(`required: Not a valid expression: Concept not found (next char = "z", in "zz-x") at character 1; ${after(`${SCT}#zz-x`, "zz-x")}`));
+  assert.ok((await run(true, { system: SCT, code: "zz-x", display: "d" })).endsWith(`required: Not a valid expression: Concept not found (next char = "z", in "zz-x") at character 1; ${after(`${SCT}#zz-x ('d')`, "zz-x")}`));
+  assert.ok((await run(true, { system: SCT, code: " lead" })).includes(`(next char = "l", in " lead") at character 2; `));
+  assert.ok((await run(true, { system: SCT, code: "123 abc" })).includes(`required: Not a valid expression: Found content ("a") after end of expression at character 5; `));
+  assert.ok((await run(true, { system: SCT, code: "12345a6" })).includes(`Found content ("a") after end of expression at character 6; `));
+  assert.ok((await run(true, { system: SCT, code: "999" })).endsWith(`required: ${after(`${SCT}#999`, "999")}`));
+  assert.ok((await run(true, { system: SCT, code: "123|x|" })).endsWith(`required: ${after(`${SCT}#123|x|`, "123|x|")}`));
+  assert.ok((await run(false, { system: SCT, code: "zz-x" })).endsWith(`required: ${after(`${SCT}#zz-x`, "zz-x")}`));
 });
 
 const RP = "http://x/StructureDefinition/cond-coding-req";
