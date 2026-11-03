@@ -741,3 +741,12 @@ test("several type profiles (checkChildByDefinition l. 8114-8158): parser findin
   assert.equal(ele1.length, 1, JSON.stringify(empty));
   assert.equal((ele1[0][1].match(/\(validating against /gu) ?? []).length, 4, ele1[0][1]);
 });
+
+test("JsonParser.parseChildItem: a choice name of a wrong type next to a matching `_` shadow is read as the shadow's type (jar)", async () => {
+  const obs = (extra: Json): Json => ({ resourceType: "Observation", status: "final", code: { text: "x" }, ...extra });
+  const dar = { extension: [{ url: DAR, valueCode: "unknown" }] };
+  const paired = errs(await run(obs({ effectiveString: "2020-01-01", _effectiveDateTime: dar })));
+  assert.ok(!paired.some(([, m]) => m.startsWith("Unrecognized property")), JSON.stringify(paired));
+  const alone = errs(await run(obs({ effectiveString: "2020-01-01" })));
+  assert.ok(alone.some(([, m]) => m === "Unrecognized property 'effectiveString'"), JSON.stringify(alone));
+});

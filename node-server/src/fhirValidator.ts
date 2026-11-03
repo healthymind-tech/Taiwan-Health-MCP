@@ -1347,6 +1347,39 @@ function copyNode(node: Record<string, any>): Record<string, any> {
   return c;
 }
 
+/**
+ * JsonParser.parseChildItem (7.0.1) l. 384-400 for a non-primitive-JSON choice: jp = the first property whose name starts
+ * with the base name, jp1 = the first starting with `_` + base name; over the element's types in order, the first type
+ * whose name jp or jp1 spells reads jp's value (and jp1's) as that type — so `deceasedString` next to `_deceasedDateTime`
+ * is deceasedDateTime (no Unrecognized property). Only that pairing renames anything.
+ */
+function renameChoiceByShadow(node: Record<string, any>, groups: Map<string, ChildGroup>): Record<string, any> {
+  let out: Record<string, any> | null = null;
+  for (const g of groups.values()) {
+    if (!g.name.endsWith("[x]")) continue;
+    const base = g.name.slice(0, -3);
+    const keys = Object.keys(out ?? node);
+    const jp = keys.find((k) => !k.startsWith("_") && k.startsWith(base));
+    const jp1 = keys.find((k) => k.startsWith(`_${base}`));
+    if (!jp || !jp1) continue;
+    const d = g.base || g.slices[0];
+    for (const t of ((d?.type || []) as any[]).map(typeCodeOf)) {
+      const eName = base + t.charAt(0).toUpperCase() + t.slice(1);
+      if (jp !== eName && jp1 !== `_${eName}`) continue;
+      const src = out ?? node;
+      if (jp !== eName && !(eName in src)) {
+        // the main value is read under the type's name (parseChildPrimitive / parseChildComplex with eName); key order kept
+        const next: Record<string, any> = {};
+        for (const [k, v] of Object.entries(src)) next[k === jp ? eName : k] = v;
+        copyLiterals(src, next);
+        out = next;
+      }
+      break;
+    }
+  }
+  return out ?? node;
+}
+
 /** Element.isEmpty for an object the parser emptied: every value is gone or itself emptied. */
 function hasNoContent(o: Record<string, any>, emptied: WeakSet<object>): boolean {
   return Object.values(o).every((v) => (Array.isArray(v) ? v.every((x) => isObject(x) && emptied.has(x)) : isObject(v) && emptied.has(v)));
@@ -7803,6 +7836,7 @@ export class InstanceValidator {
   private async dropBadPrimitivesIn(sdx: SdIndex, el: Record<string, any>, node: Record<string, any>, path: string, issues: Issue[], depth: number): Promise<Record<string, any>> {
     const groups = sdx.children(el);
     if (depth > MAX_DEPTH || !groups || groups.size === 0) return node;
+    node = renameChoiceByShadow(node, groups);
     let out: Record<string, any> | null = null;
     for (const key of Object.keys(node)) {
       if (key.startsWith("_") || key === "resourceType") continue;
