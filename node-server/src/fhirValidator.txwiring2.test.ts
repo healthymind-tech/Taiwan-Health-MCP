@@ -571,6 +571,8 @@ test("Coding.version under a value set reaching SNOMED CT through an import: the
   const c = { resourceType: "Condition", id: "c", meta: { profile: [IMPP] }, code: { coding: [{ system: SCT, version: "http://snomed.info/sct/731000124108", code: "77386006" }] }, subject: { reference: "Patient/p" } };
   const held = await new InstanceValidator(new ImportResolver(true)).validate(c);
   assert.ok(held.some((i) => i.severity === "error" && i.path === "Condition.code.coding[0].version" && i.message === `The code system '${SCT}' version 'http://snomed.info/sct/900000000000207008' resulting from the version '' in the ValueSet include is different to the one in the value ('http://snomed.info/sct/731000124108')`), JSON.stringify(held));
+  const dropped = await new InstanceValidator(new ImportResolver(true)).validate({ ...c, code: { coding: [{ system: SCT, version: "http://snomed.info/sct/731000124108", code: ["77386006"] }] } });
+  assert.ok(!dropped.some((i) => i.path === "Condition.code.coding[0].version"), JSON.stringify(dropped));
   const away = await new InstanceValidator(new ImportResolver(false)).validate(c);
   const note = away.find((i) => i.path === "Condition.code.coding[0].version");
   assert.ok(note && note.severity === "information" && note.unchecked?.kind === "valueSet" && note.unchecked.canonical === INNER, JSON.stringify(away));

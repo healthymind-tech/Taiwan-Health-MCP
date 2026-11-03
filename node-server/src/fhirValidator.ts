@@ -6678,7 +6678,9 @@ export class InstanceValidator {
         if (isObject(c)) codings.push([c, `${item.path}.coding[${i}]`]);
       });
     }
-    const relevant = codings.filter(([c]) => typeof c.version === "string" && c.version && typeof c.system === "string");
+    // the value set is asked only for a Coding with a code (checkTerminologyCoding IV tag 7.0.1:2085 `system != null && code != null`;
+    // official corpus: a code the parser dropped gives no version issue)
+    const relevant = codings.filter(([c]) => typeof c.version === "string" && c.version && typeof c.system === "string" && typeof c.code === "string" && c.code !== "");
     if (!relevant.length) return;
     const vs = await this.vsHeader(vsUrl);
     for (const [c, path] of relevant) {
