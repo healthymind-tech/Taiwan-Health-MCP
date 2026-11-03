@@ -5077,6 +5077,7 @@ export class InstanceValidator {
             and(r.match);
           } else if (c.binding && c.binding.strength === "required" && c.binding.valueSet) {
             clauses.push(`(${rawPath} memberOf '${c.binding.valueSet}')`);
+            systemlessShadow(values, () => `Problem evaluating slicing expression for element in profile ${vurl} path ${it.path} (fhirPath = true and ${clauses.join(" and ")})`);
             and(await this.bindingClause(String(c.binding.valueSet), values));
           } else {
             found = false;
@@ -5093,6 +5094,7 @@ export class InstanceValidator {
           const values = discriminated();
           if (exp.kind === "binding") {
             clauses.push(`(${rawPath} memberOf '${exp.valueSet}')`);
+            systemlessShadow(values, () => `Problem evaluating slicing expression for element in profile ${vurl} path ${it.path} (fhirPath = true and ${clauses.join(" and ")})`);
             and(await this.bindingClause(exp.valueSet, values));
           } else {
             clauses.push(`${rawPath} = ${JSON.stringify(exp.values[0])}`);
@@ -8233,6 +8235,17 @@ function sliceNameOf(el: Record<string, any>): string {
 
 /** A slicing definition problem InstanceValidator throws while building a slice expression (→ SLICING_CANNOT_BE_EVALUATED). */
 class SlicingDefinitionError extends Error {}
+
+/**
+ * funcMemberOf on a Coding whose `system` element has no value (only `_system`): ValueSetValidator dereferences the null
+ * system (validator_cli 7.0.1: NullPointerException), which evaluateSlicingExpression reports as SLICING_CANNOT_BE_EVALUATED.
+ */
+function systemlessShadow(values: unknown[], where: () => string): void {
+  const codings = values.flatMap((v) => (isObject(v) && Array.isArray(v.coding) ? v.coding : [v]));
+  if (codings.some((c) => isObject(c) && (c.system === undefined || c.system === null) && isObject(c._system))) {
+    throw new SlicingDefinitionError(`${where()}: Cannot invoke "String.lastIndexOf(int)" because "system" is null`);
+  }
+}
 
 interface SliceMatch {
   /** undefined: cannot be decided locally */
