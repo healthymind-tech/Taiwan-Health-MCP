@@ -3139,9 +3139,21 @@ export class InstanceValidator {
       if (!Object.keys(view).some((k) => k !== "resourceType" && k !== "id")) issues.push({ severity: "error", path, code: "invariant", message: ELE1_MESSAGE });
     }
     pushAll(issues, await this.conformance(rctx, defn, path, depth));
-    for (const p of profiles) {
-      if (p === CORE + rt || p === defn) continue;
-      const sdx = await this.sdx(p);
+    for (const p0 of profiles) {
+      if (p0 === CORE + rt || p0 === defn) continue;
+      let p = p0;
+      let sdx = await this.sdx(p);
+      // validateResource l. 6957-6968 → lookupProfileReference (l. 7036-7062): an unresolved meta.profile is fetched with
+      // CanonicalResourceClient.fetch (l. 22-37), which drops `|version` and reads <base>/StructureDefinition/<id> from the
+      // canonical's own server, i.e. the current published definition. Offline, that is the installed one of the canonical.
+      const bar = p.indexOf("|");
+      if (!sdx && bar > 0 && metaProfiles.includes(p) && /\/StructureDefinition\/[A-Za-z0-9\-.]{1,64}$/u.test(p.slice(0, bar))) {
+        const current = await this.sdx(p.slice(0, bar));
+        if (current) {
+          sdx = current;
+          p = p.slice(0, bar);
+        }
+      }
       const noSnap = sdx ? null : await this.snapshotless(p);
       if (noSnap) {
         // The profile is installed but has no snapshot — differential only and the snapshot generation failed
