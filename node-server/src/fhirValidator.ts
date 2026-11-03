@@ -2001,8 +2001,24 @@ export class InstanceValidator {
     this.nullItems = holdsNullObjectItem(resource);
     this.strippedCache = new WeakMap();
     this.emptiedCache = new WeakMap();
+    // validateResource l. 9002-9012: a Bundle with a profile for another type whose first entry's resource is of the
+    // profile's type — that resource is validated against the profile instead (at Bundle.entry[0].resource, the Bundle
+    // stays the reference-resolution context); the Bundle itself is not validated
+    const firstEntry = bundle ? await this.firstEntryForProfile(resource, extra[0]) : null;
+    if (bundle && firstEntry) {
+      const ectx: ResourceCtx = { resource: firstEntry, container: null, root: resource, bundle, entry: bundle.entryOf.get(firstEntry) ?? null };
+      await this.validateResource(ectx, `${resource.resourceType}.entry[0].resource`, extra, issues, 0);
+      // the parser has run over the whole Bundle: its shape errors stand
+      pushAll(issues, (await this.conformance(rctx, CORE + resource.resourceType, resource.resourceType, 0)).filter(isParseIssue));
+      const found: Issue[] = [];
+      await this.structuralPass(resource, resource.resourceType, found, 0);
+      issues.push(...found.filter((i) => i.message !== ELE1_MESSAGE));
+      await this.settleVsSystems(issues);
+      return dedupe(issues);
+    }
     await this.validateResource(rctx, resource.resourceType, extra, issues, 0);
-    if (bundle) await this.validateBundleRules(bundle, resource.resourceType, issues);
+    // BundleValidator runs from start() (IV l. 9046-9047), i.e. not when the profile is for another type
+    if (bundle && !this.notValidated) await this.validateBundleRules(bundle, resource.resourceType, issues);
     if (this.notValidated) {
       // the profile is for another type: the resource is not validated (checkResourceName l. 9045-9050), the parser's findings stand
       const found: Issue[] = [];
@@ -7856,6 +7872,21 @@ export class InstanceValidator {
     return out;
   }
 
+  /**
+   * InstanceValidator.validateResource l. 9002-9012 (typeMatchesDefn l. 9141-9150, getFirstEntry l. 9152-9163): the
+   * resource of Bundle.entry[0] when the requested profile is not for a Bundle and that resource's type matches it.
+   */
+  private async firstEntryForProfile(bundle: Record<string, any>, profile: string | undefined): Promise<Record<string, any> | null> {
+    if (!profile) return null;
+    const defn = await this.sdx(profile);
+    if (!defn || defn.type === "Bundle") return null;
+    const first = Array.isArray(bundle.entry) ? bundle.entry[0] : undefined;
+    const res = isObject(first) && isObject(first.resource) ? first.resource : null;
+    if (!res || typeof res.resourceType !== "string") return null;
+    const matches = defn.sd?.kind === "logical" ? [defn.type, defn.sd?.name, defn.sd?.id].includes(res.resourceType) : res.resourceType === defn.type;
+    return matches ? res : null;
+  }
+
   private async structuralPass(resource: Record<string, any>, path: string, issues: Issue[], depth: number): Promise<void> {
     if (depth > MAX_DEPTH) {
       issues.push(tooDeep(path));
@@ -8451,7 +8482,7 @@ export function narrativeLinkProblems(div: string, anchors: ReadonlySet<string>)
  * (InstanceValidator.conformsToProfile, a fresh validateResource on the parsed tree) never sees them, so profile
  * matching — slices by profile, reference target profiles — ignores them here too.
  */
-const PARSE_ISSUE = /^Error parsing XHTML: |^Invalid entity in the XHTML \(|^Unrecognized property '|^The property \S+ must be (?:a JSON Array|an Array|an Object), not |^This property must be (?:a simple value|an object), not |^Error parsing JSON: |^Array cannot be empty|^Object must have some content$|^The JSON array for '\d+' is invalid at index |^This base property must be an Array, not /u;
+const PARSE_ISSUE = /^Error parsing XHTML: |^Invalid entity in the XHTML \(|^Unrecognized property '|^The property \S+ must be (?:a JSON Array|an Array|an Object), not |^This property must be (?:a simple value|an object), not |^Error parsing JSON: |^Array cannot be empty|^Object must have some content$|^The JSON array for '\d+' is invalid at index |^This base property must be an Array, not |^The JSON element 'resourceType' has the wrong JSON type: |^Unable to find resourceType property$|^Contained resource does not appear to be a FHIR resource \(unknown name /u;
 function isParseIssue(i: { message?: string }): boolean {
   return PARSE_ISSUE.test(String(i.message ?? ""));
 }

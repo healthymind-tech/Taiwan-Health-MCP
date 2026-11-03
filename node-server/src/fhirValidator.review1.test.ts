@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { codingsOf, InstanceValidator, type Issue } from "./fhirValidator.js";
-import { CORE, FakeResolver, SDS, el, sd } from "./fhirTestKit.test.js";
+import { CORE, FakeResolver, PAT_PROFILE, SDS, el, sd } from "./fhirTestKit.test.js";
 
 type Json = Record<string, any>;
 const EXTRA: Record<string, Json> = {};
@@ -680,4 +680,22 @@ test("F10 invariants with memberOf() / conformsTo() are evaluated (FHIRPathEngin
   assert.ok(bad.some((m) => m.startsWith("Constraint failed: c-1: 'conforms'")), JSON.stringify(bad));
   const good = errs(await run({ resourceType: "Patient", gender: "male", birthDate: "2000-01-01" }, [P])).map(([, m]) => m);
   assert.ok(!good.some((m) => m.startsWith("Constraint failed: ")), JSON.stringify(good));
+});
+
+test("a Bundle with a profile of another type: the first entry's resource of that type is validated instead (IV l. 9002-9012)", async () => {
+  const bundle = (first: Json): Json => ({ resourceType: "Bundle", type: "collection", entry: [{ fullUrl: "urn:uuid:9b0e5a52-8f0c-4c2a-9a63-0d8f7c2d1e01", resource: first }, { resource: { resourceType: "Organization", name: "x" } }] });
+  const pat = { resourceType: "Patient", identifier: [{ system: "http://www.moi.gov.tw" }] };
+  const on = await run(bundle(pat), [PAT_PROFILE]);
+  assert.ok(!on.some((i) => i.message.startsWith("Specified profile type was")), JSON.stringify(on));
+  // the profile's rules are reported at the entry, the Bundle itself is not validated (no fullUrl rule on the second entry)
+  assert.ok(errs(on).some(([p, m]) => p.startsWith("Bundle.entry[0].resource.identifier") && /identifier\.value: minimum required = 1/.test(m)), JSON.stringify(errs(on)));
+  assert.ok(!errs(on).some(([p]) => p.startsWith("Bundle.entry[1]")), JSON.stringify(errs(on)));
+  // the first entry is of another type: Validation_VAL_Profile_WrongType on the Bundle
+  const off = await run(bundle({ resourceType: "Organization" }), [PAT_PROFILE]);
+  assert.ok(errs(off).some(([p, m]) => p === "Bundle" && m.startsWith("Specified profile type was 'Patient'")), JSON.stringify(errs(off)));
+  // ... and BundleValidator (checkSpecials, from start()) does not run either
+  assert.ok(!errs(off).some(([p]) => p.startsWith("Bundle.entry[1]")), JSON.stringify(errs(off)));
+  // the parser's findings outside the first entry stand
+  const parsed = await run({ resourceType: "Bundle", type: "collection", entry: [{ fullUrl: "urn:uuid:9b0e5a52-8f0c-4c2a-9a63-0d8f7c2d1e01", resource: pat }, { fullUrl: "urn:uuid:9b0e5a52-8f0c-4c2a-9a63-0d8f7c2d1e02", resource: { resourceType: "Organization", bogus: 1 } }] }, [PAT_PROFILE]);
+  assert.ok(errs(parsed).some(([p, m]) => p.startsWith("Bundle.entry[1].resource") && m === "Unrecognized property 'bogus'"), JSON.stringify(errs(parsed)));
 });
