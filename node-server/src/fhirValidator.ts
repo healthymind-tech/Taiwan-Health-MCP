@@ -7154,8 +7154,14 @@ export class InstanceValidator {
       if (dp > Number(maxDp)) issues.push({ severity: "error", path, code: "structure", message: `Found ${dp} decimal places which exceeds the stated limit of ${maxDp} digits` });
     }
 
-    // jar alone: `.system` as well as the Quantity itself when the unit check runs
-    if (system !== null && !/\s/.test(system) && !/^(?:https?|urn):/.test(system)) issues.push({ severity: "error", path: `${path}.system`, code: "code-invalid", message: "Coding.system must be an absolute reference, not a local reference" });
+    // TERMINOLOGY_TX_SYSTEM_RELATIVE: always on the Quantity itself (official corpus: 33 of 33 non-absolute systems); on its
+    // `.system` as well only when a binding check sends the unit to the value set and the system is not empty — the
+    // ValueSetValidator's own report (VSV:791-793, path + ".system"; official corpus: 3 of 3 with a bound Quantity and
+    // system 1, none of 30 unbound or empty). A system with whitespace keeps the Quantity-level report only.
+    const relative = system !== null && !/^[a-z][a-z0-9+.-]*:/i.test(system);
+    const qb = el && isObject(el.binding) && typeof el.binding.valueSet === "string" && el.binding.valueSet && el.binding.strength !== "example" ? el.binding : null;
+    const bindingRuns = !!qb && !!(await this.vsHeader(String(qb.valueSet)));
+    if (relative && bindingRuns && system !== "" && !/\s/.test(system!)) issues.push({ severity: "error", path: `${path}.system`, code: "code-invalid", message: "Coding.system must be an absolute reference, not a local reference" });
     if (system && code === "") {
       // the server's answer to a unit without a code; Terminology_PassThrough_TX_Message names system#code
       const message = `Coding has no code for system ${system} and cannot be validated`;
@@ -7168,6 +7174,7 @@ export class InstanceValidator {
         const vs = await this.vsHeader(b.valueSet);
         if (vs && b.strength !== "example") {
           checked = true;
+          if (relative) issues.push({ severity: "error", path, code: "code-invalid", message: "Coding.system must be an absolute reference, not a local reference" });
           // validateBindingCodedElement l. 2486-2516: the effective strength (PackageHackerR5 backs the R4 vital-signs units
           // binding off to extensible); required → TERMINOLOGY_TX_CONFIRM_4a, extensible → TERMINOLOGY_TX_CONFIRM_5 (warning)
           const strength = b.strength === "required" && vitalsUnitsHack(sdx, el!) ? "extensible" : b.strength;

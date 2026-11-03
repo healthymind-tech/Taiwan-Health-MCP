@@ -308,9 +308,14 @@ test("a value of another type on a bound primitive, coding as an object, an empt
   const q: Issue[] = [];
   await v.checkQuantity({ value: 2, system: "http://unitsofmeasure.org", code: "" }, { path: "X.valueQuantity" }, q);
   assert.deepEqual(q.map((i) => `${i.severity} ${i.message}`), ["warning Coding has no code for system http://unitsofmeasure.org and cannot be validated", "error Coding has no code for system http://unitsofmeasure.org and cannot be validated (for 'http://unitsofmeasure.org#')"]);
-  const e: Issue[] = [];
-  await v.checkQuantity({ value: 2, system: "", code: "mg" }, { path: "X.valueQuantity" }, e);
-  assert.ok(e.some((i) => i.path === "X.valueQuantity.system" && /absolute reference/.test(i.message)), JSON.stringify(e));
+  // TERMINOLOGY_TX_SYSTEM_RELATIVE on an unbound Quantity: on the Quantity only (jar alone: system "" and "local", Observation
+  // valueQuantity, MedicationDispense.daysSupply, Medication strength.denominator with system 1)
+  for (const system of ["", "local", 1]) {
+    const e: Issue[] = [];
+    await v.checkQuantity({ value: 2, system, code: "mg" }, { path: "X.valueQuantity" }, e);
+    const rel = e.filter((i) => /absolute reference/.test(i.message)).map((i) => i.path);
+    assert.deepEqual(rel, ["X.valueQuantity"], JSON.stringify(e));
+  }
 });
 
 const CP = "http://x/StructureDefinition/cond-coding-ext";
