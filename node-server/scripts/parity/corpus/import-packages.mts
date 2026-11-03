@@ -3,11 +3,12 @@
  * closure, from package tgz files. Refuses any database but the measurement one (port 55432), so production stays untouched.
  *
  *   DATABASE_URL=postgresql://…:55432/taiwan_health node --max-old-space-size=2800 --import tsx \
- *     scripts/parity/corpus/import-packages.mts [--dry-run] [--search dir[,dir]] <package.tgz>...
+ *     scripts/parity/corpus/import-packages.mts [--dry-run] [--search dir[,dir]] [--download dir] <package.tgz>...
  *
  * Dependencies are looked up as <dir>/<id>#<version>.tgz or <dir>/<id>#<version>/package in the --search dirs (default: the
  * jar oracle's package cache, then ~/.fhir/packages); a dependency already in fhir.ig_packages is skipped; a missing one
- * is listed and nothing is imported. Each package's .index.json is reported: index-version, and files whose index url
+ * is listed and nothing is imported, unless --download names a directory: then it is fetched from packages.fhir.org
+ * (the original tgz; a `x` wildcard version resolves to the highest matching release) into that directory. Each package's .index.json is reported: index-version, and files whose index url
  * differs from their own url (the lookup follows the index, as NpmPackage does).
  */
 import { execFileSync } from "node:child_process";
@@ -20,8 +21,9 @@ import { indexPackages } from "../../../src/loaders/ig.js";
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const searchArg = args.includes("--search") ? args[args.indexOf("--search") + 1] : null;
-const tgzs = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--search");
-const search = searchArg?.split(",") ?? [join(homedir(), "tools/validator-oracle/home/.fhir/packages"), join(homedir(), ".fhir/packages")];
+const downloadDir = args.includes("--download") ? args[args.indexOf("--download") + 1] : null;
+const tgzs = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--search" && args[i - 1] !== "--download");
+const search = [...(searchArg?.split(",") ?? [join(homedir(), "tools/validator-oracle/home/.fhir/packages"), join(homedir(), ".fhir/packages")]), ...(downloadDir ? [downloadDir] : [])];
 const url = process.env.DATABASE_URL ?? "";
 if (!/:55432\//.test(url)) {
   console.error("refusing: DATABASE_URL must be the measurement database (port 55432)");
@@ -49,6 +51,27 @@ function indexReport(dir: string): string {
     }
   }
   return `index-version ${ix["index-version"]}, ${ix.files?.length ?? 0} files, ${differ.length} url differences${differ.length ? `\n    ${differ.join("\n    ")}` : ""}`;
+}
+
+/** Highest released version matching a `3.3.x` style pattern (the registry's version list). */
+function resolveVersion(id: string, version: string): string {
+  if (!/(^|\.)x$/.test(version)) return version;
+  const list = JSON.parse(execFileSync("curl", ["-sfL", "-m", "60", `https://packages.fhir.org/${id}`], { encoding: "utf8" })) as { versions?: Record<string, unknown> };
+  const prefix = version.slice(0, -1);
+  const num = (v: string): number[] => v.split(/[.-]/).map((x) => (/^\d+$/.test(x) ? Number(x) : -1));
+  const hits = Object.keys(list.versions ?? {}).filter((v) => v.startsWith(prefix) && /^[\d.]+$/.test(v));
+  hits.sort((a, b) => { const x = num(a), y = num(b); for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0); return 0; });
+  if (!hits.length) throw new Error(`no release of ${id} matches ${version}`);
+  return hits[hits.length - 1];
+}
+
+function download(id: string, version: string): string | null {
+  if (!downloadDir) return null;
+  const out = join(downloadDir, `${id}#${version}.tgz`);
+  execFileSync("mkdir", ["-p", downloadDir]);
+  execFileSync("curl", ["-sfL", "-m", "300", "-o", out, `https://packages.fhir.org/${id}/${version}`]);
+  console.log(`downloaded ${id}#${version} -> ${out}`);
+  return out;
 }
 
 function findDep(id: string, version: string): string | null {
@@ -80,14 +103,15 @@ function visit(path: string): void {
   if (seen.has(key)) return;
   seen.add(key);
   console.log(`${key}${installed.has(key) ? " (installed)" : ""}: ${indexReport(dir)}`);
-  for (const [id, version] of Object.entries(m.dependencies ?? {})) {
+  for (const [id, wanted] of Object.entries(m.dependencies ?? {})) {
+    const version = resolveVersion(id, wanted);
     const dep = `${id}#${version}`;
     if (seen.has(dep)) continue;
     if (installed.has(dep)) {
       seen.add(dep);
       continue;
     }
-    const found = findDep(id, version);
+    const found = findDep(id, version) ?? download(id, version);
     if (found) visit(found);
     else if (!missing.includes(dep)) missing.push(`${dep} (needed by ${key})`);
   }
