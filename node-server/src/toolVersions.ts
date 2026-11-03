@@ -284,7 +284,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.118.0 (parity v3): a system-less Coding is not a face-value member of an implicit (server-only) ValueSet
   // 1.121.0 (parity v3 wave 2): Example URLs only for uri / url values on example.org / acme.com (ValidationEngine / StandAloneValidatorFetcher.resolveURL); memberOf slicing on a systemless Coding is SLICING_CANNOT_BE_EVALUATED for a CodeableConcept focus only.
   // 1.122.0 (parity v3 wave 2): a 'Type/' reference reached inside a dropped trial still fails the instance (validator_cli throws); several type profiles: parser findings decide no match (reported once, untagged), a child's ele-1 is one shared message with each profile's tag twice.
-  fhir_validate_bundle: "1.122.0",
+  // 1.123.0 (parity v3 wave 2): a 'Type/' reference throws only where validator_cli resolves it; a choice property of a wrong type next to a matching _ shadow is read as the shadow's type.
+  fhir_validate_bundle: "1.123.0",
   // 1.114.0 (parity v3 scored extras): sub-extension urls below a sub-extension, a number Extension.url, meta.profile of an unknown version read as the current definition, memberOf slicing on a systemless Coding, a coding object for fixed / pattern.
   // 1.115.0 (parity v3 wave 2): a Bundle with a -profile of another type validates its first entry's resource of that type against it (IV l. 9002-9012); no BundleValidator when the profile is for another type.
   // 1.105.0 (parity v3 round 12 / blind wave 1): findProfile(url, source) at every remaining site; a null code is no code; wildcard dependency versions resolve to the installed match; no example-URL error for a urn or a communications url.
@@ -397,7 +398,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.115.0 (parity v3): a system-less Coding is not a face-value member of an implicit (server-only) ValueSet
   // 1.118.0: validation as fhir_validate_bundle 1.121.0.
   // 1.119.0: validation as fhir_validate_bundle 1.122.0.
-  fhir_validate_resource: "1.119.0",
+  // 1.120.0: validation as fhir_validate_bundle 1.123.0.
+  fhir_validate_resource: "1.120.0",
   // 1.111.0: validation as fhir_validate_bundle 1.114.0.
   // 1.112.0: validation as fhir_validate_bundle 1.115.0.
   // 1.102.0: validation as fhir_validate_bundle 1.105.0.
