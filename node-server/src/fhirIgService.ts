@@ -27,7 +27,7 @@ import * as terminology from "./fhirTerminology.js";
 import * as validator from "./fhirValidator.js";
 import { OFFICIAL_SOURCE, officialValidator, relocateBundleIssues } from "./officialValidator.js";
 import { DbValidatorResolver, icd10cmStrict } from "./fhirValidationResolver.js";
-import { withValidationSnapshot } from "./fhirValidationSnapshot.js";
+import { TransientLookupError, withValidationSnapshot } from "./fhirValidationSnapshot.js";
 import { composeContains } from "./fhirCodeSystem.js";
 import * as reference from "./fhirReference.js";
 import * as authoring from "./fhirAuthoring.js";
@@ -2294,7 +2294,16 @@ export class FHIRIGService {
   /** ROUND 9: extended_findings on a validation result (nothing when there is nothing to report; no verdict, no findings). */
   private async withExtended(pkg: PackageRow, resource: Record<string, any>, data: Record<string, any>): Promise<Record<string, any>> {
     if (data.valid === null) return data;
-    const x = await extendedFindings(resource, this.extendedDeps(pkg));
+    // Inside the request's snapshot (fhirValidationSnapshot.ts): its code checks reuse the definitions and verdicts the
+    // validation pinned. Outside it every coding re-loaded its CodeSystem whenever the shared cache had let it go.
+    let x: Awaited<ReturnType<typeof extendedFindings>>;
+    try {
+      x = await withValidationSnapshot(() => extendedFindings(resource, this.extendedDeps(pkg)));
+    } catch (e) {
+      if (!(e instanceof TransientLookupError)) throw e;
+      logError("extended findings: lookups failed", { error: String(e.message) });
+      return data; // a lookup failure is not a finding
+    }
     if (x) data.extended_findings = x;
     return data;
   }

@@ -273,6 +273,14 @@ export function rankHl7Current<T extends ArtifactCandidate & { version?: string 
   return [...ranked].sort(cmp);
 }
 
+interface HolderRow {
+  package_id: string;
+  package_version: string;
+  version: string | null;
+  ord: number;
+}
+const holderMemo = new TtlMemo<HolderRow[]>(CACHE_TTL_MS, 4000);
+
 /** The version `url` has in the first package of `source`'s own dependency closure that holds it (populatePVList). */
 export async function packageScopedVersion(
   resourceType: string,
@@ -283,13 +291,16 @@ export async function packageScopedVersion(
 ): Promise<string | null> {
   if (typeof source.url !== "string") return null;
   const [pids, pvers] = closureArrays(pkg);
-  const holders = (type: string, canonical: string) =>
-    query<{ package_id: string; package_version: string; version: string | null; ord: number }>(
-      "SELECT a.package_id, a.package_version, a.raw_json->>'version' AS version, dep.ord FROM fhir.artifacts a " +
-        "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) ON a.package_id = dep.pid AND a.package_version = dep.pver " +
-        "WHERE a.resource_type = $3 AND a.canonical_url = $4 ORDER BY dep.ord",
-      [pids, pvers, type, canonical],
-    ).then((r) => r.rows);
+  // memoised per (closure, type, canonical) and pinned per request: every source profile asks for the same holders
+  const holders = (type: string, canonical: string): Promise<HolderRow[]> =>
+    holderMemo.get(`${closureKey(pkg)}\0${type}\0${canonical}`, () =>
+      query<HolderRow>(
+        "SELECT a.package_id, a.package_version, a.raw_json->>'version' AS version, dep.ord FROM fhir.artifacts a " +
+          "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) ON a.package_id = dep.pid AND a.package_version = dep.pver " +
+          "WHERE a.resource_type = $3 AND a.canonical_url = $4 ORDER BY dep.ord",
+        [pids, pvers, type, canonical],
+      ).then((r) => r.rows),
+    );
   const own = (await holders(String(source.resourceType), source.url)).find((r) => (r.version ?? null) === (source.version ?? null));
   if (!own || isCorePackage(own.package_id)) return null;
   // CanonicalResourceManager.see l. 262-274: loading a hl7.terminology package drops the core copies of its canonicals
