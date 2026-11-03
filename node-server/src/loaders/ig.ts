@@ -947,13 +947,14 @@ export async function fetchPackageClosure(
 ): Promise<{ depPaths: string[]; missing: MissingDep[]; fetched: { package_id: string; version: string }[] }> {
   const fetchOne = opts.fetch ?? registry.fetchPackage;
   const installed = await installedIgPackages(pool);
+  const installedVersions = (id: string): string[] => [...installed.keys()].filter((k) => k.startsWith(`${id}\t`)).map((k) => k.slice(id.length + 1));
   const seen = new Set<string>((opts.exclude ?? []).map(([id, ver]) => `${id}\t${ver}`));
 
   const queue: [string, string][] = [];
   const queueKeys = new Set<string>();
   const enqueue = (deps: Iterable<[string, string]>): void => {
     for (const [depId, rawVer] of deps) {
-      const depVer = registry.canonicalDependencyVersion(String(depId), String(rawVer));
+      const depVer = registry.resolveDependencyVersion(String(depId), String(rawVer), installedVersions(String(depId)));
       const key = `${depId}\t${depVer}`;
       if (seen.has(key) || queueKeys.has(key)) continue;
       const installedDeps = installed.get(key);

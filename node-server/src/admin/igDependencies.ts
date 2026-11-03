@@ -8,7 +8,7 @@
  * queries live in adminIg.ts.
  */
 
-import { canonicalDependencyVersion, classifyRegistryFailure, type RegistryFailureKind } from "../loaders/igRegistry.js";
+import { canonicalDependencyVersion, classifyRegistryFailure, resolveDependencyVersion, type RegistryFailureKind } from "../loaders/igRegistry.js";
 
 export interface InstalledPackage {
   package_id: string;
@@ -149,7 +149,7 @@ export function computeMissingDependencies(packages: InstalledPackage[], jobs: I
       const { pkg, depth } = queue.shift()!;
       for (const [depId, rawVer] of Object.entries(pkg.dependencies ?? {})) {
         const declared = String(rawVer);
-        const ver = canonicalDependencyVersion(depId, declared);
+        const ver = resolveDependencyVersion(depId, declared, [...installed.values()].filter((p) => p.package_id === depId).map((p) => p.version));
         const k = key(depId, ver);
         const inst = installed.get(k);
         if (inst) {

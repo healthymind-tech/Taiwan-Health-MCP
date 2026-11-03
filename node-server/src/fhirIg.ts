@@ -55,7 +55,7 @@
 
 import { pickCanonicalVersion } from "./fhirValidator.js";
 import { query } from "./db.js";
-import { canonicalDependencyVersion } from "./loaders/igRegistry.js";
+import { resolveDependencyVersion } from "./loaders/igRegistry.js";
 import { rankCandidates } from "./fhirTerminology.js";
 
 export class IGNotFoundError extends Error {
@@ -381,6 +381,8 @@ export interface ClosureInfo {
 /** Pure closure walk over registry rows (same order as the historical per-row queries). */
 export function computeClosure(registry: PackageRow[], packageId: string, packageVersion: string): ClosureInfo {
   const byKey = new Map(registry.map((r) => [`${r.package_id} ${r.version}`, r]));
+  const versionsOf = new Map<string, string[]>();
+  for (const r of registry) versionsOf.set(r.package_id, [...(versionsOf.get(r.package_id) ?? []), r.version]);
   const seen = new Set<string>();
   const closure: Array<[string, string]> = [];
   const depsMissing: DepMissing[] = [];
@@ -396,7 +398,7 @@ export function computeClosure(registry: PackageRow[], packageId: string, packag
     if (!row) continue;
     for (const [depId, rawVer] of Object.entries(normalizeDependencies(row.dependencies))) {
       // A never-published declared version (core 4.0.0) means the one that exists (4.0.1).
-      const depVer = canonicalDependencyVersion(depId, rawVer);
+      const depVer = resolveDependencyVersion(depId, rawVer, versionsOf.get(depId) ?? []);
       const depKey = `${depId} ${depVer}`;
       if (!byKey.has(depKey) && !missingSeen.has(depKey)) {
         missingSeen.add(depKey);

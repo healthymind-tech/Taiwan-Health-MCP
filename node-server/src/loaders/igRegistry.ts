@@ -291,6 +291,48 @@ export function canonicalDependencyVersion(packageId: string, version: string): 
   return DEPENDENCY_VERSION_ALIASES[packageId]?.[version] ?? version;
 }
 
+/**
+ * The installed version a declared dependency version means: FilesystemPackageCacheManager.findPackageFolder (7.0.1,
+ * l. 568-588). An exact `id#version` wins; a wildcard version (`3.3.x`, `3.x`, `*`) or one with fewer than two dots (`3.3`)
+ * takes the first installed `id#v` in reverse string order whose version matches (VersionUtilities.versionMatches);
+ * `current` / `dev` never match. Without an installed match the declared version is kept (the package server decides).
+ */
+export function resolveDependencyVersion(packageId: string, version: string, installed: Iterable<string>): string {
+  const declared = canonicalDependencyVersion(packageId, version);
+  const versions = [...installed];
+  if (versions.includes(declared)) return declared;
+  if (declared === "current" || declared === "dev" || !(isSemVerWithWildcards(declared) || (declared.match(/\./g) ?? []).length < 2)) return declared;
+  const folders = versions.map((v) => `${packageId}#${v}`).sort().reverse();
+  for (const f of folders) {
+    const v = f.slice(packageId.length + 1);
+    if (isSemVer(v) && versionMatchesWildcard(declared, v)) return v;
+  }
+  return declared;
+}
+
+const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
+function isSemVer(v: string): boolean {
+  return SEMVER.test(v);
+}
+
+/** VersionUtilities.isSemVerWithWildcards: integer major, minor integer or x, patch absent / integer / x. */
+function isSemVerWithWildcards(v: string): boolean {
+  return /^\d+\.(?:\d+|[xX*])(?:\.(?:\d+|[xX*]))?(?:-[0-9A-Za-z.-]+)?$/.test(v);
+}
+
+/** VersionUtilities.versionMatches for the criteria findPackageFolder passes: x / X / * or an absent part matches anything. */
+function versionMatchesWildcard(criteria: string, candidate: string): boolean {
+  const c = criteria.split("-")[0].split(".");
+  const v = candidate.split("-")[0].split(".");
+  for (let i = 0; i < 3; i++) {
+    const part = c[i];
+    if (part === undefined || part === "x" || part === "X" || part === "*") continue;
+    if (part !== v[i]) return false;
+  }
+  return true;
+}
+
 /** Autocomplete search via GET {base}/catalog?op=find&name={q}. Best-effort. */
 export async function search(base: string, query: string): Promise<
   { name: string; description: string; fhirVersion: string }[]

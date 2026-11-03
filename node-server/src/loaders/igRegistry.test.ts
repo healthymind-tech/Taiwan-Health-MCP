@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { canonicalDependencyVersion, classifyRegistryFailure, downloadTarball, fetchPackage, RegistryError } from "./igRegistry.js";
+import { canonicalDependencyVersion, classifyRegistryFailure, downloadTarball, fetchPackage, RegistryError, resolveDependencyVersion } from "./igRegistry.js";
 
 test("missing version on the primary registry is fetched via packages2 per-version metadata", async () => {
   const tgz = gzipSync(Buffer.from("package"));
@@ -144,4 +144,14 @@ test("searchWithFallback: every registry failing throws instead of returning an 
   const { searchWithFallback } = await import("./igRegistry.js");
   const fake = async (): Promise<Response> => new Response("nope", { status: 503 });
   await assert.rejects(() => searchWithFallback("https://packages.fhir.org", "x", fake), /Registry search failed: HTTP 503/);
+});
+
+test("resolveDependencyVersion: a wildcard or short version takes the installed match (FilesystemPackageCacheManager.findPackageFolder)", () => {
+  assert.equal(resolveDependencyVersion("a.b", "3.3.x", ["3.2.1", "3.3.0"]), "3.3.0");
+  assert.equal(resolveDependencyVersion("a.b", "3.3", ["3.3.0", "3.3.2"]), "3.3.2");
+  assert.equal(resolveDependencyVersion("a.b", "3.x", ["3.10.0", "3.9.0"]), "3.9.0", "the folders' reverse string order, as Java lists them");
+  assert.equal(resolveDependencyVersion("a.b", "3.3.x", ["3.4.0"]), "3.3.x", "no installed match: the declared version");
+  assert.equal(resolveDependencyVersion("a.b", "1.0.0", ["1.0.1"]), "1.0.0", "an exact version is exact");
+  assert.equal(resolveDependencyVersion("a.b", "current", ["1.0.0"]), "current");
+  assert.equal(resolveDependencyVersion("hl7.fhir.r4.core", "4.0.0", ["4.0.1"]), "4.0.1");
 });
