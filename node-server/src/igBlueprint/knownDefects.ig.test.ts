@@ -1,7 +1,8 @@
 /**
- * ISSUES_v17.3 — IG known defects surfaced by the structure tools, on TWPAS 1.2.7 (FHIR_PACKAGE_CACHE; skipped
- * when absent): the Condition-twpas defect (its own examples fail the closed `pattern $this` slicing) marks the
- * Bundle slices that require it `known_invalid`, with where the diagnosis goes instead.
+ * ISSUES_v17.3 — IG known defects surfaced by the structure tools, on the TWPAS 1.2.7 package structure
+ * (FHIR_PACKAGE_CACHE; skipped when absent). The defect below is a FIXTURE injected through `deps.knownDefects`, to show
+ * how a defect on a profile marks the Bundle slices that require it `known_invalid`. It is not a claim about TWPAS: on a
+ * correct import ig_selfcheck finds no known_invalid there (206 of 206 examples pass).
  */
 
 import { test } from "node:test";
@@ -18,7 +19,7 @@ const defects = deriveKnownDefects(
   () => "Condition",
 );
 
-test("TWPAS Bundle blueprint: Condition slices are known_invalid with the Claim.diagnosis alternative", { skip: !base }, async () => {
+test("a defect injected on a slice's profile: the Bundle blueprint marks it known_invalid, with the alternative", { skip: !base }, async () => {
   const deps = { ...base!, knownDefects: async () => defects };
   const r = await bundleBlueprint({ bundle_profile: "Bundle-twpas" }, deps);
   const ki = (r.data.known_invalid ?? []) as Array<Record<string, any>>;
