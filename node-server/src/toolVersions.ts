@@ -282,7 +282,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.116.0 (parity v3): BCP-47 `<part> exists` filters decided from the parsed tag
   // 1.117.0 (parity v3): implicit LOINC answer-list ValueSets (loinc.org/vs/LL…) answered from the held LOINC release when it is the server's
   // 1.118.0 (parity v3): a system-less Coding is not a face-value member of an implicit (server-only) ValueSet
-  fhir_validate_bundle: "1.120.0",
+  // 1.121.0 (parity v3 wave 2): Example URLs only for uri / url values on example.org / acme.com (ValidationEngine / StandAloneValidatorFetcher.resolveURL); memberOf slicing on a systemless Coding is SLICING_CANNOT_BE_EVALUATED for a CodeableConcept focus only.
+  fhir_validate_bundle: "1.121.0",
   // 1.114.0 (parity v3 scored extras): sub-extension urls below a sub-extension, a number Extension.url, meta.profile of an unknown version read as the current definition, memberOf slicing on a systemless Coding, a coding object for fixed / pattern.
   // 1.115.0 (parity v3 wave 2): a Bundle with a -profile of another type validates its first entry's resource of that type against it (IV l. 9002-9012); no BundleValidator when the profile is for another type.
   // 1.105.0 (parity v3 round 12 / blind wave 1): findProfile(url, source) at every remaining site; a null code is no code; wildcard dependency versions resolve to the installed match; no example-URL error for a urn or a communications url.
@@ -393,7 +394,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.113.0 (parity v3): BCP-47 `<part> exists` filters decided from the parsed tag
   // 1.114.0 (parity v3): implicit LOINC answer-list ValueSets (loinc.org/vs/LL…) answered from the held LOINC release when it is the server's
   // 1.115.0 (parity v3): a system-less Coding is not a face-value member of an implicit (server-only) ValueSet
-  fhir_validate_resource: "1.117.0",
+  // 1.118.0: validation as fhir_validate_bundle 1.121.0.
+  fhir_validate_resource: "1.118.0",
   // 1.111.0: validation as fhir_validate_bundle 1.114.0.
   // 1.112.0: validation as fhir_validate_bundle 1.115.0.
   // 1.102.0: validation as fhir_validate_bundle 1.105.0.
