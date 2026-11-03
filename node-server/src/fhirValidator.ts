@@ -1511,6 +1511,23 @@ function isConstraintDefinition(s: SdIndex): boolean {
   return s.sd?.derivation === "constraint";
 }
 
+/** A Coding / CodeableConcept without what JsonParser dropped: a `_x` that is not an object drops x (parseChildPrimitive). */
+function withoutDroppedCodes(v: any): any {
+  if (!isObject(v)) return v;
+  const coding = (c: any): any => {
+    if (!isObject(c)) return c;
+    const dropped = Object.keys(c).filter((k) => k.startsWith("_") && c[k] !== null && c[k] !== undefined && !isObject(c[k]) && !Array.isArray(c[k]));
+    if (!dropped.length) return c;
+    const out = { ...c };
+    for (const k of dropped) {
+      delete out[k];
+      delete out[k.slice(1)];
+    }
+    return out;
+  };
+  return Array.isArray(v.coding) ? { ...v, coding: v.coding.map(coding) } : coding(v);
+}
+
 /** The text JsonParser keeps for a number or boolean written where a string belongs (after "must be a string"). */
 function jsonText(v: unknown): unknown {
   return typeof v === "number" || typeof v === "boolean" ? String(v) : v;
@@ -3166,8 +3183,16 @@ export class InstanceValidator {
       if (types.length === 1 && !isPrimitive(types[0]) && v !== null && typeof v !== "object") return false; // parseChildComplexInstance: no element
       return !(types.length === 1 && isPrimitive(types[0]) && (isObject(v) || (Array.isArray(v) && v.some(isObject))));
     };
+    // JsonParser walks the type's properties in definition order, so the element model is in that order, whatever the JSON's
+    const rank = (k: string): number => {
+      const n = k.startsWith("_") ? k.slice(1) : k;
+      if (n === "resourceType") return -1;
+      return list.findIndex((x) => (x.name.endsWith("[x]") ? n.startsWith(x.name.slice(0, -3)) && n.length > x.name.length - 3 : x.name === n));
+    };
     const out: Record<string, any> = {};
-    for (const [k, v] of Object.entries(resource)) if (keep(k, v)) out[k] = v;
+    const kept = Object.entries(resource).filter(([k, v]) => keep(k, v));
+    for (const [k, v] of kept.sort(([x], [y]) => rank(x) - rank(y))) out[k] = v;
+    copyLiterals(resource, out);
     this.viewSource.set(out, resource);
     this.parsedViews.set(resource, out);
     return out;
@@ -3301,6 +3326,21 @@ export class InstanceValidator {
           depth + 1,
           true,
         );
+        if (sdx && sdx.type !== rctx.resource.resourceType) {
+          // validateElement l. 8535-8537 (Validation_VAL_Profile_OutOfOrder): the element model is in the order of its own
+          // type, so only a profile of another type can find it out of order
+          const order = [...(sdx.children(sdx.root)?.values() ?? [])];
+          const indexOf = (n: string): number => order.findIndex((g) => (g.name.endsWith("[x]") ? n.startsWith(g.name.slice(0, -3)) && n.length > g.name.length - 3 : g.name === n));
+          let last = -1;
+          let lastName = "(null)";
+          for (const [k, x] of Object.entries(rctx.resource)) {
+            if (k === "resourceType" || k.startsWith("_")) continue;
+            const i = indexOf(k);
+            if (i >= 0 && i < last) out.push({ severity: "error", path: `${ROOT_TOKEN}.${k}${Array.isArray(x) ? "[0]" : ""}`, code: "invalid", message: `As specified by profile ${this.versionedUrl(sdx)}, Element '${k}' is out of order (found after ${lastName})` });
+            last = Math.max(i, 0);
+            lastName = k;
+          }
+        }
         if (rctx.container === null) this.checkContainedReferences(rctx.resource, out); // once per validateResource, whatever defn is
         return out;
       })().finally(() => done.delete(url));
@@ -3828,7 +3868,7 @@ export class InstanceValidator {
     if (typeCode === "Extension" && childSdx.type === "Extension" && childSdx.url !== CORE + "Extension") {
       // checkExtension l. 2655-2669: a simple extension (value[x] min > 0) with no parsed value
       const ved = childSdx.byId.get("Extension.value[x]");
-      const hasValue = Object.keys(v).some((k) => /^_value[A-Z]/.test(k) || (/^value[A-Z]/.test(k) && KNOWN_TYPE_SUFFIX.has(k.slice("value".length)) && (typeof v[k] === "object" ? isComplexChoiceValue(k) : !isComplexChoiceValue(k))));
+      const hasValue = Object.keys(v).some((k) => /^_value[A-Z]/.test(k) || (/^value[A-Z]/.test(k) && !Array.isArray(v[k]) && KNOWN_TYPE_SUFFIX.has(k.slice("value".length)) && (typeof v[k] === "object" ? isComplexChoiceValue(k) : !isComplexChoiceValue(k))));
       if (ved && String(ved.max ?? "*") === "0" && v.url === childSdx.url) {
         const key = Object.keys(v).find((k) => /^value[A-Z]/.test(k));
         const actual = key ? KNOWN_TYPE_SUFFIX.get(key.slice("value".length)) : undefined;
@@ -5073,7 +5113,11 @@ export class InstanceValidator {
     // start (IV:6905-7001) never stops at a failure: `ok = startInner(…) && ok` for defn, its dependencies and every
     // meta.profile. Order matters: what each of them visits fills the tracker and validator_contained_Id for later ones
     const passes = async (u: string): Promise<boolean> => {
-      let ok = isValid((await this.conformance(ctx, u, path, depth, !forReference)).filter(counted));
+      // a meta.profile of another type walks the element model (as the top-level loop does)
+      const target = await this.sdx(u);
+      const own = target && target.type !== ctx.resource.resourceType ? await this.sdx(CORE + String(ctx.resource.resourceType)) : null;
+      const onView = own ? { ...ctx, resource: await this.parsedView(ctx.resource, own) } : ctx;
+      let ok = isValid((await this.conformance(onView, u, path, depth, !forReference)).filter(counted));
       // start, IV:6917-6937 / 6981-7001: the profile's imposeProfile dependencies (one level); an unresolved one is a warning
       const sdx = await this.sdx(u);
       for (const x of Array.isArray(sdx?.sd.extension) ? sdx!.sd.extension : []) {
@@ -5192,7 +5236,8 @@ export class InstanceValidator {
     if (!(await this.vsHeader(valueSet)) && !(await this.valueSetMayBeAtServer(valueSet))) return false; // the slicing clause is the operator: opMemberOf l. 2793-2817, no ValueSet → false (funcMemberOf: empty)
     let hit = false;
     let unknown = false;
-    for (const a of actual) {
+    for (const a0 of actual) {
+      const a = withoutDroppedCodes(a0);
       if (await this.codelessCodingMember(valueSet, a)) {
         hit = true;
         continue;
@@ -5386,6 +5431,9 @@ export class InstanceValidator {
           if (!isObject(c)) continue;
           if (raw in c) {
             const x = c[raw];
+            // JsonParser.parseChildPrimitive: a `_x` that is not an object drops the property, value included
+            const fork = c[`_${raw}`];
+            if (fork !== undefined && fork !== null && !isObject(fork) && !Array.isArray(fork)) continue;
             if (Array.isArray(x)) pushAll(next, x);
             else if (x !== undefined && x !== null) next.push(x);
           } else {

@@ -687,3 +687,23 @@ test("a number where a string belongs: fullUrl and Coding.display are read as th
   const b = await new InstanceValidator(new FakeResolver()).validate({ resourceType: "Bundle", type: "collection", entry: [{ fullUrl: 1, resource: { resourceType: "Patient", id: "a" } }] });
   assert.ok(!b.some((i) => /Bundle entry missing fullUrl/.test(i.message)), JSON.stringify(b));
 });
+
+test("exists() of an object with only empty arrays below it: Base.isEmpty", () => {
+  const e = { url: "http://x", valueCodeableConcept: { coding: [] } };
+  const r = { resourceType: "Patient" };
+  assert.deepEqual(evaluateExpression(e, "Extension", "value.exists()", { resource: r, rootResource: r }), [false]);
+  assert.deepEqual(evaluateConstraint(e, "Extension", "extension.exists() != value.exists()", { resource: r, rootResource: r }), { status: "fail" });
+});
+
+test("a meta.profile of another type walks the element model in its own type's order: Validation_VAL_Profile_OutOfOrder", async () => {
+  const P = "http://ex.org/obs-on-patient";
+  const O = SDS[CORE + "Patient"];
+  const reversed = { ...O, url: P, type: "Basic", derivation: "constraint", snapshot: { element: [{ ...O.snapshot.element[0], id: "Basic", path: "Basic" }, ...O.snapshot.element.slice(1).reverse().map((e: Record<string, any>) => ({ ...e, id: e.id.replace("Patient", "Basic"), path: e.path.replace("Patient", "Basic") }))] } };
+  class R extends FakeResolver {
+    override async fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
+      return url.split("|")[0] === P ? reversed : super.fetchStructureDefinition(url);
+    }
+  }
+  const issues = await new InstanceValidator(new R()).validate({ resourceType: "Patient", meta: { profile: [P] }, active: true, gender: "male" });
+  assert.ok(issues.some((i) => /Element 'gender' is out of order \(found after active\)/.test(i.message) || /Element 'active' is out of order/.test(i.message)), JSON.stringify(issues.map((i) => i.message)));
+});

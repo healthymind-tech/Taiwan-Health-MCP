@@ -130,6 +130,12 @@ function javaIntParam(param: any): number {
   return Number(s);
 }
 
+/** Base.isEmpty of a JSON object: nothing below it but empty arrays and empty objects (`{coding: []}`). */
+function javaEmptyObject(v: unknown): boolean {
+  if (v === null || typeof v !== "object" || Object.getPrototypeOf(v) !== Object.prototype) return false;
+  return Object.values(v as Record<string, unknown>).every((x) => (Array.isArray(x) ? x.every(javaEmptyObject) : javaEmptyObject(x)));
+}
+
 /** FHIRPathEngine.funcSkip (l. 6537-6545). */
 function javaSkip(coll: any[], n: any): any[] {
   const i = javaIntParam(n);
@@ -1693,7 +1699,7 @@ const USER_FUNCTIONS: Record<string, any> = {
       if (!expr) {
         return [(coll || []).some((x) => {
           const v = fpUtil.valData(x);
-          return !(v !== null && typeof v === "object" && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype && Object.keys(v).length === 0);
+          return !javaEmptyObject(v);
         })];
       }
       return [javaWhere.call(this, coll, expr).length > 0];
