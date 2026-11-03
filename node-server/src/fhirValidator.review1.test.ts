@@ -718,3 +718,26 @@ test("URL_EXAMPLE on a uri: only example.org / acme.com fail to resolve (Validat
   assert.equal(await ex("http://example.net/ids"), false);
   assert.equal(await ex("http://acme.org/ids"), false);
 });
+
+test("several type profiles (checkChildByDefinition l. 8114-8158): parser findings decide no match; a child's ele-1 is one shared message", async () => {
+  const X = "http://example.org/fhir/StructureDefinition/id-fixed";
+  EXTRA[X] = sd(X, "Identifier", "complex-type", [
+    ...SDS[CORE + "Identifier"].snapshot.element.filter((e: Json) => e.path !== "Identifier.system"),
+    el("Identifier.system", 1, "1", ["uri"], { fixedUri: "http://ns.test/fixed" }),
+  ], { baseDefinition: CORE + "Identifier", derivation: "constraint", name: "IdFixed", version: "1.0.0" });
+  const P = "http://example.org/fhir/StructureDefinition/pat-id-choice";
+  EXTRA[P] = sd(P, "Patient", "resource", [
+    ...SDS[CORE + "Patient"].snapshot.element.filter((e: Json) => e.path !== "Patient.identifier"),
+    el("Patient.identifier", 0, "*", [], { type: [{ code: "Identifier", profile: [CORE + "Identifier", X] }] }),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint" });
+  // `use` as an array: a parser error, once and untagged; the core Identifier still matches
+  const parsed = errs(await run({ resourceType: "Patient", identifier: [{ use: ["official"], system: "http://ns.test/other", value: "1" }] }, [P]));
+  assert.ok(!parsed.some(([, m]) => m.startsWith("Unable to find a match for the specified profile")), JSON.stringify(parsed));
+  assert.equal(parsed.filter(([, m]) => m.startsWith("This property must be a simple value, not an Array")).length, 1, JSON.stringify(parsed));
+  assert.ok(!parsed.some(([, m]) => m.includes("(validating against")), JSON.stringify(parsed));
+  // an empty value: no profile matches, ele-1 on value is one message carrying every profile's tag twice
+  const empty = errs(await run({ resourceType: "Patient", identifier: [{ system: "http://ns.test/other", value: "" }] }, [P]));
+  const ele1 = empty.filter(([p, m]) => p === "Patient.identifier[0].value" && m.startsWith("Constraint failed: ele-1"));
+  assert.equal(ele1.length, 1, JSON.stringify(empty));
+  assert.equal((ele1[0][1].match(/\(validating against /gu) ?? []).length, 4, ele1[0][1]);
+});

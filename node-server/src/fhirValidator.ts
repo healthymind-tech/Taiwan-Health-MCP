@@ -3874,6 +3874,7 @@ export class InstanceValidator {
         const errs = trial.filter((i) => (i.severity === "error" || i.severity === "fatal") && !own.has(key(i)));
         (errs.length ? bad : good).push([p, trial]);
       }
+      pushAll(issues, bare.filter(isParseIssue));
       // l. 8144-8158: setMessage on the message object, over the HashMap's key order: an object two profiles share
       // (an executed invariant) collects both tags
       const tagged = async (p: string, list: Issue[]): Promise<Issue[]> => {
@@ -3882,15 +3883,38 @@ export class InstanceValidator {
         for (const i of list) if (!own.has(key(i))) i.message += tag;
         return list;
       };
+      // ele-1 of a child is one executed invariant (EXECUTED_CONSTRAINT_LIST): the same message object in every profile's
+      // list, there twice (the child's element definition and its type's root both carry ele-1), so it collects each
+      // profile's tag twice (official: `… (validating against A) (validating against A) (validating against B) …`)
+      const emit = async (lists: Array<[string, Issue[]]>): Promise<void> => {
+        const shared = new Map<string, Issue>();
+        for (const p of javaHashMapOrder(lists.map(([u]) => u))) {
+          const list = lists.find(([u]) => u === p)![1];
+          const ele1 = list.filter((i) => i.message === ELE1_MESSAGE && i.path !== item.path && !own.has(key(i)));
+          const rest = await tagged(p, list.filter((i) => !ele1.includes(i)));
+          for (const i of ele1) {
+            const psdx = await this.sdx(p);
+            const tag = ` (validating against ${psdx?.url ?? p}${psdx?.sd?.version ? `|${psdx.sd.version}` : ""} [${psdx?.sd?.name ?? ""}])`;
+            let m = shared.get(i.path);
+            if (!m) {
+              m = { ...i };
+              shared.set(i.path, m);
+              issues.push(m);
+            }
+            m.message += tag + tag;
+          }
+          issues.push(...rest);
+        }
+      };
       if (good.length === 1) {
         issues.push(...good[0][1]);
       } else if (good.length === 0) {
         issues.push({ severity: "error", path: item.path, code: "structure", message: `Unable to find a match for the specified profile among choices: ${[...typeProfiles].sort().join(", ")}` });
-        for (const p of javaHashMapOrder(bad.map(([u]) => u))) issues.push(...(await tagged(p, bad.find(([u]) => u === p)![1])));
+        await emit(bad);
       } else {
         const n = good.length;
         issues.push({ severity: "warning", path: item.path, code: "structure", message: `Found multiple matching profiles among ${n} choice${n === 1 ? "" : "s"}: ${good.map(([p]) => p).sort().join(", ")}` });
-        for (const p of javaHashMapOrder(good.map(([u]) => u))) issues.push(...(await tagged(p, good.find(([u]) => u === p)![1])));
+        await emit(good);
       }
       return;
     }
