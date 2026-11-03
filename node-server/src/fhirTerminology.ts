@@ -11,7 +11,7 @@
 import { txDisplays } from "./txCodeTables.js";
 import { query } from "./db.js";
 import { pickCanonicalVersion } from "./fhirValidator.js";
-import { terminologyServerKnows } from "./fhirSpecialSystems.js";
+import { languageTagParts, terminologyServerKnows } from "./fhirSpecialSystems.js";
 import type { PackageRow } from "./fhirIg.js";
 import {
   type CodeSystemIndex,
@@ -593,6 +593,12 @@ export async function externalFilterMatches(system: string, f: ComposeFilter, co
   const value = String(f.value ?? "");
   if (routeSystem(system) === "snomed") return snomedFilterMatches(prop, op, value, code);
   if (system === "urn:iso:std:iso:3166") return iso3166FilterMatches(prop, op, value, code);
+  if (system === "urn:ietf:bcp:47" && op === "exists" && (value === "true" || value === "false")) {
+    // the terminology server's BCP-47 filters: `<part> exists true|false` on the parsed tag (us-core simple-language)
+    const parts = languageTagParts(code);
+    if (!parts || !(prop in parts)) return undefined;
+    return parts[prop as keyof typeof parts] === (value === "true");
+  }
   if (system === ICD10CM_URL) return icd10cmFilterMatches(prop, op, value, code);
   if (system === RXNORM_URL) return rxnormFilterMatches(prop, op, value, code);
   if (routeSystem(system) !== "loinc") return undefined;

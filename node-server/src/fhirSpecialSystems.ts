@@ -83,6 +83,35 @@ function loadRegistry(): Registry | null {
 }
 
 /** Verdict on a BCP-47 tag: valid, invalid (with the tx.fhir.org reason), or null when the registry is unavailable. */
+/**
+ * The parts a valid BCP-47 tag has (RFC 5646 order: language, extlang ×3, script, region, variants, extensions, private use),
+ * for the terminology server's `<part> exists true|false` filters (us-core simple-language). null for a tag that is not valid.
+ */
+export function languageTagParts(code: string): Record<"language" | "ext-lang" | "script" | "region" | "variant" | "extension" | "private-use", boolean> | null {
+  const v = judgeLanguageTag(code);
+  if (!v || !v.valid) return null;
+  const parts = code.split("-");
+  const out = { language: false, "ext-lang": false, script: false, region: false, variant: false, extension: false, "private-use": false };
+  let c = 0;
+  if (parts[0].toLowerCase() === "x") {
+    out["private-use"] = true;
+    return out;
+  }
+  out.language = true;
+  c++;
+  for (let i = 0; i < 3 && c < parts.length && /^[a-z]{3}$/i.test(parts[c]); i++, c++) out["ext-lang"] = true;
+  if (c < parts.length && /^[a-z]{4}$/i.test(parts[c])) (out.script = true), c++;
+  if (c < parts.length && /^([a-z]{2}|[0-9]{3})$/i.test(parts[c])) (out.region = true), c++;
+  while (c < parts.length && /^([a-z0-9]{5,8}|[0-9][a-z0-9]{3})$/i.test(parts[c])) (out.variant = true), c++;
+  while (c < parts.length && /^[0-9a-wy-z]$/i.test(parts[c])) {
+    out.extension = true;
+    c++;
+    while (c < parts.length && /^[a-z0-9]{2,8}$/i.test(parts[c])) c++;
+  }
+  if (c < parts.length && parts[c].toLowerCase() === "x") out["private-use"] = true;
+  return out;
+}
+
 export function judgeLanguageTag(code: string): { valid: true } | { valid: false; reason: string } | null {
   const reg = loadRegistry();
   if (!reg) return null;

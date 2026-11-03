@@ -662,3 +662,13 @@ test("a UCUM unit the grammar rejects under a binding the validator checks: Unkn
   await v.checkQuantity({ value: 2, system: "http://unitsofmeasure.org", code: "m^2" }, { path: "X.valueQuantity" }, e, { path: "X.valueQuantity", binding: { strength: "extensible", valueSet: "http://hl7.org/fhir/ValueSet/ucum-units" } });
   assert.ok(e.some((i) => i.severity === "error" && i.path === "X.valueQuantity.code" && i.message === "Unknown code 'm^2' in the CodeSystem 'http://unitsofmeasure.org' version '2.2'"), JSON.stringify(e));
 });
+
+test("BCP-47 part filters (us-core simple-language: ext-lang / script / variant / extension / private-use exists false)", async () => {
+  const { languageTagParts } = await import("./fhirSpecialSystems.js");
+  assert.deepEqual(languageTagParts("en-US"), { language: true, "ext-lang": false, script: false, region: true, variant: false, extension: false, "private-use": false });
+  assert.equal(languageTagParts("zh-Hant-TW")?.script, true);
+  assert.equal(languageTagParts("de-CH-1996")?.variant, true);
+  assert.equal(languageTagParts("en-x-abc")?.["private-use"], true);
+  assert.equal(languageTagParts("en-u-ca-gregory")?.extension, true);
+  assert.equal(languageTagParts("zz-not-a-tag"), null);
+});
