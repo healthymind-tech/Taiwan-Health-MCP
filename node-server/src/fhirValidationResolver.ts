@@ -204,6 +204,9 @@ export function judgeCodeSystemDisplay(
       status: "invalid-display",
       severity: "error",
       message: `${ws ? "Wrong whitespace in Display Name" : "Wrong Display Name"} '${display}' for ${system}#${code}. Valid display is ${list} (for the language(s) '${langList}')`,
+      choices,
+      ws,
+      langList,
     };
   }
   if (isDefaultLang) {

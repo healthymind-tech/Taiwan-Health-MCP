@@ -275,7 +275,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.105.0 (parity v3): Coding.version against a value set reaching the system through imports; an import not held leaves it not checked; an undecided bare code names its inferred system
   // 1.106.0 (parity v3): no Coding.version check on a coding without a code
   // 1.107.0 (parity v3): LOINC display choices list a short name equal to the long common name
-  fhir_validate_bundle: "1.107.0",
+  // 1.108.0 (parity v3): useValueSetDisplays — the bound value set's display of a code is valid and joins the display choices
+  fhir_validate_bundle: "1.108.0",
   // 1.100.0 (parity v3): the SNOMED CT parser message follows the value set's filter (tx.fhir.org probe), not the display
   // 1.101.0 (parity v3): the fixed / pattern check repeated against the element's own definition (checkChildByDefinition l. 8173); an unpinned include's Unknown code in the version of the value set's package
   // 1.102.0 (parity v3): no Confirm_4a for an empty code of a held CodeSystem
@@ -375,7 +376,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.102.0 (parity v3): Coding.version against a value set reaching the system through imports; an import not held leaves it not checked; an undecided bare code names its inferred system
   // 1.103.0 (parity v3): no Coding.version check on a coding without a code
   // 1.104.0 (parity v3): LOINC display choices list a short name equal to the long common name
-  fhir_validate_resource: "1.104.0",
+  // 1.105.0 (parity v3): useValueSetDisplays — the bound value set's display of a code is valid and joins the display choices
+  fhir_validate_resource: "1.105.0",
   // 1.97.0 (parity v3): the SNOMED CT parser message follows the value set's filter (tx.fhir.org probe), not the display
   // 1.98.0 (parity v3): the fixed / pattern check repeated against the element's own definition (checkChildByDefinition l. 8173); an unpinned include's Unknown code in the version of the value set's package
   // 1.99.0 (parity v3): no Confirm_4a for an empty code of a held CodeSystem

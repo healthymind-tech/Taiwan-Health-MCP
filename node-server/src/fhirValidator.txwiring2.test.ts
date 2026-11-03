@@ -608,3 +608,36 @@ test("LOINC display choices: the display, then every designation, equal names no
   assert.equal(loincDisplayChoices(["Hispanic or Latino", "Hispanic or Latino"]), "one of 3 choices: 'Hispanic or Latino' (en-US), 'Hispanic or Latino' (en-US) or 'Hispanic or Latino' (en-US)");
   assert.equal(loincDisplayChoices(["A"]), "one of 2 choices: 'A' (en-US) or 'A' (en-US)");
 });
+
+const VSDP = "http://x/StructureDefinition/cond-vsdisplay";
+const VSD = "http://x/ValueSet/with-display";
+class VsDisplayResolver extends RequiredCodingResolver {
+  async fetchStructureDefinition(url: string): Promise<Json | null> {
+    if (url.split("|")[0] !== VSDP) return super.fetchStructureDefinition(url);
+    const base = JSON.parse(JSON.stringify(await super.fetchStructureDefinition(CORE + "Condition")));
+    base.url = VSDP;
+    base.derivation = "constraint";
+    for (const e of base.snapshot.element) if (e.path === "Condition.code") e.binding = { strength: "extensible", valueSet: VSD };
+    return base;
+  }
+  async fetchValueSet(url: string): Promise<Json | null> {
+    return url.split("|")[0] === VSD ? { resourceType: "ValueSet", url: VSD, title: "WithDisplay", compose: { include: [{ system: GENDER, concept: [{ code: "male", display: "Man" }] }] } } : super.fetchValueSet(url);
+  }
+  async valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
+    return url.split("|")[0] === VSD ? code === "male" : super.valueSetContains(url, system, code);
+  }
+  async checkCode(system: string, code: string, display: string | null): Promise<CodeCheck> {
+    if (system === GENDER && code === "male" && display !== null && display.toLowerCase() !== "male") {
+      return { status: "invalid-display", severity: "error", message: `Wrong Display Name '${display}' for ${GENDER}#male. Valid display is 'Male' (en) (for the language(s) 'en')`, choices: ["'Male' (en)"], ws: false, langList: "en" };
+    }
+    return super.checkCode(system, code, display);
+  }
+}
+
+test("useValueSetDisplays (ValueSetValidator 7.0.1:1366-1385): the value set's display is a valid one and joins the choices of its issue", async () => {
+  const run = async (display: string): Promise<Issue[]> => (await new InstanceValidator(new VsDisplayResolver()).validate(cond(VSDP, { system: GENDER, code: "male", display }))).filter((i) => i.path === "Condition.code.coding[0].display" || i.path === "Condition.code");
+  const wrong = await run("nope");
+  assert.ok(wrong.some((i) => i.message === `Wrong Display Name 'nope' for ${GENDER}#male. Valid display is one of 2 choices: 'Male' (en) or 'Man' (for the language(s) 'en')`), JSON.stringify(wrong));
+  const vsName = await run("Man");
+  assert.ok(!vsName.some((i) => i.path === "Condition.code"), JSON.stringify(vsName));
+});

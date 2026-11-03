@@ -265,7 +265,15 @@ export type CodeCheck = (
   | { status: "silent" }
   /** `at: "system"`: the finding is about Coding.system (e.g. CODESYSTEM_CS_NO_SUPPLEMENT), not the code. */
   | { status: "invalid-code"; severity: "error" | "warning" | "information"; message: string; at?: "system" }
-  | { status: "invalid-display"; severity: "error" | "warning" | "information"; message: string }
+  | {
+      status: "invalid-display";
+      severity: "error" | "warning" | "information";
+      message: string;
+      /** Display_Name_for__should_be_one_of__instead_of: the quoted choices, whitespace-only, the language summary (a held CodeSystem) */
+      choices?: string[];
+      ws?: boolean;
+      langList?: string;
+    }
   /** A display was given but there is no local terminology to check it against: an information note, always `unchecked`. */
   | { status: "display-unchecked"; message: string }
 ) &
@@ -662,6 +670,28 @@ function bareCodeSystems(vs: Record<string, any> | null): string[] {
 
 /** The focus of fixedValuePort for a primitive that exists without a value. */
 const VALUELESS_PRIMITIVE = Symbol("valueless primitive");
+
+/**
+ * ValueSetValidator.findValueSetRef + the useValueSetDisplays block (standalone tag 7.0.1:1366-1385): the display of `code`
+ * in an enumerated include of `vs` (when the value set's language is acceptable) and its designations in an acceptable
+ * language, in that order.
+ */
+function valueSetDisplays(vs: Record<string, any>, system: string, code: string, langs: readonly string[]): string[] {
+  const ok = (l: unknown): boolean => typeof l !== "string" || !l || !langs.length || langs.some((x) => x === "*" || x.startsWith(l));
+  const includes: any[] = isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
+  for (const inc of includes) {
+    if (!isObject(inc) || inc.system !== system || !Array.isArray(inc.concept)) continue;
+    const cc = inc.concept.find((x: any) => isObject(x) && x.code === code);
+    if (!cc) continue;
+    const out: string[] = [];
+    if (typeof cc.display === "string" && cc.display && ok(vs.language)) out.push(cc.display);
+    for (const d of Array.isArray(cc.designation) ? cc.designation : []) {
+      if (isObject(d) && typeof d.value === "string" && d.value && ok(d.language)) out.push(d.value);
+    }
+    return out;
+  }
+  return [];
+}
 
 /** Coding.display as the parser keeps it: a number or boolean is reported there and read as its text; "" is no display. */
 function writtenDisplay(c: Record<string, any>): string | null {
@@ -6416,6 +6446,8 @@ export class InstanceValidator {
     // (parity v1) tx $validate-code checks the display too (ValueSetValidator: a wrong display makes the result not ok):
     // a member whose display the terminology rejects does not satisfy the binding
     let wrongDisplay: { system: string; code: string; message: string; index: number } | null = null;
+    // codings whose display only the value set gives: valid in this value set's check
+    const vsDisplayOk = new Set<any>();
     const list: any[] = typeCode === "Coding" ? [v] : isObject(v) && Array.isArray(v.coding) ? v.coding : [];
     for (const [system, code] of codings) {
       // ValueSetValidator: a Coding without a system cannot be validated (Coding_has_no_system__cannot_validate) and is
@@ -6427,6 +6459,22 @@ export class InstanceValidator {
         if (system && c && writtenDisplay(c) !== null && (typeCode === "Coding" || typeCode === "CodeableConcept")) {
           const r = await this.codeCheck(system, code!, writtenDisplay(c), typeof c.version === "string" ? c.version : null);
           if (r.status === "invalid-display" && r.severity === "error") {
+            // ValueSetValidator.validateCode with options.useValueSetDisplays (standalone tag 7.0.1:1366-1385): the value set's
+            // own display / designations of the code are valid too, appended to the choices of the issue it raises
+            const vsNames = valueSetDisplays(vs, system, code!, this.workingLang ?? this.languages);
+            const shown = writtenDisplay(c)!;
+            if (vsNames.some((n) => n.toLowerCase() === shown.toLowerCase())) {
+              vsDisplayOk.add(c);
+              anyMember = true;
+              continue;
+            }
+            if (vsNames.length && r.choices && r.langList !== undefined) {
+              const all = [...r.choices, ...vsNames.map((n) => `'${n}'`)];
+              const listed = `one of ${all.length} choices: ${all.slice(0, -1).join(", ")} or ${all[all.length - 1]}`;
+              const message = `${r.ws ? "Wrong whitespace in Display Name" : "Wrong Display Name"} '${shown}' for ${system}#${code}. Valid display is ${listed} (for the language(s) '${r.langList}')`;
+              const at = typeCode === "Coding" ? `${item.path}.display` : `${item.path}.coding[${idx}].display`;
+              if (!issues.some((x) => x.path === at && x.message === message)) issues.push({ severity: r.severity, path: at, code: "invalid", message });
+            }
             wrongDisplay ??= { system, code: code!, message: r.message, index: idx };
             continue;
           }
@@ -6448,7 +6496,7 @@ export class InstanceValidator {
     let codingError: string | null = null;
     if (typeCode === "CodeableConcept") {
       for (const c of list) {
-        if (!isObject(c) || typeof c.system !== "string" || typeof c.code !== "string" || !c.code) continue;
+        if (!isObject(c) || typeof c.system !== "string" || typeof c.code !== "string" || !c.code || vsDisplayOk.has(c)) continue;
         const r = await this.codeCheck(c.system, c.code, writtenDisplay(c), typeof c.version === "string" ? c.version : null);
         if ((r.status === "invalid-code" || r.status === "invalid-display") && r.severity === "error") {
           codingError = r.message;
