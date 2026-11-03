@@ -6902,7 +6902,9 @@ export class InstanceValidator {
     // (evaluator corpus: all 5649 official URL_EXAMPLE errors are absolute URLs)
     if (typeCode !== "oid" && typeCode !== "uuid" && !v.startsWith("#") && el.path !== "Bundle.entry.fullUrl" && isAbsoluteUrlJava(v) && isExampleUrl(v) && !this.inExampleExemptContext(item.path)) {
       const u = v.includes("|") ? v.slice(0, v.lastIndexOf("|")) : v;
-      const found = !!this.resolver.definitionExists && (await this.defExists(u));
+      // resolveUrl l. 4065: tel: / mailto: / llp: (isCommunicationsUrl) resolve; validator_cli: a urn (urn:oid:2.999…, the
+      // example arcs) never reaches URL_EXAMPLE either (jar probes, identifier.system / Coding.system / uri / url / meta.source)
+      const found = /^(?:tel|mailto|llp|urn):/u.test(u) || (!!this.resolver.definitionExists && (await this.defExists(u)));
       // settings.isAllowExamples(): "nothing - these do need to resolve"
       // a value with whitespace has failed the URI rule (validateElement: the URL checks run on a good value only)
       if (!found && !this.allowExamples && !/\s/.test(v)) issues.push({ severity: "error", path: item.path, code: "invalid", message: `Example URLs are not allowed in this context (${short(v)})` });

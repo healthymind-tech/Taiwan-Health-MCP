@@ -612,6 +612,13 @@ test("a JSON number where a string belongs stays a value for the validator: Iden
   assert.deepEqual(codingsOf({ coding: [{ system: "http://acme.test/cs", code: 1 }] }), [["http://acme.test/cs", "1"]]);
 });
 
+test("validateReference: no example-URL error for a urn or a communications url (jar probes)", async () => {
+  for (const system of ["urn:oid:2.999.1.2", "urn:oid:1.3.6.1.4.1.32473.1", "mailto:someone@example.org"]) {
+    const got = errs(await run({ resourceType: "Patient", identifier: [{ system, value: "1" }] }));
+    assert.ok(!got.some(([, m]) => m.startsWith("Example URLs are not allowed")), `${system}: ${JSON.stringify(got)}`);
+  }
+});
+
 test("F10 invariants with memberOf() / conformsTo() are evaluated (FHIRPathEngine.funcMemberOf, funcConformsTo)", async () => {
   const NEED = "http://example.org/fhir/StructureDefinition/pat-need-birth";
   EXTRA[NEED] = sd(NEED, "Patient", "resource", [
