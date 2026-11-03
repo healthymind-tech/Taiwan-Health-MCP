@@ -3866,8 +3866,11 @@ export class InstanceValidator {
           issues.push({ severity: "error", path: item.path, code: "structure", message: `Unknown profile ${p}`, unchecked: { kind: "profile", canonical: p } });
           continue;
         }
-        const trial: Issue[] = [];
-        await this.validateItemAgainst(sdx, { ...el, type: [{ ...el.type[0], profile: [p] }] }, item, typeCode, rctx, trial, depth);
+        const trial0: Issue[] = [];
+        await this.validateItemAgainst(sdx, { ...el, type: [{ ...el.type[0], profile: [p] }] }, item, typeCode, rctx, trial0, depth);
+        // the parser's findings (JsonParser, before validation) belong to no profile: they neither decide the match nor
+        // carry a profile tag — reported once, from the bare run
+        const trial = trial0.filter((i) => !isParseIssue(i));
         const errs = trial.filter((i) => (i.severity === "error" || i.severity === "fatal") && !own.has(key(i)));
         (errs.length ? bad : good).push([p, trial]);
       }
