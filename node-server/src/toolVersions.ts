@@ -270,7 +270,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.93.0 (parity v3 round 11, jar): a package resource is known by its .index.json url, not the url inside the file; wrong choice round 3 (bindings in the profile's package, leftovers).
   // 1.94.0: additional bindings with a testable purpose are checked (usage-scoped ones: rules_unchecked).
   // 1.95.0: a number where a string belongs is read as its text (fullUrl, Coding.display); an object for extension is its one child; implied vital-sign profile before meta.profile.
-  fhir_validate_bundle: "1.98.0",
+  // 1.99.0 (parity v3 round 12): a JSON number or boolean stays a value: Identifier.system / value, a Coding's code.
+  fhir_validate_bundle: "1.99.0",
   // 1.94.0 (parity v3): Terminology_TX_NoValid_13 for a Coding outside an extensible binding, with the system's complaint incl. a wrong display; a bare code the UCUM grammar rejects is UNABLE_TO_INFER_CODESYSTEM
   // 1.95.0 (parity v3): the SNOMED CT expression parser message in Terminology_TX_Confirm_4a; the resource comment in a pattern's nested locations; NoValid_12 for a wrong display of a local system; Confirm_4a for an empty code; a number as display read as text; an instance's control characters no longer collide with the location tokens
   // 1.96.0 (parity v3): Value is 'null' for a fixed primitive with only its shadow; a number as system in the CodeableConcept summary
@@ -361,7 +362,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.90.0: validation as fhir_validate_bundle 1.93.0.
   // 1.91.0: validation as fhir_validate_bundle 1.94.0.
   // 1.92.0: validation as fhir_validate_bundle 1.95.0.
-  fhir_validate_resource: "1.95.0",
+  // 1.96.0: validation as fhir_validate_bundle 1.99.0.
+  fhir_validate_resource: "1.96.0",
   // 1.91.0 (parity v3): Terminology_TX_NoValid_13 for a Coding outside an extensible binding, with the system's complaint incl. a wrong display; a bare code the UCUM grammar rejects is UNABLE_TO_INFER_CODESYSTEM
   // 1.92.0 (parity v3): the SNOMED CT expression parser message in Terminology_TX_Confirm_4a; the resource comment in a pattern's nested locations; NoValid_12 for a wrong display of a local system; Confirm_4a for an empty code; a number as display read as text; an instance's control characters no longer collide with the location tokens
   // 1.93.0 (parity v3): Value is 'null' for a fixed primitive with only its shadow; a number as system in the CodeableConcept summary

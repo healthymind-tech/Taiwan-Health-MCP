@@ -4,7 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { InstanceValidator, type Issue } from "./fhirValidator.js";
+import { codingsOf, InstanceValidator, type Issue } from "./fhirValidator.js";
 import { CORE, FakeResolver, SDS, el, sd } from "./fhirTestKit.test.js";
 
 type Json = Record<string, any>;
@@ -604,6 +604,12 @@ test("wrong choice: an object the parser emptied has had content; a primitive's 
   ], { baseDefinition: CORE + "Extension", derivation: "constraint", context: [{ type: "element", expression: "Element" }] });
   const got = errs(await run({ resourceType: "Patient", extension: [{ url: E, valueCodeableConcept: { nothing: 1 } }] })).map(([, m]) => m);
   assert.ok(!got.includes("Object must have some content"), JSON.stringify(got));
+});
+
+test("a JSON number where a string belongs stays a value for the validator: Identifier.system, a Coding's code in a binding", async () => {
+  const issues = await run({ resourceType: "Patient", identifier: [{ system: 1, value: "x" }] });
+  assert.ok(errs(issues).some(([, m]) => m === "Identifier.system must be an absolute reference, not a local reference"), JSON.stringify(issues));
+  assert.deepEqual(codingsOf({ coding: [{ system: "http://acme.test/cs", code: 1 }] }), [["http://acme.test/cs", "1"]]);
 });
 
 test("F10 invariants with memberOf() / conformsTo() are evaluated (FHIRPathEngine.funcMemberOf, funcConformsTo)", async () => {

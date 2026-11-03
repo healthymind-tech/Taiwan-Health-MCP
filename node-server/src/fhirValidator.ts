@@ -6727,7 +6727,7 @@ export class InstanceValidator {
 
   private async checkCoding(v: Record<string, any>, item: Item, issues: Issue[], el: Record<string, any> | null = null): Promise<void> {
     const system = v.system;
-    const code = v.code;
+    const code = typeof v.code === "number" || typeof v.code === "boolean" ? String(v.code) : v.code;
     // InstanceValidator.checkCoding (7.0.1): outside a CodeableConcept, or with a binding of its own, a code without a
     // system is TERMINOLOGY_TX_SYSTEM_NO_CODE (warning)
     const inCC = !!el && ((isObject(el.base) && el.base.path === "CodeableConcept.coding") || el.path === "CodeableConcept.coding");
@@ -6828,8 +6828,8 @@ export class InstanceValidator {
   private checkIdentifier(v: any, item: Item, issues: Issue[]): void {
     if (!isObject(v)) return;
     const path = item.path;
-    const system = typeof v.system === "string" ? v.system : null;
-    const value = typeof v.value === "string" ? v.value : null;
+    const system = primitiveText(v.system);
+    const value = primitiveText(v.value);
     // isIdentifierSystemReferenceValid
     if (system !== null && !(system.startsWith("http:") || system.startsWith("https:") || system.startsWith("urn:") || system.startsWith("ldap:"))) {
       issues.push({ severity: "error", path, code: "code-invalid", message: "Identifier.system must be an absolute reference, not a local reference" });
@@ -8071,16 +8071,21 @@ function fixedClause(disc: string, fixed: any, type: string, sliceId: string, va
 }
 
 /** Extract `(system, code)` pairs from a code / Coding / CodeableConcept value. */
+/** A primitive as the element model holds it: JsonParser keeps a JSON number / boolean as its text (and reports the JSON type). */
+function primitiveText(v: unknown): string | null {
+  return typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : null;
+}
+
 export function codingsOf(node: any): Array<[string | null, string | null]> {
   if (typeof node === "string") return [[null, node]];
   if (!isObject(node)) return [];
   if (Array.isArray(node.coding)) {
     return node.coding
       .filter((c: any) => isObject(c))
-      .map((c: any) => [typeof c.system === "string" ? c.system : null, typeof c.code === "string" ? c.code : null] as [string | null, string | null]);
+      .map((c: any) => [primitiveText(c.system), primitiveText(c.code)] as [string | null, string | null]);
   }
   if ("code" in node || "system" in node) {
-    return [[typeof node.system === "string" ? node.system : null, typeof node.code === "string" ? node.code : null]];
+    return [[primitiveText(node.system), primitiveText(node.code)]];
   }
   return [];
 }
