@@ -8,7 +8,7 @@
 # and an IG already in that file is refused.
 set -u
 # the main checkout (also when started from a worktree: .env and the private ledger live there)
-REPO=$(cd "$(git -C "$(dirname "$0")" rev-parse --git-common-dir)/.." && pwd)
+REPO=$(cd "$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)
 IGS=""; TAG=""; REV=HEAD; CORR=""; SHARDS=4; BLIND=0
 while [ $# -gt 0 ]; do
   case "$1" in
