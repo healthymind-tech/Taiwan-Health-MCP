@@ -590,11 +590,14 @@ export class DbValidatorResolver implements ValidatorResolver {
       let lookupFailed = false;
       const { result, failed } = await probeQueryFailures(async () => {
         try {
-          const fetchBase = (u: string): Promise<Record<string, any> | null> =>
-            this.loadStructureDefinition(u, [...chain, key]).catch((e) => {
+          // ProfileUtilities: base and type references resolve from the definition being generated (findProfile(url, source))
+          const fetchBase = async (u: string): Promise<Record<string, any> | null> => {
+            const scoped = u.includes("|") ? null : await this.scopedDefinitionVersion(u, generating).catch(() => null);
+            return this.loadStructureDefinition(scoped ? `${u}|${scoped}` : u, [...chain, key]).catch((e) => {
               lookupFailed = true; // also a failure of another request's in-flight lookup, which no probe here counts
               throw e;
             });
+          };
           return (await generateSnapshotAsync(generating, fetchBase)) ?? generating;
         } catch (e) {
           logWarning("snapshot generation failed", { url: canonical, error: (e as Error).message });

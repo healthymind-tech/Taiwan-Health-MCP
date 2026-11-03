@@ -2108,9 +2108,20 @@ export class InstanceValidator {
 
   /** ProfileUtilities.findProfile(url, source): an unversioned reference made by a profile resolves in its package first. */
   private async scopedSdx(url: string, from: SdIndex): Promise<SdIndex | null> {
-    if (url.includes("|") || !this.resolver.scopedDefinitionVersion) return this.sdx(url);
+    return this.sdx(await this.scopedUrl(url, from));
+  }
+
+  /** The canonical `from` means by `url`: pinned only when its package closure holds another version than the global pick. */
+  private async scopedUrl(url: string, from: SdIndex): Promise<string> {
+    if (url.includes("|") || !this.resolver.scopedDefinitionVersion) return url;
     const version = await this.resolver.scopedDefinitionVersion(url, from.sd);
-    return version ? ((await this.sdx(`${url}|${version}`)) ?? this.sdx(url)) : this.sdx(url);
+    if (!version || (await this.sdx(url))?.sd?.version === version) return url;
+    return (await this.sdx(`${url}|${version}`)) ? `${url}|${version}` : url;
+  }
+
+  /** The url a resolved definition is reached by again: versioned when it is not the global pick. */
+  private async urlOf(d: SdIndex): Promise<string> {
+    return (await this.sdx(d.url)) === d || !d.sd?.version ? d.url : `${d.url}|${d.sd.version}`;
   }
 
   /** The installed StructureDefinition for `url` when it exists but has no (generated) snapshot, else null. */
@@ -3789,7 +3800,9 @@ export class InstanceValidator {
     // Issues on the element itself that do not depend on the profile (its binding, fixed value …) are not profile
     // errors, so they are taken from a run against the bare type.
     const typeProfiles: string[] =
-      (el.type || []).length === 1 && !isResourceRoot && !sdx.hasChildren(el) && typeCode !== "Extension" ? ((el.type[0].profile || []) as unknown[]).map(String) : [];
+      (el.type || []).length === 1 && !isResourceRoot && !sdx.hasChildren(el) && typeCode !== "Extension"
+        ? await Promise.all(((el.type[0].profile || []) as unknown[]).map((u) => this.scopedUrl(String(u), sdx)))
+        : [];
     if (typeProfiles.length > 1) {
       const key = (i: Issue): string => `${i.severity}|${i.path}|${i.message}`;
       const bare: Issue[] = [];
@@ -3908,7 +3921,7 @@ export class InstanceValidator {
 
     if (sdx.hasChildren(el) && !isResourceRoot && (typeCode === "BackboneElement" || typeCode === "Element") && (el.type || []).length === 1 && (el.type[0].profile || []).length) {
       // checkChildByDefinition l. 7965-7973: an abstract-typed element's profile (`profile#element`) applies as well
-      const psdx = await this.sdx(String(el.type[0].profile[0]));
+      const psdx = await this.scopedSdx(String(el.type[0].profile[0]), sdx);
       if (psdx) {
         typeProfilePass = psdx;
         typeProfilePassEl = profileElementOf(el.type[0], 0, psdx);
@@ -3978,7 +3991,7 @@ export class InstanceValidator {
         }
       }
     }
-    if (typeCode === "Reference") await this.checkReference(el, v, item, rctx, issues, depth);
+    if (typeCode === "Reference") await this.checkReference(el, v, item, rctx, issues, depth, sdx);
     await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
     for (const [tsdx, troot] of typeRootConstraints) {
       if (tsdx === sdx && troot === el) continue;
@@ -4028,7 +4041,7 @@ export class InstanceValidator {
       if (code === "Resource") {
         for (const sd of list) if (sd.url === sdt.url || sd.type === sdt.type) return true;
       }
-      sdt = typeof sdt.sd.baseDefinition === "string" ? await this.sdx(sdt.sd.baseDefinition) : null;
+      sdt = typeof sdt.sd.baseDefinition === "string" ? await this.scopedSdx(sdt.sd.baseDefinition, sdt) : null;
     }
     return false;
   }
@@ -4783,7 +4796,7 @@ export class InstanceValidator {
           let extUrl: string | null = null;
           if (typeof extProfile === "string") {
             extUrl = extProfile;
-            const esdx = await this.sdx(extProfile);
+            const esdx = await this.scopedSdx(extProfile, sdx);
             const fixedUrl = esdx ? [...esdx.byId.values()].find((e) => e.path === "Extension.url")?.fixedUri : undefined;
             if (typeof fixedUrl === "string") extUrl = fixedUrl;
           }
@@ -4921,7 +4934,7 @@ export class InstanceValidator {
     if (own) out.push(own);
     for (const t of slice.type || []) {
       for (let pi = 0; pi < (t.profile || []).length; pi++) {
-        const psdx = await this.sdx(String(t.profile[pi]));
+        const psdx = await this.scopedSdx(String(t.profile[pi]), sdx);
         if (!psdx) continue;
         // getCriteriaForDiscriminator l. 5815-5832: EXT_PROFILE_ELEMENT names the element of the profile to start from
         const from = profileElementOf(t, pi, psdx);
@@ -5091,7 +5104,7 @@ export class InstanceValidator {
       want = [];
       for (const t of c.type || []) {
         for (const p of t.targetProfile || []) {
-          const psdx = await this.sdx(String(p));
+          const psdx = await this.scopedSdx(String(p), sdx);
           if (psdx?.type) want.push(String(psdx.type));
         }
       }
@@ -5354,7 +5367,7 @@ export class InstanceValidator {
   private async codelessCodingMember(valueSet: string, value: any): Promise<boolean> {
     if (!isObject(value) || Array.isArray(value.coding)) return false;
     if (typeof value.code === "string" && value.code !== "") return false;
-    if (value.code !== undefined && typeof value.code !== "string") return false;
+    if (value.code !== undefined && value.code !== null && typeof value.code !== "string") return false;
     if (!(await this.vsHeader(valueSet))) return false;
     const system = value.system;
     if (system === undefined) return true;
@@ -6620,7 +6633,7 @@ export class InstanceValidator {
                   : `None of the codings provided are in the value set ${label}, and a coding should come from this value set unless it has no suitable code (codes = ${shown})`,
         });
       }
-      if (maxUrl) await this.checkMaxValueSet(maxUrl, codings, typeCode, item, issues);
+      if (maxUrl) await this.checkMaxValueSet(source ? String((await this.scopedBinding({ valueSet: maxUrl }, source)).valueSet) : maxUrl, codings, typeCode, item, issues);
     }
   }
 
@@ -7236,6 +7249,7 @@ export class InstanceValidator {
     rctx: ResourceCtx,
     issues: Issue[],
     depth: number,
+    sdx: SdIndex,
   ): Promise<void> {
     // JsonParser keeps a number / boolean written for a string (after "the primitive value must be a string") as its text
     const ref = typeof v.reference === "number" || typeof v.reference === "boolean" ? String(v.reference) : v.reference;
@@ -7292,7 +7306,7 @@ export class InstanceValidator {
       if (tps.length && !unversioned.includes(tu) && !unversioned.includes(CORE + "Resource")) {
         let matching = false;
         for (const tp of tps) {
-          const psdx = await this.sdx(tp);
+          const psdx = await this.scopedSdx(tp, sdx);
           if (!psdx) {
             issues.push({ severity: "error", path: item.path, code: "not-found", message: `Unable to resolve the profile reference '${tp}'` });
             continue;
@@ -7324,7 +7338,7 @@ export class InstanceValidator {
         let rok = false;
         const ftSd = await this.sdx(CORE + fti);
         for (const tp of tps) {
-          const tsd = await this.sdx(tp);
+          const tsd = await this.scopedSdx(tp, sdx);
           if (!tsd) continue;
           if (!types.includes(tsd.type)) types.push(tsd.type);
           for (let cur: SdIndex | null = ftSd, g = 0; cur && g < 20; g++) {
@@ -7332,7 +7346,7 @@ export class InstanceValidator {
               rok = true;
               break;
             }
-            cur = typeof cur.sd.baseDefinition === "string" ? await this.sdx(cur.sd.baseDefinition) : null;
+            cur = typeof cur.sd.baseDefinition === "string" ? await this.scopedSdx(cur.sd.baseDefinition, cur) : null;
           }
         }
         if (types.length && !rok) {
@@ -7363,7 +7377,7 @@ export class InstanceValidator {
     const types: string[] = [];
     let anyType = false;
     for (const p of targetProfiles) {
-      const psdx = await this.sdx(p);
+      const psdx = await this.scopedSdx(p, sdx);
       if (!psdx) {
         // Port of InstanceValidator.checkReference (7.0.1) l. 5361-5371: a target profile that cannot be resolved —
         // with or without a version — is Reference_REF_CantResolveProfile (error), and does not add a target type
@@ -7405,7 +7419,7 @@ export class InstanceValidator {
     // Reference_REF_MultipleMatches (warning, versioned urls sorted)
     const good: SdIndex[] = [];
     for (const c of candidates) {
-      if (await this.resourceConforms(tctx, c.url, `${item.path}.resolve()`, depth + 1, false, true)) good.push(c);
+      if (await this.resourceConforms(tctx, await this.urlOf(c), `${item.path}.resolve()`, depth + 1, false, true)) good.push(c);
     }
     if (good.length > 1) {
       issues.push({
@@ -7589,7 +7603,7 @@ export class InstanceValidator {
       for (let guard = 0; cur && guard < 10; guard++) {
         if (cur.type + pt === en) return true;
         const baseDef = typeof cur.sd.baseDefinition === "string" ? cur.sd.baseDefinition : null;
-        cur = baseDef ? await this.sdx(baseDef) : null;
+        cur = baseDef ? await this.scopedSdx(baseDef, cur) : null;
       }
     }
     return false;
