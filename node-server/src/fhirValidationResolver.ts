@@ -486,6 +486,15 @@ const codeCheckMemo = new TtlMemo<CodeCheck>(VERDICT_TTL_MS, VERDICT_CACHE_MAX);
 const membershipMemo = new TtlMemo<boolean | undefined>(VERDICT_TTL_MS, VERDICT_CACHE_MAX);
 const scopedVersionMemo = new TtlMemo<string | null>(SD_TTL_MS, SD_CACHE_MAX);
 
+/**
+ * The dependency closure of a source definition's package (packageScopedVersion), memoised like the definitions (and
+ * pinned per request): unmemoised, every package-scoped reference re-read the whole package registry.
+ */
+const closureMemo = new TtlMemo<Array<[string, string]>>(SD_TTL_MS, 200);
+function sourceClosure(packageId: string, version: string): Promise<Array<[string, string]>> {
+  return closureMemo.get(`${packageId}#${version}`, () => packageClosure(packageId, version));
+}
+
 async function memoised<V>(memo: TtlMemo<V>, key: string, compute: () => Promise<V>): Promise<V> {
   const hit = memo.peek(key);
   if (hit) return hit;
@@ -563,7 +572,7 @@ export class DbValidatorResolver implements ValidatorResolver {
 
   scopedDefinitionVersion(url: string, source: Record<string, any>, resourceType = "StructureDefinition"): Promise<string | null> {
     return memoised(scopedVersionMemo, `${this.closure}\0${resourceType}\0${url}\0${source.url}|${source.version}`, () =>
-      guarded(() => terminology.packageScopedVersion(resourceType, url, source, this.pkg, packageClosure)),
+      guarded(() => terminology.packageScopedVersion(resourceType, url, source, this.pkg, sourceClosure)),
     );
   }
 

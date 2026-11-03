@@ -2235,7 +2235,12 @@ export class FHIRIGService {
     };
   }
 
-  async validateResource(
+  /** One request, one snapshot (fhirValidationSnapshot.ts): the validation, its extended findings and id suggestions share pins. */
+  validateResource(...args: Parameters<FHIRIGService["validateResourcePinned"]>): Promise<string> {
+    return withValidationSnapshot(() => this.validateResourcePinned(...args));
+  }
+
+  private async validateResourcePinned(
     resource: Record<string, any>,
     profile: string | null = null,
     packageId: string | null = null,
@@ -2433,7 +2438,12 @@ export class FHIRIGService {
     }
   }
 
-  async validateBundle(
+  /** One request, one snapshot (fhirValidationSnapshot.ts): the validation, its extended findings and id suggestions share pins. */
+  validateBundle(...args: Parameters<FHIRIGService["validateBundlePinned"]>): Promise<string> {
+    return withValidationSnapshot(() => this.validateBundlePinned(...args));
+  }
+
+  private async validateBundlePinned(
     bundle: Record<string, any>,
     packageId: string | null = null,
     version: string | null = null,
