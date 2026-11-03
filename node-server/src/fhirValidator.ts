@@ -45,7 +45,7 @@ import { XVER_SOURCE, xverDefinition, xverElementId, xverMatchingUrl, xverStatus
 import { CANONICAL_RESOURCES, hl7UrlMustResolve, uriResolutionExempt, urlResolveMessage, urnSyntaxIssue } from "./fhirUriRules.js";
 import { codingVersionIssue } from "./fhirExternalTerminology.js";
 import { codingVersionIssues } from "./fhirCsVersion.js";
-import { isAbsoluteUrl, serverPrefers, specialSystemMember } from "./fhirSpecialSystems.js";
+import { isAbsoluteUrl, judgeLanguageTag, serverPrefers, specialSystemMember } from "./fhirSpecialSystems.js";
 import { validateCodeSystemResource } from "./fhirCodeSystemResource.js";
 import { validateConceptMapResource } from "./fhirConceptMapResource.js";
 import { validateValueSetResource } from "./fhirValueSetResource.js";
@@ -6341,6 +6341,50 @@ export class InstanceValidator {
     }
   }
 
+  /**
+   * ValueSetValidator.checkValueSetOptions (standalone tag 7.0.1:1119-1127): every requested display language must parse as a
+   * BCP-47 tag (LanguageTag against the registry), else INVALID_DISPLAY_NAME is thrown before any code is looked at. The
+   * working language is the resource's language (checkLang), so an invalid one fails every binding the validator answers
+   * locally: INVALID_DISPLAY_NAME at the element plus the binding's not-in-value-set issue carrying it (jar alone and with
+   * tx: Patient gender / maritalStatus, Composition status / text.status / confidentiality / attester.mode / Reference.type).
+   * Only the local answers are ported: a CodeableConcept or Coding with a code system the terminology server answers
+   * (LOINC, SNOMED CT …) or that nothing holds goes to tx, whose answer is not reproduced here.
+   */
+  private async invalidDisplayLanguage(b: Record<string, any>, v: any, typeCode: string, item: Item, issues: Issue[]): Promise<boolean> {
+    const lang = this.workingLang && this.workingLang.length ? this.workingLang[0].trim() : "";
+    if (!lang || !b.valueSet || b.strength === "example") return false;
+    const verdict = judgeLanguageTag(lang);
+    if (!verdict || verdict.valid) return false;
+    const vs = await this.vsHeader(String(b.valueSet));
+    if (!vs) return false;
+    const primitive = ["code", "string", "uri", "url", "canonical"].includes(typeCode);
+    const codings: any[] = typeCode === "Coding" ? [v] : typeCode === "CodeableConcept" && isObject(v) && Array.isArray(v.coding) ? v.coding : [];
+    if (!primitive) {
+      if (typeCode !== "CodeableConcept" && typeCode !== "Coding") return false;
+      const usable = codings.filter((c) => isObject(c) && typeof c.system === "string" && typeof c.code === "string" && c.code);
+      if (!usable.length) return false;
+      for (const c of usable) if (serverPrefers(c.system) === true || !(await this.heldCodeSystem(c, c.system))) return false;
+    } else if (typeof v !== "string" || !v) return false;
+    const message = `Invalid displayLanguage: '${lang}'`;
+    issues.push({ severity: "error", path: item.path, code: "invalid", message });
+    const ref = `'${vs.title || vs.name || b.valueSet}' (${vs.url}${vs.version ? `|${vs.version}` : ""})`;
+    if (primitive) {
+      if (b.strength === "required") issues.push({ severity: "error", path: item.path, code: "code-invalid", message: `The value provided ('${v}') was not found in the value set ${ref}, and a code is required from this value set  (error message = ${message})` });
+      else if (b.strength === "extensible") issues.push({ severity: "warning", path: item.path, code: "code-invalid", message: `The value provided ('${v}') was not found in the value set ${ref}, and a code should come from this value set unless it has no suitable code (note that the validator cannot judge what is suitable)  (error message = ${message})` });
+      return true;
+    }
+    if (typeCode === "CodeableConcept") {
+      const codes = codings.filter((c) => isObject(c)).map((c) => `${typeof c.system === "string" ? c.system : "null"}#${typeof c.code === "string" && c.code ? c.code : "null"}`).join(", ");
+      if (b.strength === "required") issues.push({ severity: "error", path: item.path, code: "code-invalid", message: `None of the codings provided are in the value set ${ref}, and a coding from this value set is required) (codes = ${codes})` });
+      else if (b.strength === "extensible") issues.push({ severity: "warning", path: item.path, code: "code-invalid", message: `None of the codings provided are in the value set ${ref}, and a coding should come from this value set unless it has no suitable code (note that the validator cannot judge what is suitable) (codes = ${codes})` });
+      return true;
+    }
+    // a Coding element: the issue text of its binding failure under this error is not established; the INVALID_DISPLAY_NAME error
+    // stands and the binding is reported as not checked
+    issues.push({ severity: "information", path: item.path, code: "informational", message: `The binding to ${ref} was not checked: the display language '${lang}' is invalid`, unchecked: { kind: "code", canonical: String(b.valueSet) } });
+    return true;
+  }
+
   private async checkOneBinding(
     el: Record<string, any>,
     v: any,
@@ -6362,6 +6406,7 @@ export class InstanceValidator {
     }
     // the parser reports `coding` not being an array and keeps the value
     if (typeCode === "CodeableConcept" && isObject(v) && isObject(v.coding)) v = { ...v, coding: [v.coding] };
+    if (await this.invalidDisplayLanguage(b, v, typeCode, item, issues)) return;
     const strength = b.strength;
     if (typeCode !== "Coding" && (strength === "required" || strength === "extensible" || strength === "preferred")) this.boundValueSets.add(stripVersion(String(b.valueSet)));
     if ((strength === "required" || strength === "extensible" || strength === "preferred") && (typeCode === "Coding" || typeCode === "CodeableConcept")) {

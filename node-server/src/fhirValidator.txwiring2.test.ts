@@ -646,3 +646,12 @@ test("useValueSetDisplays (ValueSetValidator 7.0.1:1366-1385): the value set's d
   const vsName = await run("Man");
   assert.ok(!vsName.some((i) => i.path === "Condition.code"), JSON.stringify(vsName));
 });
+
+test("ValueSetValidator.checkValueSetOptions: an invalid resource language fails every locally answered binding (INVALID_DISPLAY_NAME, jar alone)", async () => {
+  const r = await new InstanceValidator(new RequiredCodingResolver()).validate({ resourceType: "Patient", id: "p", language: "trailing ", gender: "male" });
+  const at = r.filter((i) => i.path === "Patient.gender").map((i) => `${i.severity} ${i.message}`);
+  assert.ok(at.includes("error Invalid displayLanguage: 'trailing'"), JSON.stringify(r));
+  assert.ok(at.some((m) => m.startsWith("error The value provided ('male') was not found in the value set") && m.endsWith("(error message = Invalid displayLanguage: 'trailing')")), JSON.stringify(r));
+  const ok = await new InstanceValidator(new RequiredCodingResolver()).validate({ resourceType: "Patient", id: "p", language: "de-CH", gender: "male" });
+  assert.ok(!ok.some((i) => /Invalid displayLanguage/.test(i.message)), JSON.stringify(ok));
+});
