@@ -698,6 +698,15 @@ test("a Bundle with a profile of another type: the first entry's resource of tha
   // the parser's findings outside the first entry stand
   const parsed = await run({ resourceType: "Bundle", type: "collection", entry: [{ fullUrl: "urn:uuid:9b0e5a52-8f0c-4c2a-9a63-0d8f7c2d1e01", resource: pat }, { fullUrl: "urn:uuid:9b0e5a52-8f0c-4c2a-9a63-0d8f7c2d1e02", resource: { resourceType: "Organization", bogus: 1 } }] }, [PAT_PROFILE]);
   assert.ok(errs(parsed).some(([p, m]) => p.startsWith("Bundle.entry[1].resource") && m === "Unrecognized property 'bogus'"), JSON.stringify(errs(parsed)));
+  // a 'Type/' reference in a reference target validated only for the profile match: validator_cli throws (getFromBundle),
+  // so the instance does not pass
+  const org = "urn:uuid:9b0e5a52-8f0c-4c2a-9a63-0d8f7c2d1e03";
+  EXTRA[CORE + "Organization"] = { ...SDS[CORE + "Organization"], snapshot: { element: [...SDS[CORE + "Organization"].snapshot.element, el("Organization.partOf", 0, "1", [], { type: [{ code: "Reference", targetProfile: [CORE + "Organization"] }] })] } };
+  const threw = await run({ resourceType: "Bundle", type: "collection", entry: [
+    { fullUrl: "urn:uuid:9b0e5a52-8f0c-4c2a-9a63-0d8f7c2d1e01", resource: { ...pat, identifier: [{ system: "http://www.moi.gov.tw", value: "A123456789" }], managingOrganization: { reference: org } } },
+    { fullUrl: org, resource: { resourceType: "Organization", name: "x", partOf: { reference: "Organization/" } } },
+  ] }, [PAT_PROFILE]);
+  assert.ok(errs(threw).some(([p, m]) => p === "Bundle.entry[1].resource.partOf" && m === "Relative URLs must be of the format [ResourceName]/[id]. Encountered Organization/"), JSON.stringify(errs(threw)));
 });
 
 test("URL_EXAMPLE on a uri: only example.org / acme.com fail to resolve (ValidationEngine / StandAloneValidatorFetcher.resolveURL)", async () => {

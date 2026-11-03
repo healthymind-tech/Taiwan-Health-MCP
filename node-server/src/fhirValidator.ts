@@ -1786,6 +1786,19 @@ export class InstanceValidator {
   private nullItems = false;
   /** The requested profile was of another type: the root was not validated. */
   private notValidated = false;
+  /**
+   * Places where validator_cli throws and the whole validation fails (official-crash): also when they are reached inside a
+   * trial whose issues are dropped (a reference target validated for a profile match), the instance must not pass.
+   */
+  private threw: Issue[] = [];
+  private javaThrew(b: BundleCtx, fullUrl: string | null, path: string, message: string): void {
+    // a trial's path starts at its root token: the source entry (by its fullUrl) gives the instance path
+    if (path.startsWith(ROOT_TOKEN)) {
+      const src = b.raw.find((e) => e.fullUrl !== null && e.fullUrl === fullUrl);
+      path = src ? `${b.path}.entry[${src.index}].resource${path.slice(ROOT_TOKEN.length)}` : b.path;
+    }
+    this.threw.push({ severity: "error", path, code: "invalid", message });
+  }
   /** > 0 while a slice discriminator's conformsTo validates a resource (its messages are discarded). */
   /** validator_contained_Id (IV:7533): the contained resources whose id has been checked in this run */
   private containedIdChecked = new WeakSet<object>();
@@ -1998,6 +2011,7 @@ export class InstanceValidator {
     this.referencePolicy = opts.validateReference ?? null;
     this.unparsed = unparsedResources(resource);
     this.notValidated = false;
+    this.threw = [];
     this.nullItems = holdsNullObjectItem(resource);
     this.strippedCache = new WeakMap();
     this.emptiedCache = new WeakMap();
@@ -2014,6 +2028,7 @@ export class InstanceValidator {
       await this.structuralPass(resource, resource.resourceType, found, 0);
       issues.push(...found.filter((i) => i.message !== ELE1_MESSAGE));
       await this.settleVsSystems(issues);
+      issues.push(...this.threw);
       return dedupe(issues);
     }
     await this.validateResource(rctx, resource.resourceType, extra, issues, 0);
@@ -2026,6 +2041,7 @@ export class InstanceValidator {
       issues.push(...found.filter((i) => i.message !== ELE1_MESSAGE));
     } else await this.structuralPass(resource, resource.resourceType, issues, 0);
     await this.settleVsSystems(issues);
+    issues.push(...this.threw);
     return dedupe(issues);
   }
 
@@ -2424,6 +2440,7 @@ export class InstanceValidator {
         if (rb.length < 2) {
           // refBaseParts[1] (l. 1519-1521) throws in Java (validation fails): reported, never passed
           push("error", "invalid", `Relative URLs must be of the format [ResourceName]/[id]. Encountered ${ref}`);
+          this.javaThrew(b, fullUrl, path, `Relative URLs must be of the format [ResourceName]/[id]. Encountered ${ref}`);
           return null;
         }
         resourceType = rb[0];
@@ -2435,6 +2452,7 @@ export class InstanceValidator {
           // validator_cli fails the whole validation (evaluator corpus: official-crash). The resource must not pass:
           // the reference is reported with the relative-URL format message (Reference_REF_Format2).
           push("error", "invalid", `Relative URLs must be of the format [ResourceName]/[id]. Encountered ${ref}`);
+          this.javaThrew(b, fullUrl, path, `Relative URLs must be of the format [ResourceName]/[id]. Encountered ${ref}`);
           return null;
         }
         resourceType = rp[0];
