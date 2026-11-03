@@ -650,6 +650,9 @@ export function pickCanonicalVersion<T extends { version: string | null | undefi
 }
 
 /** Effective type code of an ElementDefinition.type entry (handles System.String + fhir-type ext). */
+/** The focus of fixedValuePort for a primitive that exists without a value. */
+const VALUELESS_PRIMITIVE = Symbol("valueless primitive");
+
 /** Coding.display as the parser keeps it: a number or boolean is reported there and read as its text; "" is no display. */
 function writtenDisplay(c: Record<string, any>): string | null {
   const d = c.display;
@@ -5820,6 +5823,10 @@ export class InstanceValidator {
       return;
     }
     if (!isObject(fixed)) {
+      if (focus === VALUELESS_PRIMITIVE) {
+        issues.push({ severity: "error", path, code: "value", message: `Value is 'null' but is fixed to '${String(fixed)}' in the profile ${context}` });
+        return;
+      }
       const value = isObject(focus) || Array.isArray(focus) ? null : String(focus);
       if (value !== String(fixed)) issues.push({ severity: "error", path, code: "value", message: `Value is '${value ?? ""}' but is fixed to '${String(fixed)}' in the profile ${context}` });
       // checkFixedValue, end: a primitive's extensions (its `_x` shadow), which a primitive fixed value here never has
@@ -5876,7 +5883,8 @@ export class InstanceValidator {
       // InstanceValidator.checkHumanName (7.0.1, l. 3139-3195): use / text / period, then family / given / prefix / suffix
       // counted into ONE list (Element.getNamedChildren appends — the counts include the earlier parts) and compared
       // with the fixed list's length, items pairwise
-      const sub = (k: string): void => this.fixedValuePort(issues, `${path}.${k}`, focus[k], fixed[k], k === "period" ? "Period" : "", source, k, pattern, context);
+      // A primitive with only its `_x` shadow is present without a value: "Value is 'null'" (official corpus), not "Missing element"
+      const sub = (k: string): void => this.fixedValuePort(issues, `${path}.${k}`, focus[k] === undefined && isObject(focus[`_${k}`]) && !isObject(fixed[k]) ? VALUELESS_PRIMITIVE : focus[k], fixed[k], k === "period" ? "Period" : "", source, k, pattern, context);
       sub("use");
       sub("text");
       sub("period");
@@ -5922,7 +5930,9 @@ export class InstanceValidator {
       // each through checkFixedValue with the field's own type; getNamedChild → the first value of a list
       const first = (x: any): any => (Array.isArray(x) ? x[0] : x);
       for (const [k, sub] of FIXED_TYPE_FIELDS[type]) {
-        this.fixedValuePort(issues, `${path}.${k}`, first(focus[k]), first(fixed[k]), sub, source, k, pattern, context);
+        const fv = first(fixed[k]);
+        const iv = focus[k] === undefined && fv !== undefined && !isObject(fv) && isObject(focus[`_${k}`]) ? VALUELESS_PRIMITIVE : first(focus[k]);
+        this.fixedValuePort(issues, `${path}.${k}`, iv, fv, sub, source, k, pattern, context);
       }
     } else {
       // every other datatype: its fields one by one (lists: each fixed item matched — by any item for a pattern, in order
@@ -5931,7 +5941,7 @@ export class InstanceValidator {
       for (const k of keys) {
         if (k === "extension" || k === "id" || k.startsWith("_")) continue;
         const fv = fixed[k];
-        const iv = focus[k];
+        const iv = focus[k] === undefined && fv !== undefined && !isObject(fv) && !Array.isArray(fv) && isObject(focus[`_${k}`]) ? VALUELESS_PRIMITIVE : focus[k];
         if (Array.isArray(fv) || Array.isArray(iv)) {
           const fl: any[] = Array.isArray(fv) ? fv : fv === undefined ? [] : [fv];
           const il: any[] = Array.isArray(iv) ? iv : iv === undefined ? [] : [iv];
@@ -6353,7 +6363,7 @@ export class InstanceValidator {
     const vsRef = `'${vs.title || vs.name || url}' (${vs.url}${vs.version ? `|${vs.version}` : ""})`;
     const ccSummary = (typeCode === "CodeableConcept" && isObject(v) && Array.isArray(v.coding) ? v.coding : [])
       .filter((c: any) => isObject(c))
-      .map((c: any) => `${typeof c.system === "string" ? c.system : "null"}#${typeof c.code === "string" && c.code ? c.code : "null"}`)
+      .map((c: any) => `${typeof c.system === "string" || typeof c.system === "number" || typeof c.system === "boolean" ? String(c.system) : "null"}#${typeof c.code === "string" && c.code ? c.code : "null"}`)
       .join(", ");
     if (anyUnknown && codingError === null) {
       issues.push({

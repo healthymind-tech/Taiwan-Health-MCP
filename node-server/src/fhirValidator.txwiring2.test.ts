@@ -6,6 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { codingVersionIssues, presentVersionList, versionIsMoreDetailed } from "./fhirCsVersion.js";
+import { judgeExternalDisplay } from "./fhirExternalTerminology.js";
 import { InstanceValidator, type CodeCheck, type Issue } from "./fhirValidator.js";
 import { CORE, FakeResolver } from "./fhirTestKit.test.js";
 
@@ -455,4 +456,20 @@ test("a pattern's nested locations carry the entry resource's comment (List<Vali
   const r = await new InstanceValidator(new RequiredCodingResolver()).validate(bundle);
   const m = r.find((i) => i.path === "Bundle.entry[0].resource.code" && i.message.startsWith("The pattern ["));
   assert.ok(m?.message.includes("location=Bundle.entry[0].resource/*Condition/c*/.code.coding.system"), JSON.stringify(r));
+});
+
+test("a pattern's system with only its _system shadow: Value is 'null', not Missing element; a number as system in the CodeableConcept summary (official corpus)", async () => {
+  const shadow = { resourceType: "Condition", id: "c", meta: { profile: [PATP] }, code: { coding: [{ _system: { extension: [{ url: "http://x/e", valueString: "v" }] }, code: "male" }] }, subject: { reference: "Patient/p" } };
+  const r = await new InstanceValidator(new RequiredCodingResolver()).validate(shadow);
+  const m = r.find((i) => i.path === "Condition.code" && i.message.startsWith("The pattern ["));
+  assert.ok(m?.message.includes(`message=Value is 'null' but is fixed to '${GENDER}' in the profile`), JSON.stringify(r));
+  const num = errors(await new InstanceValidator(new RequiredCodingResolver()).validate(cond(CCP, { system: 1, code: "female" })));
+  assert.ok(num.some((i) => i.path === "Condition.code" && i.message.endsWith("(codes = 1#female)")), JSON.stringify(num));
+});
+
+test("SNOMED CT display choices carry their language (official corpus)", () => {
+  const r = judgeExternalDisplay(SCT, "1", "x", ["A", "B", "C"], ["A", "B", "C"], undefined, "en");
+  assert.equal(r?.status === "invalid-display" ? r.message : "", `Wrong Display Name 'x' for ${SCT}#1. Valid display is one of 3 choices: 'A' (en), 'B' (en) or 'C' (en) (for the language(s) 'en')`);
+  const two = judgeExternalDisplay(SCT, "1", "x", ["A", "B"], ["A", "B"], undefined, "en");
+  assert.ok(two?.status === "invalid-display" && two.message.includes("one of 2 choices: 'A' (en) or 'B' (en) (for"));
 });

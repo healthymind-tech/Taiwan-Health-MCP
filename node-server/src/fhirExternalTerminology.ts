@@ -68,6 +68,7 @@ export function judgeExternalDisplay(
   accepted: string[],
   listed: string[],
   suffix = " (for the language(s) 'en')",
+  language: string | null = null,
 ): CodeCheck | null {
   const valid = accepted.filter((v) => typeof v === "string" && v !== "");
   if (!valid.length) return null;
@@ -76,7 +77,10 @@ export function judgeExternalDisplay(
   const norm = (x: string): string => x.replace(/\s+/g, " ").trim().toLowerCase();
   const ws = valid.some((v) => norm(v) === norm(display));
   const names = [...new Set(listed.length ? listed : valid)];
-  const choices = names.length === 1 ? `'${names[0]}'` : `one of ${names.length} choices: ${names.map((d) => `'${d}'`).join(", ")}`;
+  // With the designations' language tx.fhir.org writes "'a' (en), 'b' (en) or 'c' (en)" (official corpus: SNOMED CT)
+  const quoted = language ? names.map((d) => `'${d}' (${language})`) : names.map((d) => `'${d}'`);
+  const list = language ? `${quoted.slice(0, -1).join(", ")} or ${quoted[quoted.length - 1]}` : quoted.join(", ");
+  const choices = names.length === 1 ? `'${names[0]}'` : `one of ${names.length} choices: ${list}`;
   return {
     status: "invalid-display",
     severity: "error",
@@ -280,7 +284,7 @@ export function judgeSnomed(
           extra: notes,
         };
       }
-      const bad = judgeExternalDisplay(SNOMED, code, display, valid, valid);
+      const bad = judgeExternalDisplay(SNOMED, code, display, valid, valid, undefined, "en");
       if (bad) return { ...bad, extra: notes };
       if (!valid.length) {
         return { status: "invalid-display", severity: "error", message: `Cannot validate display '${display}' for ${SNOMED}#${code} in language en: No displays are known`, extra: notes };
