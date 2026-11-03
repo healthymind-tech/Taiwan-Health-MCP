@@ -532,3 +532,14 @@ test("resolveCodeSystem with the value set as source: an unpinned include answer
   const at = r.filter((i) => i.path === "Condition.code.coding[0].code").map((i) => i.message);
   assert.ok(at.includes(`Unknown code 'zz' in the CodeSystem '${CS203}' version '4.0.0'`), JSON.stringify(r));
 });
+
+class HeldGenderResolver extends RequiredCodingResolver {
+  async fetchCodeSystem(url: string): Promise<Json | null> {
+    return url.split("|")[0] === GENDER ? { resourceType: "CodeSystem", url: GENDER, version: "4.0.1", content: "complete", concept: [{ code: "male" }] } : null;
+  }
+}
+
+test("an empty code of a held CodeSystem: NO_CODE_PROVIDED_VERSION only, no Terminology_TX_Confirm_4a (official corpus: PAS nhi-medication)", async () => {
+  const r = errors(await new InstanceValidator(new HeldGenderResolver()).validate(cond(RP, { system: GENDER, code: "" })));
+  assert.ok(!r.some((i) => i.message.startsWith(`The code provided (${GENDER}#)`)), JSON.stringify(r));
+});

@@ -6317,9 +6317,11 @@ export class InstanceValidator {
     if (strength !== "required" && strength !== "extensible") return;
     // checkPrimitiveBinding: code, string, uri, url, canonical
     if (!["code", "Coding", "CodeableConcept", "Quantity", "string", "uri", "url", "canonical", "CodeableReference"].includes(typeCode)) return;
-    // Terminology_TX_Confirm_4a with "" as the code: the system goes to the value set, whose answer is CODING_HAS_NO_CODE (official corpus)
+    // Terminology_TX_Confirm_4a with "" as the code: the server's answer CODING_HAS_NO_CODE (official corpus: UCUM, v3-GTSAbbreviation
+    // under a version-pinned include). A CodeSystem the validator holds answers NO_CODE_PROVIDED_VERSION, a warning, and the binding
+    // reports nothing (official corpus: PAS nhi-medication); a held system is therefore never given this error
     if ((typeCode === "Coding" || typeCode === "Quantity") && strength === "required" && isObject(v) && v.code === "" && typeof v.system === "string" && v.system) {
-      const held = await this.vsHeader(String(b.valueSet));
+      const held = (await this.heldCodeSystem(v, v.system)) ? null : await this.vsHeader(String(b.valueSet));
       if (held) {
         const ref = `'${held.title || held.name || b.valueSet}' (${held.url}${held.version ? `|${held.version}` : ""})`;
         issues.push({ severity: "error", path: item.path, code: "code-invalid", message: `The code provided (${v.system}#) was not found in the value set ${ref}, and a code from this value set is required: Coding has no code for system ${v.system} and cannot be validated` });
