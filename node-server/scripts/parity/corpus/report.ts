@@ -28,7 +28,7 @@
  * what terminology this install holds), the all-corpus figures with the network bucket, and the items no tool call can
  * carry (flag tool-boundary: outside the gate, measured through validateText, with what rejects them in the service).
  *
- * --corrections file (the evaluator's corrections_v2.jsonl: one {ig, id, issues} per line, `issues` in the shape of a
+ * --corrections file (the evaluator's corrections_v<n>.jsonl: one {ig, id, issues} per line, `issues` in the shape of a
  * <id>.official.json, one validator_cli JVM per item): the batch run of validator_cli reuses cached code validations,
  * so listed items are scored against that standalone result instead; the official files are not touched.
  *
@@ -36,7 +36,7 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { errorClass, isContentCheck } from "../classify.js";
-import { compareIssues, isError, lenientMessage, normMessage, normPath, stripDisplayLanguage, type SimpleIssue } from "../lib/compare.js";
+import { compareIssues, comparableMessage, isError, lenientMessage, normMessage, normPath, stripDisplayLanguage, type SimpleIssue } from "../lib/compare.js";
 import { readResults } from "./results.js";
 
 type Res = Record<string, any>;
@@ -210,6 +210,13 @@ interface IgStats {
   /** Gate keys that differ from ours only by the Wrong Display language suffix, and their items (absorbed, reported apart). */
   displayLanguageKeys: number;
   displayLanguageItems: number;
+  /** The same for keys that differ only by a canonical's `|version` in the message. */
+  canonicalVersionKeys: number;
+  canonicalVersionItems: number;
+  /** The network bucket's own figures. */
+  networkMissing: number;
+  networkExtra: number;
+  networkOfficialKeys: number;
   /** gate + network: the whole corpus without crash / tool-boundary items */
   allItems: number;
   allVerdictMiss: number;
@@ -248,7 +255,7 @@ const buckets = new Map<string, Bucket>();
 const st = (ig: string): IgStats => {
   let s = stats.get(ig);
   if (!s) {
-    s = { ig, items: 0, compared: 0, officialCrash: 0, rawUnparseable: 0, rawUnparseableOfficialInvalid: 0, crash: 0, offInvalidOursValid: 0, offInvalidOursValidCheckedFully: 0, offValidOursInvalid: 0, notCheckedFully: 0, network: 0, networkVerdictDiff: 0, ocTotal: 0, ocPass: 0, ocFailValid: 0, ocFailThrow: 0, ocNotReceivable: 0, displayLanguageKeys: 0, displayLanguageItems: 0, allItems: 0, allVerdictMiss: 0, allVerdictExtra: 0, allOfficialKeys: 0, allMissing: 0, allExtra: 0, toolBoundary: 0, scalar: 0, scalarVerdictDiff: 0, officialKeys: 0, missing: 0, missingItems: 0, extra: 0, extraItems: 0, strict: 0, lenient: 0, classAgree: 0 };
+    s = { ig, items: 0, compared: 0, officialCrash: 0, rawUnparseable: 0, rawUnparseableOfficialInvalid: 0, crash: 0, offInvalidOursValid: 0, offInvalidOursValidCheckedFully: 0, offValidOursInvalid: 0, notCheckedFully: 0, network: 0, networkVerdictDiff: 0, ocTotal: 0, ocPass: 0, ocFailValid: 0, ocFailThrow: 0, ocNotReceivable: 0, displayLanguageKeys: 0, displayLanguageItems: 0, canonicalVersionKeys: 0, canonicalVersionItems: 0, networkMissing: 0, networkExtra: 0, networkOfficialKeys: 0, allItems: 0, allVerdictMiss: 0, allVerdictExtra: 0, allOfficialKeys: 0, allMissing: 0, allExtra: 0, toolBoundary: 0, scalar: 0, scalarVerdictDiff: 0, officialKeys: 0, missing: 0, missingItems: 0, extra: 0, extraItems: 0, strict: 0, lenient: 0, classAgree: 0 };
     stats.set(ig, s);
   }
   return s;
@@ -408,6 +415,10 @@ for (const it of items) {
   }
   if (isNetwork(it)) {
     s.network++;
+    const r = matchErrors(off, ours);
+    s.networkOfficialKeys += off.length;
+    s.networkMissing += r.miss.length;
+    s.networkExtra += r.extra.length;
     if (!off.length !== !ours.length) {
       s.networkVerdictDiff++;
       networkList.push(it);
@@ -427,31 +438,38 @@ for (const it of items) {
   s.officialKeys += off.length;
   const { miss, extra } = matchErrors(off, ours);
   {
-    // official Wrong Display errors whose exact text ours lacks but whose text without the language suffix ours has
-    const exact = new Map<string, number>();
-    for (const e of ours) exact.set(`${e.path} | ${e.msg}`, (exact.get(`${e.path} | ${e.msg}`) ?? 0) + 1);
-    const stripped = new Map<string, number>();
-    let absorbed = 0;
-    for (const e of off) {
-      const key = `${e.path} | ${e.msg}`;
-      const n = exact.get(key) ?? 0;
-      if (n > 0) {
-        exact.set(key, n - 1);
-        continue;
-      }
-      if (e.msg === stripDisplayLanguage(e.msg)) continue;
-      const k2 = `${e.path} | ${stripDisplayLanguage(e.msg)}`;
-      if (!stripped.size) for (const [q, c] of exact) if (c > 0) stripped.set(`${q.split(" | ")[0]} | ${stripDisplayLanguage(q.split(" | ").slice(1).join(" | "))}`, c);
-      const m = stripped.get(k2) ?? 0;
-      if (m > 0) {
-        stripped.set(k2, m - 1);
-        absorbed++;
+    // official errors whose exact text ours lacks: absorbed when ours has them but for the noise of a comparison key.
+    // Each counted once, language first (a key with both counts as language); one-sided errors stay gaps.
+    const left = new Map<string, number>();
+    const inc = (m: Map<string, number>, k: string): void => void m.set(k, (m.get(k) ?? 0) + 1);
+    const take = (m: Map<string, number>, k: string): boolean => {
+      const n = m.get(k) ?? 0;
+      if (n > 0) m.set(k, n - 1);
+      return n > 0;
+    };
+    for (const e of ours) inc(left, `${e.path} | ${e.msg}`);
+    const rest = off.filter((e) => !take(left, `${e.path} | ${e.msg}`));
+    const language = new Map<string, number>();
+    const full = new Map<string, number>();
+    for (const [q, c] of left) {
+      const path = q.split(" | ")[0];
+      const msg = q.split(" | ").slice(1).join(" | ");
+      for (let i = 0; i < c; i++) {
+        inc(language, `${path} | ${stripDisplayLanguage(msg)}`);
+        inc(full, `${path} | ${comparableMessage(msg)}`);
       }
     }
-    if (absorbed) {
-      s.displayLanguageKeys += absorbed;
-      s.displayLanguageItems++;
+    let lang = 0;
+    let version = 0;
+    for (const e of rest) {
+      if (!take(full, `${e.path} | ${comparableMessage(e.msg)}`)) continue;
+      if (stripDisplayLanguage(e.msg) !== e.msg && take(language, `${e.path} | ${stripDisplayLanguage(e.msg)}`)) lang++;
+      else version++;
     }
+    s.displayLanguageKeys += lang;
+    if (lang) s.displayLanguageItems++;
+    s.canonicalVersionKeys += version;
+    if (version) s.canonicalVersionItems++;
   }
   s.missing += miss.length;
   s.extra += extra.length;
@@ -509,7 +527,18 @@ lines.push(rrLine("**all**", { valid: rrSum((r) => r.valid), releasable: rrSum((
 lines.push("", `Unsafe releases (${unsafeReleases.length}):`, "");
 for (const it of unsafeReleases) lines.push(`- \`${it.ig}/${it.id}\` (${it.family}, ${String(it.mutation).slice(0, 60)})${isOfficialCrash(it) ? ": jar crashed" : `: jar ${(it.officialErrors ?? []).length} errors, first: ${String(it.officialErrors?.[0]?.msg ?? "").slice(0, 110)}`}`);
 lines.push("");
-lines.push(`Wrong Display language suffix (\`(for the language(s) ...)\`) left out of the comparison: absorbs ${sum((s) => s.displayLanguageKeys)} key(s) in ${sum((s) => s.displayLanguageItems)} gate item(s) (${all.map((s) => `${s.ig} ${s.displayLanguageKeys} / ${s.displayLanguageItems}`).join(", ")}). Verdicts are unaffected: the error is present on both sides.`, "");
+lines.push("## Message noise left out of the comparison", "", "Each key is an error present on both sides at the same path; only the text differs, so verdicts are unaffected. An error on one side only stays a gap, and a different canonical still differs.", "");
+lines.push("| IG | Wrong Display language suffix: keys (items) | canonical version suffix: keys (items) |", "|---|---|---|");
+for (const s of all) lines.push(`| ${s.ig} | ${s.displayLanguageKeys} (${s.displayLanguageItems}) | ${s.canonicalVersionKeys} (${s.canonicalVersionItems}) |`);
+lines.push(`| **all** | ${sum((s) => s.displayLanguageKeys)} (${sum((s) => s.displayLanguageItems)}) | ${sum((s) => s.canonicalVersionKeys)} (${sum((s) => s.canonicalVersionItems)}) |`, "");
+lines.push("## Network bucket: conditions for staying outside the gate", "");
+lines.push("The bucket stays outside the gate on condition that, over gate + network, verdict differences = 0 and unsafe releases = 0.", "");
+lines.push("| IG | gate + network items | verdict differences | unsafe releases (whole corpus) | network items | network verdict diff | network missing keys | network extra keys | network extra rate |", "|---|---|---|---|---|---|---|---|---|");
+for (const s of all) lines.push(`| ${s.ig} | ${s.allItems} | ${s.allVerdictMiss + s.allVerdictExtra} | ${releaseRows.get(s.ig)?.unsafe ?? 0} | ${s.network} | ${s.networkVerdictDiff} | ${s.networkMissing} | ${s.networkExtra} | ${pct(s.networkExtra, s.networkOfficialKeys)} |`);
+const condVerdict = sum((s) => s.allVerdictMiss + s.allVerdictExtra);
+const condUnsafe = [...releaseRows.values()].reduce((a, r) => a + r.unsafe, 0);
+lines.push(`| **all** | ${sum((s) => s.allItems)} | ${condVerdict} | ${condUnsafe} | ${sum((s) => s.network)} | ${sum((s) => s.networkVerdictDiff)} | ${sum((s) => s.networkMissing)} | ${sum((s) => s.networkExtra)} | ${pct(sum((s) => s.networkExtra), sum((s) => s.networkOfficialKeys))} |`, "");
+lines.push(`Condition verdict differences = 0: ${condVerdict === 0 ? "MET" : `NOT MET (${condVerdict})`}. Condition unsafe releases = 0: ${condUnsafe === 0 ? "MET" : `NOT MET (${condUnsafe})`}.`, "");
 lines.push("## All corpus, network bucket included (gate + network; official-crash and tool-boundary items apart)", "");
 lines.push("| IG | items | verdict miss | verdict extra | official keys | missing keys | extra keys | extra rate | gate extra rate |", "|---|---|---|---|---|---|---|---|---|");
 const allRow = (s: IgStats): string => `| ${s.ig} | ${s.allItems} | ${s.allVerdictMiss} | ${s.allVerdictExtra} | ${s.allOfficialKeys} | ${s.allMissing} | ${s.allExtra} | ${pct(s.allExtra, s.allOfficialKeys)} | ${pct(s.extra, s.officialKeys)} |`;
@@ -541,8 +570,7 @@ lines.push("## Official-crash bucket: FAIL items (TS said valid, threw or timed 
 for (const it of crashFails.slice(0, 40)) lines.push(`- \`${it.id}\` (${it.ig}, ${it.family}/${it.mutation}): ${it.status === "crash" || !it.comparison ? `TS ${String(it.error ?? "not run").split("\n")[0].slice(0, 120)}` : "TS valid"}`);
 if (crashFails.length > 40) lines.push(`- ... ${crashFails.length - 40} more`);
 lines.push("", "## Network-dependent bucket (profile-typo): verdict differences, outside the gate", "");
-for (const it of networkList.slice(0, 40)) lines.push(`- \`${it.id}\` (${it.ig}, ${it.mutation}): official ${(it.officialErrors ?? []).length} errors, ours ${(it.ourErrors ?? []).length}`);
-if (networkList.length > 40) lines.push(`- ... ${networkList.length - 40} more`);
+for (const it of networkList) lines.push(`- \`${it.ig}/${it.id}\` (${it.mutation}): official ${(it.officialErrors ?? []).length} errors, ours ${(it.ourErrors ?? []).length}`);
 lines.push("");
 
 // verdict differences: which official classes the "official invalid, ours valid" items carry (and the reverse)

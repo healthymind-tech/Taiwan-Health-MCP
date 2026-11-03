@@ -45,14 +45,25 @@ export function stripDisplayLanguage(m: string): string {
   return /^Wrong Display Name /u.test(m) ? m.replace(/ \(for the language\(s\) '[^']*'\)/u, "") : m;
 }
 
+/**
+ * The `|version` of the canonicals a message names; evaluator's rule: noise in a comparison key. Only the version part
+ * goes: the URL before it stays in the key, so a different canonical still differs.
+ */
+export function stripCanonicalVersions(m: string): string {
+  return m.replace(/((?:https?:\/\/|urn:)[^\s|'"()<>,]+)\|[\w.+-]*\w/gu, "$1");
+}
+
+/** The message as a strict comparison key. */
+export function comparableMessage(m: string): string {
+  return stripCanonicalVersions(stripDisplayLanguage(normMessage(m)));
+}
+
 /** normMessage without definition-version / invariant-source suffixes and the " Note that" tail. */
 export function lenientMessage(m: string): string {
   return normMessage(
-    stripDisplayLanguage(normMessage(m))
+    comparableMessage(m)
       .split(" Note that ")[0]
-      .replace(/ \(defined in [^)]*\)/g, "")
-      .replace(/(\(from \S+?)\|[^)\s]+\)/g, "$1)")
-      .replace(/(https?:\/\/\S+?)\|\d[\w.-]*/g, "$1"),
+      .replace(/ \(defined in [^)]*\)/g, ""),
   );
 }
 
@@ -116,7 +127,7 @@ export interface Comparison {
 export function compareIssues(expected: SimpleIssue[], actual: SimpleIssue[]): Comparison {
   const ee = expected.filter(isError);
   const ae = actual.filter(isError);
-  const sk = (i: SimpleIssue): string => `${normPath(i.path)} | ${stripDisplayLanguage(normMessage(i.message))}`;
+  const sk = (i: SimpleIssue): string => `${normPath(i.path)} | ${comparableMessage(i.message)}`;
   const ck = (i: SimpleIssue): string => `${normPath(i.path)} | ${errorClass(normMessage(i.message))}`;
   const se = multiset(ee.map(sk));
   const sa = multiset(ae.map(sk));
