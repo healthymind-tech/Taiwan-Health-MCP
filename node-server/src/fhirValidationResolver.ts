@@ -326,6 +326,16 @@ export function unknownCodeSystemVersion(system: string, version: string, displa
  * an invalid code is Unknown_Code_in (error) with the reason as information; a valid one is ok (a display is not
  * checked — the server's display rules for these systems are not reproduced). null = not decidable here.
  */
+/**
+ * The LOINC display choices tx.fhir.org lists: the display, then every designation (long common name again, short name …),
+ * each '(en-US)'; equal names are not merged (official corpus: 56051-6 'Hispanic or Latino' three times; a code without a
+ * short name two).
+ */
+export function loincDisplayChoices(displays: string[]): string {
+  const names = [displays[0], ...displays].map((d) => `'${d}' (en-US)`);
+  return `one of ${names.length} choices: ${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+}
+
 export function judgeSpecialSystem(system: string, code: string, display: string | null): CodeCheck | null {
   let reason: string | null = null;
   if (system === BCP47) {
@@ -848,8 +858,7 @@ export class DbValidatorResolver implements ValidatorResolver {
         // each '(en-US)', for the request's language (validator_cli corpus: "one of 3 choices: 'A' (en-US), 'A' (en-US)
         // or 'B' (en-US) (for the language(s) 'en')")
         if (bad && bad.status === "invalid-display" && held.displays.length) {
-          const names = [held.displays[0], ...new Set(held.displays)].map((d) => `'${d}' (en-US)`);
-          const list = `one of ${names.length} choices: ${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+          const list = loincDisplayChoices(held.displays);
           return { ...bad, message: `${bad.message.split(". Valid display is ")[0]}. Valid display is ${list} (for the language(s) '${(langs && langs.length ? langs : ["en"]).join(",")}')` };
         }
         if (bad) return bad;

@@ -602,3 +602,9 @@ test("an undecided bare code names the system it would be inferred from, not an 
   const note = r.find((i) => i.path === "Patient.gender" && i.unchecked?.kind === "code");
   assert.deepEqual(note?.unchecked?.causes, [`https://x.example/states|${BAREVS}`], JSON.stringify(r));
 });
+
+test("LOINC display choices: the display, then every designation, equal names not merged (official corpus)", async () => {
+  const { loincDisplayChoices } = await import("./fhirValidationResolver.js");
+  assert.equal(loincDisplayChoices(["Hispanic or Latino", "Hispanic or Latino"]), "one of 3 choices: 'Hispanic or Latino' (en-US), 'Hispanic or Latino' (en-US) or 'Hispanic or Latino' (en-US)");
+  assert.equal(loincDisplayChoices(["A"]), "one of 2 choices: 'A' (en-US) or 'A' (en-US)");
+});
