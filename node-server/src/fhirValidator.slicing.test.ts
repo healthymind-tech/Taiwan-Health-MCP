@@ -95,3 +95,23 @@ test("exists discriminator on a slice with neither min ≥ 1 nor max = 0 → SLI
     delete SDS[P];
   }
 });
+
+test("memberOf slicing on a Coding with only _system: an NPE for a CodeableConcept focus, no member for a Coding focus (jar)", async () => {
+  const VS = "http://hl7.org/fhir/ValueSet/administrative-gender";
+  const bySlice = { slicing: { discriminator: [{ type: "value", path: "$this" }], rules: "open" } };
+  define([
+    el("Observation.category", 0, "*", ["CodeableConcept"], bySlice),
+    el("Observation.category:g", 0, "1", ["CodeableConcept"], { binding: { strength: "required", valueSet: VS } }),
+    el("Observation.code.coding", 0, "*", ["Coding"], bySlice),
+    el("Observation.code.coding:g", 0, "1", ["Coding"], { binding: { strength: "required", valueSet: VS } }),
+  ]);
+  const shadow = { code: "male", _system: { extension: [{ url: "http://hl7.org/fhir/StructureDefinition/data-absent-reason", valueCode: "unknown" }] } };
+  try {
+    const cc = errs(await run(obs({ category: [{ coding: [shadow] }] })));
+    assert.ok(cc.some((x) => x.startsWith("Slicing cannot be evaluated: Problem evaluating slicing expression") && x.endsWith('Cannot invoke "String.lastIndexOf(int)" because "system" is null')), cc.join("\n"));
+    const coding = errs(await run(obs({ code: { coding: [shadow] } })));
+    assert.ok(!coding.some((x) => x.startsWith("Slicing cannot be evaluated")), coding.join("\n"));
+  } finally {
+    delete SDS[P];
+  }
+});

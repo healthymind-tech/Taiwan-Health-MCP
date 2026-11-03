@@ -8275,10 +8275,13 @@ class SlicingDefinitionError extends Error {}
 
 /**
  * funcMemberOf on a Coding whose `system` element has no value (only `_system`): ValueSetValidator dereferences the null
- * system (validator_cli 7.0.1: NullPointerException), which evaluateSlicingExpression reports as SLICING_CANNOT_BE_EVALUATED.
+ * system (validator_cli 7.0.1: NullPointerException), which evaluateSlicingExpression reports as SLICING_CANNOT_BE_EVALUATED —
+ * for a CodeableConcept focus only.
  */
 function systemlessShadow(values: unknown[], where: () => string): void {
-  const codings = values.flatMap((v) => (isObject(v) && Array.isArray(v.coding) ? v.coding : [v]));
+  // only through validateCode(CodeableConcept): validateCode(Coding) (BaseWorkerContext l. 1508-1566) catches the local
+  // exception (localError), so a Coding focus is just no member
+  const codings = values.flatMap((v) => (isObject(v) && Array.isArray(v.coding) ? v.coding : []));
   if (codings.some((c) => isObject(c) && (c.system === undefined || c.system === null) && isObject(c._system))) {
     throw new SlicingDefinitionError(`${where()}: Cannot invoke "String.lastIndexOf(int)" because "system" is null`);
   }
