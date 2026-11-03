@@ -681,4 +681,5 @@ test("the implicit LOINC answer-list ValueSet: titled as tx.fhir.org names it, t
   assert.equal(vs?.version, undefined);
   assert.deepEqual(vs?.compose.include, [{ system: "http://loinc.org", concept: [{ code: "LA6668-3", display: "Pathogenic" }, { code: "LA26332-9" }] }]);
   assert.equal(loincAnswerListValueSet("LL1-1", []), null);
+  assert.equal(vs?.implicitAtServer, true);
 });

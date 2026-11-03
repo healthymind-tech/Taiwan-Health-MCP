@@ -505,6 +505,9 @@ export function loincAnswerListValueSet(ll: string, rows: Array<{ answer_code: s
     name: `LOINC_Answer_Codes_for_${ll.replace(/-/g, "_")}`,
     title: `LOINC Answer Codes for ${ll}`,
     status: "active",
+    // not a resource of any package: only the terminology server has it, so its answers are the server's (no local
+    // ValueSetValidator rules such as accepting a system-less Coding at face value)
+    implicitAtServer: true,
     compose: { include: [{ system: "http://loinc.org", concept: rows.map((r) => (r.display ? { code: r.answer_code, display: r.display } : { code: r.answer_code })) }] },
   };
 }

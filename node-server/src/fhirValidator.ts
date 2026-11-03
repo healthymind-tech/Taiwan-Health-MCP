@@ -553,6 +553,9 @@ const QUANTITY_TYPES = ["Quantity"];
  * a whole-system include, NoValid_1_CC).
  */
 function faceValueMember(vs: Record<string, any> | null, code: string): boolean {
+  // a ValueSet only the terminology server holds (an implicit one, e.g. a LOINC answer list): the server does not take a
+  // system-less Coding at face value (official corpus: genomics LL answer lists, NoValid_1_CC for a code without system)
+  if (vs && vs.implicitAtServer === true) return false;
   const includes: any[] = vs && isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
   return includes.length === 1 && isObject(includes[0]) && Array.isArray(includes[0].concept) && includes[0].concept.some((c: any) => isObject(c) && c.code === code);
 }
