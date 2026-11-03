@@ -3779,7 +3779,7 @@ export class InstanceValidator {
       // An object the parser emptied (dropBadPrimitivesIn) had content in the source: checkObject stays quiet, the
       // element is the same empty element for ele-1.
       const choice = /\[x\]$/u.test(String(el.path ?? ""));
-      if (!this.xmlSource && !this.parserEmptied.has(v) && !item.parsedValue) issues.push({ severity: "error", path: choice ? (item.jpath ?? item.path) : item.path, code: "invalid", message: "Object must have some content" });
+      if (!this.xmlSource && !this.parserEmptied.has(v) && !item.parsedValue) issues.push({ severity: "error", path: item.jpath ?? item.path, code: "invalid", message: "Object must have some content" });
       issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
     }
 
@@ -4272,9 +4272,10 @@ export class InstanceValidator {
         const host = name === "extension" || name === "modifierExtension" ? hostOf(name === "modifierExtension") : undefined;
         const baseMax0 = String((def.base && def.base.max) ?? def.max ?? "*");
         const jbase = `${item.jpath ?? item.path}.${name}`;
-        const mk = (value: any, ext: any, p: string): Item => {
+        const mk = (value: any, ext: any, p: string, rawIndex?: number): Item => {
           const idx = /\[(\d+)\]$/.exec(p);
-          const jpath = idx && p !== path ? `${jbase}[${idx[1]}]` : jbase;
+          // JsonParser's npath counts the JSON array as written; the element model (and so every later path) only what it built
+          const jpath = idx && p !== path ? `${jbase}[${rawIndex ?? idx[1]}]` : jbase;
           return { value, ext, key, path: p, jpath, parent: node, typeCode, lp, lit, parentExtUrl, host, inList: baseMax0 !== "1" && baseMax0 !== "0", profileType: profileTypeKeys.has(key), actualType: profileTypeKeys.get(key) };
         };
         const raw = node[key];
@@ -4322,6 +4323,7 @@ export class InstanceValidator {
             return;
           }
           const n = Math.max(arr.length, exts.length);
+          let built = 0; // the elements the parser made: a null (with no `_x`) makes none
           for (let i = 0; i < n; i++) {
             const val = arr[i] === undefined ? null : arr[i];
             const ex = exts[i] === undefined ? null : exts[i];
@@ -4343,7 +4345,8 @@ export class InstanceValidator {
               issues.push({ severity: "error", path: npath, code: "invalid", message: notObject(ex) });
               continue;
             }
-            const it = mk(val, ex ?? undefined, `${path}[${i}]`);
+            const it = mk(val, ex ?? undefined, `${path}[${built}]`, i);
+            built++;
             if (primitiveType) it.parserPath = npath;
             const nt = numberText(arr, i);
             if (nt !== undefined) it.numText = nt;

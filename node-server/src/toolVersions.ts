@@ -276,10 +276,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.106.0 (parity v3): no Coding.version check on a coding without a code
   // 1.107.0 (parity v3): LOINC display choices list a short name equal to the long common name
   // 1.108.0 (parity v3): useValueSetDisplays — the bound value set's display of a code is valid and joins the display choices
-  fhir_validate_bundle: "1.109.0",
+  fhir_validate_bundle: "1.110.0",
   // 1.100.0 (parity v3): the SNOMED CT parser message follows the value set's filter (tx.fhir.org probe), not the display
   // 1.101.0 (parity v3): the fixed / pattern check repeated against the element's own definition (checkChildByDefinition l. 8173); an unpinned include's Unknown code in the version of the value set's package
   // 1.102.0 (parity v3): no Confirm_4a for an empty code of a held CodeSystem
+  // 1.102.0: array members after a null are numbered as the element model built them; the parser's messages keep the JSON index.
   // 1.94.0 (parity v3): Terminology_TX_NoValid_13 for a Coding outside an extensible binding, with the system's complaint incl. a wrong display; a bare code the UCUM grammar rejects is UNABLE_TO_INFER_CODESYSTEM
   // 1.95.0 (parity v3): the SNOMED CT expression parser message in Terminology_TX_Confirm_4a; the resource comment in a pattern's nested locations; NoValid_12 for a wrong display of a local system; Confirm_4a for an empty code; a number as display read as text; an instance's control characters no longer collide with the location tokens
   // 1.96.0 (parity v3): Value is 'null' for a fixed primitive with only its shadow; a number as system in the CodeableConcept summary
@@ -377,10 +378,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.103.0 (parity v3): no Coding.version check on a coding without a code
   // 1.104.0 (parity v3): LOINC display choices list a short name equal to the long common name
   // 1.105.0 (parity v3): useValueSetDisplays — the bound value set's display of a code is valid and joins the display choices
-  fhir_validate_resource: "1.106.0",
+  fhir_validate_resource: "1.107.0",
   // 1.97.0 (parity v3): the SNOMED CT parser message follows the value set's filter (tx.fhir.org probe), not the display
   // 1.98.0 (parity v3): the fixed / pattern check repeated against the element's own definition (checkChildByDefinition l. 8173); an unpinned include's Unknown code in the version of the value set's package
   // 1.99.0 (parity v3): no Confirm_4a for an empty code of a held CodeSystem
+  // 1.99.0: validation as fhir_validate_bundle 1.102.0.
   // 1.91.0 (parity v3): Terminology_TX_NoValid_13 for a Coding outside an extensible binding, with the system's complaint incl. a wrong display; a bare code the UCUM grammar rejects is UNABLE_TO_INFER_CODESYSTEM
   // 1.92.0 (parity v3): the SNOMED CT expression parser message in Terminology_TX_Confirm_4a; the resource comment in a pattern's nested locations; NoValid_12 for a wrong display of a local system; Confirm_4a for an empty code; a number as display read as text; an instance's control characters no longer collide with the location tokens
   // 1.93.0 (parity v3): Value is 'null' for a fixed primitive with only its shadow; a number as system in the CodeableConcept summary

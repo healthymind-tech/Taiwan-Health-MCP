@@ -713,3 +713,11 @@ test("a number written as a string compares through Double.valueOf", () => {
   const a = { value: "32", system: "http://unitsofmeasure.org", code: "a" };
   assert.deepEqual(evaluateConstraint(a, "Age", "value > 0", { resource: r, rootResource: r }), { status: "pass" });
 });
+
+test("array members after a null: the element model numbers what it built, the parser's own messages keep the JSON index", async () => {
+  const issues = await new InstanceValidator(new FakeResolver()).validate({ resourceType: "Patient", identifier: [null, {}] });
+  const at = (re: RegExp): string[] => issues.filter((i) => re.test(i.message)).map((i) => i.path);
+  assert.deepEqual(at(/must be an Array, not a Null|must be an Object, not a Null/), ["Patient.identifier[0]"], JSON.stringify(issues));
+  assert.ok(at(/ele-1/).includes("Patient.identifier[0]"), JSON.stringify(issues));
+  assert.ok(at(/Object must have some content/).includes("Patient.identifier[1]"), JSON.stringify(issues));
+});
