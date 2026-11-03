@@ -117,14 +117,13 @@ test("meta.profile |version is checked against that version only", async () => {
   assert.ok(errs(await run(patNoSystem(`${PV}|1.0.7`), PV_VERSIONS)).some((i) => /identifier\.system/.test(i.message)));
 });
 
-test("meta.profile at a version that is not installed: warning, not checked, completeness says so", async () => {
+test("meta.profile at a version that is not installed: the canonical's current definition is used (lookupProfileReference)", async () => {
+  // validator_cli fetches the canonical without |version from its own server (CanonicalResourceClient.fetch) and, when
+  // that succeeds, validates against it without a warning; offline the installed definition stands in for it
   const issues = await run(patNoSystem(`${PV}|9.9.9`), PV_VERSIONS);
-  assert.ok(isValid(issues), JSON.stringify(issues)); // HL7: Validation_VAL_Profile_Unknown is a warning
-  const w = issues.find((i) => i.path === "Patient.meta.profile[0]");
-  assert.equal(w?.severity, "warning");
-  assert.equal(w?.message, `Profile reference '${PV}|9.9.9' has not been checked because it could not be found`);
-  // ROUND 9: validator_cli only warns here too (IV Validation_VAL_Profile_Unknown): every check it would do was done; the profile stays listed
-  assert.deepEqual(completenessOf(issues), { checked_fully: true, profiles_unchecked: [`${PV}|9.9.9`], valuesets_unchecked: [] });
+  assert.equal(issues.find((i) => i.path === "Patient.meta.profile[0]"), undefined, JSON.stringify(issues));
+  assert.ok(errs(issues).some((i) => /Patient\.birthDate: minimum required = 1/.test(i.message)), JSON.stringify(issues));
+  assert.deepEqual(completenessOf(issues).profiles_unchecked, []);
   assert.deepEqual(completenessOf(await run(patNoSystem(`${PV}|1.0.0`), PV_VERSIONS)).profiles_unchecked, []);
   assert.equal(completenessOf([], [{ package_id: "x", version: "1" }]).checked_fully, false);
 });
