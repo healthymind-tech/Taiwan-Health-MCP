@@ -3089,7 +3089,7 @@ export class InstanceValidator {
     }
     // (parity v3) InstanceValidator.validateResourceRules: Language_XHTML_* warnings (resource language vs text.div)
     if (typeof resource.language === "string" && isObject(resource.text)) {
-      for (const x of languageXhtmlIssues(resource.language, resource.text.div)) issues.push({ severity: x.severity, path, code: "business-rule", message: x.message });
+      for (const x of languageXhtmlIssues(resource.language, resource.text.div)) issues.push({ severity: x.severity, path, code: x.id === "exception" ? "exception" : "business-rule", message: x.message });
     }
     // (parity v3, F18) InstanceValidator.validateResourceRules: security labels are a set (system#code); (sic) Java
     // reports at `.meta.profile[i]`
@@ -3971,6 +3971,13 @@ export class InstanceValidator {
       if (px.error !== null) issues.push({ severity: "error", path: divPath, code: "invalid", message: `Error parsing XHTML: ${px.error}` });
       for (const m of px.issues) issues.push({ severity: "error", path: divPath, code: "invalid", message: m });
       if (px.div) for (const x of [...validateXhtml(px.div), ...xhtmlHrefIssues(px.div)]) issues.push({ severity: x.severity, path: divPath, code: "invalid", message: x.message });
+      // checkXhtml → checkReferences (IV:4308-4330): every narrative's local links, Composition.section.text included,
+      // in each validation that reaches it, so a profile match (slice by conformsTo) fails on them too
+      if (px.div) {
+        for (const m of narrativeLinkProblems(v.div, this.narrativeAnchors(rctx))) {
+          issues.push({ severity: "error", path: divPath, code: "invalid", message: `Hyperlink '${m.href}' at '${m.at}' for '${m.text}' does not resolve` });
+        }
+      }
     }
     if (typeCode === "Narrative" && isObject(v)) {
       // InstanceValidator.checkNarrative: narrative-source-control / narrative-language-control of the definition

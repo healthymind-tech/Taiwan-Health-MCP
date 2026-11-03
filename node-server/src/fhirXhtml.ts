@@ -859,10 +859,12 @@ export function languageXhtmlIssues(language: string | null, divSource: unknown)
   let xl = x.attributes.get("xml:lang") ?? null;
   if (l === null && xl === null && x.children.length > 0 && x.children.every((n) => isLangDiv(n) || !hasContent(n))) {
     const ld = x.children.find(isLangDiv);
-    if (ld) {
-      l = ld.attributes.get("lang") ?? null;
-      xl = ld.attributes.get("xml:lang") ?? null;
-    }
+    // (sic) Java (IV:7397-7400): no child is a language div (only content-less ones, e.g. a lone <img/>) →
+    // firstLangDiv returns null and validator_cli fails the validation with a NullPointerException.
+    // NON-OFFICIAL TEXT: the JVM's NullPointerException message, not a Messages.properties entry.
+    if (!ld) return [{ severity: "error", id: "exception", message: `Cannot invoke "org.hl7.fhir.utilities.xhtml.XhtmlNode.getAttribute(String)" because "ld" is null` }];
+    l = ld.attributes.get("lang") ?? null;
+    xl = ld.attributes.get("xml:lang") ?? null;
   }
   const w = (id: string, message: string): XhtmlIssue => ({ severity: "warning", id, message });
   const tail = "see https://www.w3.org/TR/i18n-html-tech-lang/#langvalues)";

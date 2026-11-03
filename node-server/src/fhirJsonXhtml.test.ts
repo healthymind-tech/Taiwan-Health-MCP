@@ -379,3 +379,25 @@ test("checkPrimitive l. 3417: Bundle.entry.fullUrl is not a reference, an exampl
   const issues = await new InstanceValidator(new FakeResolver()).validate(b);
   assert.deepEqual(issues.filter((i) => /Example URLs/.test(i.message)), []);
 });
+
+test("checkXhtml → checkReferences (IV:4308) for every Narrative, not only the resource text (Composition.section.text)", async () => {
+  const B = sd(CORE + "Basic", "Basic", "resource", [el("Basic", 0, "*"), el("Basic.text", 0, "1", ["Narrative"]), el("Basic.sec", 0, "*", ["Narrative"])]);
+  class R extends FakeResolver {
+    override async fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
+      return url.split("|")[0] === CORE + "Basic" ? B : super.fetchStructureDefinition(url);
+    }
+  }
+  const div = (s: string): Record<string, any> => ({ status: "generated", div: `<div ${NS}>${s}</div>` });
+  const links = async (r: Record<string, any>): Promise<string[]> =>
+    (await new InstanceValidator(new R()).validate({ resourceType: "Basic", ...r })).filter((i) => /does not resolve/.test(i.message)).map((i) => `${i.path} | ${i.message}`);
+  assert.deepEqual(await links({ text: div('<p id="t">x</p>'), sec: [div('<a href="#nowhere">x</a>')] }), ["Basic.sec[0].div | Hyperlink '#nowhere' at 'div/a' for 'x' does not resolve"]);
+  assert.deepEqual(await links({ text: div('<p id="t">x</p>'), sec: [div('<a href="#t">x</a>')] }), []);
+});
+
+test("validateResourceRules (IV:7397-7400): a language and a div whose only children are content-less → validator_cli's NullPointerException", () => {
+  // jar (evaluator corpus, img-http mutation): `<div><img src="http://…"/></div>` in a resource with a language crashes
+  const npe = `Cannot invoke "org.hl7.fhir.utilities.xhtml.XhtmlNode.getAttribute(String)" because "ld" is null`;
+  assert.deepEqual(languageXhtmlIssues("de-CH", `<div ${NS}><img src="http://example.org/a.png"/></div>`).map((i) => i.message), [npe]);
+  assert.notDeepEqual(languageXhtmlIssues("de-CH", `<div ${NS}><img src="http://example.org/a.png"/>text</div>`).map((i) => i.message), [npe]);
+  assert.deepEqual(languageXhtmlIssues(null, `<div ${NS}><img src="http://example.org/a.png"/></div>`), []);
+});
