@@ -33,7 +33,7 @@ if (!/:55432\//.test(url)) {
 /** A package as a directory holding package/package.json. */
 function unpack(tgz: string): string {
   const dir = mkdtempSync(join(tmpdir(), "pkg-"));
-  execFileSync("tar", ["-xzf", tgz, "-C", dir, "--wildcards", "package/package.json", "package/.index.json", "package/*.json"], { stdio: ["ignore", "ignore", "ignore"] });
+  execFileSync("tar", ["-xzf", tgz, "-C", dir, "--wildcards", "package/*.json"], { stdio: ["ignore", "ignore", "ignore"] });
   return dir;
 }
 
