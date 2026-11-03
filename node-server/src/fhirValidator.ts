@@ -6995,7 +6995,12 @@ export class InstanceValidator {
       const u = v.includes("|") ? v.slice(0, v.lastIndexOf("|")) : v;
       // resolveUrl l. 4065: tel: / mailto: / llp: (isCommunicationsUrl) resolve; validator_cli: a urn (urn:oid:2.999…, the
       // example arcs) never reaches URL_EXAMPLE either (jar probes, identifier.system / Coding.system / uri / url / meta.source)
-      const found = /^(?:tel|mailto|llp|urn):/u.test(u) || (!!this.resolver.definitionExists && (await this.defExists(u)));
+      // fetcher.resolveURL: ValidationEngine.resolveURL (l. 1411-1463) — not http(s) → resolves; a known resource →
+      // resolves; `example.org` / `acme.com` anywhere → does not; else StandAloneValidatorFetcher.resolveURL (l. 181-272):
+      // outside http://hl7.org/fhir and not a canonical → "assume they are valid". So a uri / url on example.com,
+      // example.net or acme.org resolves and is no URL_EXAMPLE (corpus: all 13344 official ones are example.org / acme.com)
+      const engineResolves = (typeCode === "uri" || typeCode === "url") && (!/^https?:\/\//u.test(u) || (!u.includes("example.org") && !u.includes("acme.com") && !u.startsWith("http://hl7.org/fhir")));
+      const found = /^(?:tel|mailto|llp|urn):/u.test(u) || (!!this.resolver.definitionExists && (await this.defExists(u))) || engineResolves;
       // settings.isAllowExamples(): "nothing - these do need to resolve"
       // a value with whitespace has failed the URI rule (validateElement: the URL checks run on a good value only)
       if (!found && !this.allowExamples && !/\s/.test(v)) issues.push({ severity: "error", path: item.path, code: "invalid", message: `Example URLs are not allowed in this context (${short(v)})` });

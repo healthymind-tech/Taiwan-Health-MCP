@@ -699,3 +699,13 @@ test("a Bundle with a profile of another type: the first entry's resource of tha
   const parsed = await run({ resourceType: "Bundle", type: "collection", entry: [{ fullUrl: "urn:uuid:9b0e5a52-8f0c-4c2a-9a63-0d8f7c2d1e01", resource: pat }, { fullUrl: "urn:uuid:9b0e5a52-8f0c-4c2a-9a63-0d8f7c2d1e02", resource: { resourceType: "Organization", bogus: 1 } }] }, [PAT_PROFILE]);
   assert.ok(errs(parsed).some(([p, m]) => p.startsWith("Bundle.entry[1].resource") && m === "Unrecognized property 'bogus'"), JSON.stringify(errs(parsed)));
 });
+
+test("URL_EXAMPLE on a uri: only example.org / acme.com fail to resolve (ValidationEngine / StandAloneValidatorFetcher.resolveURL)", async () => {
+  const ex = async (system: string): Promise<boolean> =>
+    errs(await run({ resourceType: "Patient", identifier: [{ system, value: "1" }] })).some(([, m]) => m.startsWith("Example URLs are not allowed"));
+  assert.equal(await ex("http://example.org/ids"), true);
+  assert.equal(await ex("https://www.acme.com/ids"), true);
+  assert.equal(await ex("http://hospital.example.com/identifiers/patient"), false);
+  assert.equal(await ex("http://example.net/ids"), false);
+  assert.equal(await ex("http://acme.org/ids"), false);
+});
