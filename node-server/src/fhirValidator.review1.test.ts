@@ -619,6 +619,47 @@ test("validateReference: no example-URL error for a urn or a communications url 
   }
 });
 
+test("checkExtension: a relative url two levels below a defined extension is not judged; a number url is a url (jar)", async () => {
+  const E = "http://example.org/fhir/StructureDefinition/wc-complex";
+  EXTRA[E] = sd(E, "Extension", "complex-type", [
+    el("Extension", 0, "*", []),
+    { ...el("Extension.extension", 0, "*", ["Extension"]), slicing: { discriminator: [{ type: "value", path: "url" }], rules: "open" } },
+    { ...el("Extension.extension", 0, "1", ["Extension"]), id: "Extension.extension:part", sliceName: "part" },
+    { ...el("Extension.extension.url", 1, "1", ["uri"], { fixedUri: "part" }), id: "Extension.extension:part.url" },
+    { ...el("Extension.extension.value[x]", 0, "1", ["string"]), id: "Extension.extension:part.value[x]" },
+    el("Extension.url", 1, "1", ["uri"], { fixedUri: E }),
+    el("Extension.value[x]", 0, "0", ["string"]),
+  ], { baseDefinition: CORE + "Extension", derivation: "constraint", context: [{ type: "element", expression: "Element" }] });
+  const nested = errs(await run({ resourceType: "Patient", extension: [{ url: E, extension: [{ url: "part", valueString: "a", extension: [{ url: "x", valueString: "x" }] }] }] }));
+  assert.ok(!nested.some(([, m]) => m.startsWith("Sub-extension url 'x'")), JSON.stringify(nested));
+  const direct = errs(await run({ resourceType: "Patient", extension: [{ url: E, extension: [{ url: "x", valueString: "x" }] }] }));
+  assert.ok(direct.some(([, m]) => m.startsWith("Sub-extension url 'x' is not defined by the Extension")), JSON.stringify(direct));
+  const num = errs(await run({ resourceType: "Patient", extension: [{ url: 1, valueString: "x" }] }));
+  assert.ok(num.some(([, m]) => m === "Extension.url must be an absolute URL"), JSON.stringify(num));
+  assert.ok(!num.some(([, m]) => m.startsWith("Extension.url is required")), JSON.stringify(num));
+});
+
+test("lookupProfileReference: a meta.profile of an unknown version is read as the canonical's current definition (CanonicalResourceClient.fetch)", async () => {
+  const S = "http://example.org/fhir/StructureDefinition/typo-birth";
+  EXTRA[S] = sd(S, "Patient", "resource", [
+    ...SDS[CORE + "Patient"].snapshot.element.filter((e: Json) => e.path !== "Patient.birthDate"),
+    el("Patient.birthDate", 1, "1", ["date"]),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint", version: "1.0.0" });
+  const got = errs(await new InstanceValidator(new Resolver()).validate({ resourceType: "Patient", meta: { profile: [`${S}|9.9.9`] } }));
+  assert.ok(got.some(([, m]) => m.startsWith("Patient.birthDate: minimum required = 1")), JSON.stringify(got));
+});
+
+test("a coding object where the list belongs is still the CodeableConcept's coding for a pattern; a Coding with only _system cannot be judged by memberOf", async () => {
+  const P = "http://example.org/fhir/StructureDefinition/pat-cc-pattern";
+  EXTRA[P] = sd(P, "Patient", "resource", [
+    ...SDS[CORE + "Patient"].snapshot.element.filter((e: Json) => e.path !== "Patient.maritalStatus"),
+    el("Patient.maritalStatus", 0, "1", ["CodeableConcept"], { patternCodeableConcept: { coding: [{ system: "http://acme.test/cs", code: "a" }] } }),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint" });
+  const got = errs(await run({ resourceType: "Patient", maritalStatus: { coding: { system: "http://acme.test/cs", code: "a" } } }, [P])).map(([, m]) => m);
+  assert.ok(!got.some((m) => /coding elements/.test(m)), JSON.stringify(got));
+  assert.ok(got.some((m) => m.startsWith("The property coding must be a JSON Array")), JSON.stringify(got));
+});
+
 test("F10 invariants with memberOf() / conformsTo() are evaluated (FHIRPathEngine.funcMemberOf, funcConformsTo)", async () => {
   const NEED = "http://example.org/fhir/StructureDefinition/pat-need-birth";
   EXTRA[NEED] = sd(NEED, "Patient", "resource", [

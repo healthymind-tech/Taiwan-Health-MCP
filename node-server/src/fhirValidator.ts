@@ -6006,7 +6006,8 @@ export class InstanceValidator {
     }
     if (type === "CodeableConcept") {
       this.fixedValuePort(issues, `${path}.text`, focus.text, fixed.text, "string", source, "text", pattern, context);
-      const codings: any[] = Array.isArray(focus.coding) ? focus.coding : [];
+      // JsonParser keeps a single object written for the `coding` list as one element ("must be a JSON Array")
+      const codings: any[] = Array.isArray(focus.coding) ? focus.coding : isObject(focus.coding) ? [focus.coding] : [];
       const fixedCodings: any[] = Array.isArray(fixed.coding) ? fixed.coding : [];
       if (pattern) {
         if (codings.length < fixedCodings.length) {
