@@ -4078,7 +4078,8 @@ export class InstanceValidator {
    * be validated further (unknown).
    */
   private async extensionDefinition(parentSdx: SdIndex, item: Item, issues: Issue[]): Promise<SdIndex | null> {
-    const url = isObject(item.value) ? item.value.url : undefined;
+    // JsonParser keeps a number / boolean written for the url as its text (EXTENSION_EXT_URL_ABSOLUTE then judges it)
+    const url = isObject(item.value) ? primitiveText(item.value.url) ?? undefined : undefined;
     if (typeof url !== "string" || !url) {
       // InstanceValidator.validateElement: EXTENSION_EXT_URL_NOTFOUND
       issues.push({ severity: "error", path: item.path, code: "invalid", message: "Extension.url is required in order to identify, use and validate the extension" });
@@ -4146,12 +4147,16 @@ export class InstanceValidator {
     // an extension reference (also as a child of a complex extension); unknown →
     // Extension_EXT_Unknown_NotHere "could not be found so is not allowed here".
     if (insideDefinedExtension && !absolute) {
-      issues.push({
-        severity: "error",
-        path: `${item.path}[url='${url}']`,
-        code: "structure",
-        message: `Sub-extension url '${url}' is not defined by the Extension ${this.versionedUrl(parentSdx)}` /* EXTENSION_EXT_SUBEXTENSION_INVALID: profile.getVersionedUrl() */,
-      });
+      // checkExtension l. 2622-2624: only when the enclosing extension (`extensionUrl`, its own url, relative too) is the
+      // definition being walked — a relative url below a sub-extension is not judged
+      if (item.host?.extUrl === parentSdx.url) {
+        issues.push({
+          severity: "error",
+          path: `${item.path}[url='${url}']`,
+          code: "structure",
+          message: `Sub-extension url '${url}' is not defined by the Extension ${this.versionedUrl(parentSdx)}` /* EXTENSION_EXT_SUBEXTENSION_INVALID: profile.getVersionedUrl() */,
+        });
+      }
     } else if (allowUnknownExtension(url, this.allowExamples, this.extensionDomains)) {
       // InstanceValidator.allowUnknownExtension: tools / nema.org / structuredefinition-expression need no definition
     } else if (!inExtension || absolute) {
