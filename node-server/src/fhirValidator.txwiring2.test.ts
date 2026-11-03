@@ -655,3 +655,10 @@ test("ValueSetValidator.checkValueSetOptions: an invalid resource language fails
   const ok = await new InstanceValidator(new RequiredCodingResolver()).validate({ resourceType: "Patient", id: "p", language: "de-CH", gender: "male" });
   assert.ok(!ok.some((i) => /Invalid displayLanguage/.test(i.message)), JSON.stringify(ok));
 });
+
+test("a UCUM unit the grammar rejects under a binding the validator checks: Unknown_Code_in_Version on .code as well (official corpus, mcode m^2)", async () => {
+  const v = new InstanceValidator(new FakeResolver()) as any;
+  const e: Issue[] = [];
+  await v.checkQuantity({ value: 2, system: "http://unitsofmeasure.org", code: "m^2" }, { path: "X.valueQuantity" }, e, { path: "X.valueQuantity", binding: { strength: "extensible", valueSet: "http://hl7.org/fhir/ValueSet/ucum-units" } });
+  assert.ok(e.some((i) => i.severity === "error" && i.path === "X.valueQuantity.code" && i.message === "Unknown code 'm^2' in the CodeSystem 'http://unitsofmeasure.org' version '2.2'"), JSON.stringify(e));
+});

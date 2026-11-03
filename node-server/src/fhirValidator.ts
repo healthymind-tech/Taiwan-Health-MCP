@@ -7234,6 +7234,12 @@ export class InstanceValidator {
               issues.push({ severity: "warning", path, code: "code-invalid", message: `The code provided (${system}#${code}) is not in the value set ${desc}, and a code should come from this value set unless it has no suitable code (the validator cannot judge what is suitable)` });
             }
           }
+          // the ValueSetValidator's own answer for the unit: Unknown_Code_in_Version on .code beside the binding's issue, whatever the
+          // strength (official corpus: 8 with Terminology_TX_Confirm_5, 4 with Confirm_4a; mcode m^2 under ucum-vitals-common)
+          if (system === UCUM_SYSTEM && code !== "" && checkUcumCode(code) === "invalid") {
+            const message = ucumUnknownCodeMessage(code);
+            if (!issues.some((x) => x.path === `${path}.code` && x.message === message)) issues.push({ severity: "error", path: `${path}.code`, code: "code-invalid", message });
+          }
         }
       }
       if (!checked) {
