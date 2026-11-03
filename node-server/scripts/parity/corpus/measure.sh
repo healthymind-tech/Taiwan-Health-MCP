@@ -7,7 +7,8 @@
 # --blind: the first measurement of an IG is its blind score: it is appended to mcp_proposal/parity_v3/blind_scores.md
 # and an IG already in that file is refused.
 set -u
-REPO=$(cd "$(dirname "$0")/../../../.." && pwd)
+# the main checkout (also when started from a worktree: .env and the private ledger live there)
+REPO=$(cd "$(git -C "$(dirname "$0")" rev-parse --git-common-dir)/.." && pwd)
 IGS=""; TAG=""; REV=HEAD; CORR=""; SHARDS=4; BLIND=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -20,7 +21,8 @@ done
 ROOT=${PARITY_CORPUS:-$HOME/ref/parity_corpus}
 OUT=$HOME/tools/validator-oracle/corpus/$TAG
 LEDGER=$REPO/mcp_proposal/parity_v3/blind_scores.md
-WT=$HOME/tools/validator-oracle/measure-wt
+# one worktree per run: two measurements at once never share a checkout
+WT=$HOME/tools/validator-oracle/measure-wt/$TAG
 if [ $BLIND = 1 ]; then
   for ig in ${IGS//,/ }; do
     if grep -q "^## blind: $ig " "$LEDGER" 2>/dev/null; then echo "refusing: $ig already has its blind score in $LEDGER"; exit 3; fi
@@ -33,6 +35,7 @@ for ig in ${IGS//,/ }; do
   ln -sfn "$ROOT/$ig" "$OUT/src/$ig"
 done
 COMMIT=$(git -C "$REPO" rev-parse --short "$REV") || exit 2
+mkdir -p "$(dirname "$WT")"
 [ -e "$WT/.git" ] || git -C "$REPO" worktree add -q --detach "$WT" "$COMMIT" || exit 2
 git -C "$WT" checkout -q --detach "$COMMIT" || exit 2
 ln -sfn "$REPO/node-server/node_modules" "$WT/node-server/node_modules"
@@ -55,6 +58,7 @@ node --max-old-space-size=12000 --import tsx scripts/parity/corpus/report.ts "$O
   --md "$OUT/report.md" --plan "$OUT/plan.json" --top 30 --cmd "measure.sh --ig $IGS --tag $TAG --commit $COMMIT${CORR:+ --corrections $CORR}" > "$OUT/report.log" 2>&1
 sed -n '/^## Per-IG/,/^## All corpus/p;/^## Release simulation/,/^Unsafe/p' "$OUT/report.md" | cut -d'|' -f2-13 | cut -c1-150
 echo "report: $OUT/report.md (code $COMMIT)"
+git -C "$REPO" worktree remove --force "$WT" 2>/dev/null
 if [ $BLIND = 1 ]; then
   for ig in ${IGS//,/ }; do
     { echo; echo "## blind: $ig (code $COMMIT, $(date -u +%FT%TZ), first measurement, not to be changed)"; grep -E "^\| ($ig|IG) " "$OUT/report.md"; } >> "$LEDGER"
