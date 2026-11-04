@@ -548,7 +548,8 @@ export class DbValidatorResolver implements ValidatorResolver {
             "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) " +
             "  ON a.package_id = dep.pid AND a.package_version = dep.pver " +
             "JOIN fhir.ig_packages p ON p.package_id = a.package_id AND p.version = a.package_version " +
-            "WHERE a.resource_type = $3 AND a.canonical_url = $4",
+            // a package's package/example folder is never loaded (fetchQuestionnaire / fetchCanonical: loadedOnly)
+            "WHERE a.resource_type = $3 AND a.canonical_url = $4 AND (a.resource_type IN ('CodeSystem', 'ValueSet', 'StructureDefinition') OR a.grouping_id IS DISTINCT FROM 'examples')",
           [pids, pvers, resourceType, canonical],
         )
       ).rows;
@@ -683,17 +684,17 @@ export class DbValidatorResolver implements ValidatorResolver {
   }
 
   async fetchSearchParameter(url: string): Promise<Record<string, any> | null> {
-    return terminology.loadArtifactByCanonical("SearchParameter", splitCanonicalVersion(url).url, this.pkg, { hl7Current: true });
+    return terminology.loadArtifactByCanonical("SearchParameter", splitCanonicalVersion(url).url, this.pkg, { hl7Current: true, loadedOnly: true });
   }
 
   async fetchCanonical(resourceType: "Measure" | "Library", url: string): Promise<Record<string, any> | null> {
     const { url: canonical, version } = splitCanonicalVersion(url);
-    return version === null ? terminology.loadArtifactByCanonical(resourceType, canonical, this.pkg, { hl7Current: true }) : this.loadVersioned(resourceType, canonical, version);
+    return version === null ? terminology.loadArtifactByCanonical(resourceType, canonical, this.pkg, { hl7Current: true, loadedOnly: true }) : this.loadVersioned(resourceType, canonical, version);
   }
 
   async fetchQuestionnaire(url: string): Promise<Record<string, any> | null> {
     const { url: canonical, version } = splitCanonicalVersion(url);
-    return version === null ? terminology.loadArtifactByCanonical("Questionnaire", canonical, this.pkg, { hl7Current: true }) : this.loadVersioned("Questionnaire", canonical, version);
+    return version === null ? terminology.loadArtifactByCanonical("Questionnaire", canonical, this.pkg, { hl7Current: true, loadedOnly: true }) : this.loadVersioned("Questionnaire", canonical, version);
   }
 
   /** A CodeSystem with this canonical in the closure (binding → CodeSystem URL); false on DB trouble (no invented error). */
