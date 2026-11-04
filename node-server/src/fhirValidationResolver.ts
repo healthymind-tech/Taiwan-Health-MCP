@@ -372,6 +372,27 @@ export function findSpecialConcept(system: string, code: string): CsConcept | nu
   return { code, display, designations: [display], designationList: [], parents: new Set(), children: new Set(), properties: new Map() };
 }
 
+/** A working language other than English (InstanceValidator: NodeStack.workingLang, the resource's language). */
+function nonEnglishLangs(langs: string[] | undefined): boolean {
+  return !!langs && langs.length > 0 && langs.some((l) => !/^en(-|$)/i.test(l));
+}
+
+/**
+ * InstanceValidator.checkCodeOnServer passes the working language to the terminology server, which judges the display
+ * against the code system's designations in that language (validator_cli corpus, Composition.language 'de-CH': "Wrong
+ * Display Name 'Patient summary Document' for http://loinc.org#60591-5. Valid display is 'Patient Summary' (de-AT)").
+ * The local LOINC / SNOMED CT tables hold no such designations: the display is not decided here (rules_unchecked
+ * "tx: <system> display in <lang>"), never passed on the English names.
+ */
+function displayNeedsTx(system: string, code: string, langs: string[]): CodeCheck {
+  const lang = langs.join(",");
+  return {
+    status: "display-unchecked",
+    message: `Display of ${system}#${code} not checked: the terminology server's designations for the language(s) '${lang}' are not held locally`,
+    rule: `tx: ${system} display in ${lang}`,
+  };
+}
+
 function noLocalDisplay(system: string, display: string | null): CodeCheck {
   return display === null
     ? { status: "silent" }
@@ -877,7 +898,12 @@ export class DbValidatorResolver implements ValidatorResolver {
       // A Coding.version naming another edition (US, NL, …) only relaxes the
       // unknown-code verdict (snomedStrict); displays of International concepts
       // are still judged (validator_cli: US-edition coding, wrong display → error).
-      return judgeSnomed(code, display, await terminology.snomedConcept(code), await terminology.snomedConceptDescriptions(code), strict);
+      // the descriptions held are the International edition's English ones: another working language is the server's
+      // (its national editions' designations), see displayNeedsTx
+      const otherLang = display !== null && nonEnglishLangs(langs);
+      const r = judgeSnomed(code, otherLang ? null : display, await terminology.snomedConcept(code), await terminology.snomedConceptDescriptions(code), strict);
+      if (otherLang && (r.status === "ok" || r.status === "silent")) return { ...displayNeedsTx(system, code, langs!), ...(r.extra ? { extra: r.extra } : {}) };
+      return r;
     }
     if (kind === "loinc") {
       if (!loincCheckDigitValid(code)) {
@@ -892,6 +918,11 @@ export class DbValidatorResolver implements ValidatorResolver {
           ? { status: "invalid-code", severity: "error", message: loincUnknownMessage(code) }
           : { status: "invalid-code", severity: "information", undecided: true, message: `Code '${code}' was not found in the locally held LOINC release of '${system}'` };
       }
+      // InstanceValidator.checkCodeOnServer with the working language (the resource's language, NodeStack.workingLang):
+      // tx.fhir.org judges the display against the LOINC linguistic variants of that language (validator_cli corpus,
+      // language 'de-CH': "Wrong Display Name 'Patient summary Document' for http://loinc.org#60591-5. Valid display is
+      // 'Patient Summary' (de-AT)"), which are not held here — so not decided locally, never a silent pass
+      if (display !== null && nonEnglishLangs(langs)) return displayNeedsTx(system, code, langs!);
       if (display !== null) {
         const bad = judgeDisplay(system, code, display, held.displays, "error");
         // tx.fhir.org names LOINC displays as designations: the display, the long common name again, then the others,

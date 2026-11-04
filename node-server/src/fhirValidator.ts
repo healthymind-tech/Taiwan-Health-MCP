@@ -283,7 +283,12 @@ export type CodeCheck = (
       langList?: string;
     }
   /** A display was given but there is no local terminology to check it against: an information note, always `unchecked`. */
-  | { status: "display-unchecked"; message: string }
+  | {
+      status: "display-unchecked";
+      message: string;
+      /** The display needs the terminology server (e.g. its designations in the working language): rules_unchecked. */
+      rule?: string;
+    }
 ) &
   CodeCheckExtra;
 
@@ -7443,7 +7448,7 @@ export class InstanceValidator {
     } else if (r.status === "invalid-display") {
       issues.push({ severity: r.severity, path: `${item.path}.display`, code: "code-invalid", message: r.message });
     } else if (r.status === "display-unchecked") {
-      issues.push({ severity: "information", path: `${item.path}.display`, code: "informational", message: r.message, unchecked: { kind: "code", canonical: system } });
+      issues.push({ severity: "information", path: `${item.path}.display`, code: "informational", message: r.message, unchecked: r.rule ? { kind: "rule", canonical: r.rule } : { kind: "code", canonical: system } });
     } else if ((r.status === "silent" || r.status === "ok") && r.undecided) {
       issues.push({ severity: "information", path: `${item.path}.code`, code: "informational", message: version ? `Code '${code}' not checked: version '${version}' of ${system} is not held locally` : `Code '${code}' not checked: no local terminology for ${system}`, unchecked: { kind: "code", canonical: version ? `${system}|${version}` : system } });
     }
