@@ -2080,6 +2080,13 @@ export class InstanceValidator {
     if (bundle && firstEntry) {
       const ectx: ResourceCtx = { resource: firstEntry, container: null, root: resource, bundle, entry: bundle.entryOf.get(firstEntry) ?? null };
       await this.validateResource(ectx, `${resource.resourceType}.entry[0].resource`, extra, issues, 0);
+      // checkContainedReferences l. 9062-9095: that resource was never the element of a ValidationContext (the Bundle's
+      // is used), so it has no INTERNAL_REFERENCES set; with contained resources that all have one (allDone) the
+      // first isReferencedFromBase dereferences the null set and the validation fails (official-crash)
+      const contained = firstEntry.contained;
+      if (Array.isArray(contained) && contained.length && contained.every((c: unknown) => isObject(c) && typeof c.resourceType === "string")) {
+        this.threw.push({ severity: "error", path: `${resource.resourceType}.entry[0].resource`, code: "exception", message: 'Cannot invoke "java.util.Set.contains(Object)" because "baseRefs" is null' });
+      }
       // the parser has run over the whole Bundle: its shape errors stand (a pass for them only — nothing it reaches throws)
       const threw = this.threw;
       this.threw = [];

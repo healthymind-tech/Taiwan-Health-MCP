@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { InstanceValidator, completenessOf, type Issue } from "./fhirValidator.js";
-import { FakeResolver } from "./fhirTestKit.test.js";
+import { FakeResolver, PAT_PROFILE } from "./fhirTestKit.test.js";
 
 const errs = async (r: Record<string, any>, resolver: FakeResolver = new FakeResolver()): Promise<Array<[string, string]>> =>
   (await new InstanceValidator(resolver).validate(r, { profiles: [] }))
@@ -49,6 +49,20 @@ test("a uri under a loaded package's canonical that nothing loaded defines: No d
   assert.ok(missing.some(([p, m]) => p === "Patient.identifier[0].system" && m === "No definition could be found for URL value 'http://hl7.org/fhir/uv/ig1/CodeSystem/example-only'"), JSON.stringify(missing));
   assert.deepEqual(await errs(pat("http://hl7.org/fhir/uv/ig1/CodeSystem/held"), new Owned()), []);
   assert.deepEqual(await errs(pat("http://hl7.org/fhir/uv/other/CodeSystem/x"), new Owned()), []);
+});
+
+// validateResource l. 9002-9012 + checkContainedReferences l. 9062-9095: a Bundle validated against a profile of its first
+// entry's type, that entry with contained resources — validator_cli 7.0.1 throws (official-crash), so never a pass
+test("Bundle validated as its first entry's profile, the entry holding contained resources: the jar's crash is an error", async () => {
+  const b = {
+    resourceType: "Bundle",
+    type: "collection",
+    entry: [{ fullUrl: "urn:uuid:7f3c2a8e-0d1b-4c55-9a51-2b6f0e4d9c10", resource: { resourceType: "Patient", contained: [{ resourceType: "Organization", id: "o1", name: "x" }], managingOrganization: { reference: "#o1" } } }],
+  };
+  const issues = await new InstanceValidator(new FakeResolver()).validate(b, { profiles: [PAT_PROFILE] });
+  assert.ok(issues.some((i) => i.severity === "error" && i.message === 'Cannot invoke "java.util.Set.contains(Object)" because "baseRefs" is null'), JSON.stringify(issues));
+  const plain = { ...b, entry: [{ ...b.entry[0], resource: { resourceType: "Patient" } }] };
+  assert.ok(!(await new InstanceValidator(new FakeResolver()).validate(plain, { profiles: [PAT_PROFILE] })).some((i) => i.message.includes("baseRefs")));
 });
 
 // InstanceValidator.checkSpecials l. 7249-7250: the jar runs StructureMapValidator on every StructureMap; not ported here
