@@ -287,7 +287,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.123.0 (parity v3 wave 2): a 'Type/' reference throws only where validator_cli resolves it; a choice property of a wrong type next to a matching _ shadow is read as the shadow's type.
   // 1.124.0 (parity v3 wave 3, sdc): an absolute contentReference validates the base definition's children under the profile (ProfileUtilities.childMapCache); a url under a loaded package's canonical resolves only through the loaded definitions; StructureMap not fully checked (StructureMapValidator not ported); the baseRefs crash of a Bundle validated as its first entry's profile; VALUESET_INC_CS_NO_SUPPORT; no dom-3 on a Bundle.
   // 1.124.0 (parity v3 ext wave 3): several type profiles on a resource element: Validation_VAL_Profile_NoMatch + each profile's tagged messages after validateContains, executed invariants / narrative checks one shared message; SpecialExtensions definitions, BuildExtensions urls not reported; memberOf on a text-only CodeableConcept is false.
-  fhir_validate_bundle: "1.125.0",
+  // 1.126.0 (parity v3): every non-R5 validation closure holds the newest hl7.fhir.uv.extensions, as validator_cli loads it itself (ValidationService.loadIgsAndExtensions); its definitions rank by version like any loaded package.
+  fhir_validate_bundle: "1.126.0",
   // 1.114.0 (parity v3 scored extras): sub-extension urls below a sub-extension, a number Extension.url, meta.profile of an unknown version read as the current definition, memberOf slicing on a systemless Coding, a coding object for fixed / pattern.
   // 1.115.0 (parity v3 wave 2): a Bundle with a -profile of another type validates its first entry's resource of that type against it (IV l. 9002-9012); no BundleValidator when the profile is for another type.
   // 1.105.0 (parity v3 round 12 / blind wave 1): findProfile(url, source) at every remaining site; a null code is no code; wildcard dependency versions resolve to the installed match; no example-URL error for a urn or a communications url.
@@ -402,7 +403,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.119.0: validation as fhir_validate_bundle 1.122.0.
   // 1.120.0: validation as fhir_validate_bundle 1.123.0.
   // 1.121.0: validation as fhir_validate_bundle 1.124.0.
-  fhir_validate_resource: "1.122.0",
+  // 1.123.0: validation as fhir_validate_bundle 1.126.0.
+  fhir_validate_resource: "1.123.0",
   // 1.111.0: validation as fhir_validate_bundle 1.114.0.
   // 1.112.0: validation as fhir_validate_bundle 1.115.0.
   // 1.102.0: validation as fhir_validate_bundle 1.105.0.

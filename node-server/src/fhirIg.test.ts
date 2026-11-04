@@ -409,3 +409,16 @@ test("metaProfilesOf: own meta.profile plus Bundle entries (nested), de-duplicat
   assert.deepEqual(metaProfilesOf(bundle), ["B", "C", "P|1.0.0"]);
   assert.deepEqual(metaProfilesOf({ resourceType: "Patient" }), []);
 });
+
+// ValidationService.loadIgsAndExtensions (validation 7.0.1, l. 745-749): validator_cli loads the newest
+// hl7.fhir.uv.extensions into every non-R5 context itself
+test("validationClosure: the newest hl7.fhir.uv.extensions release is appended to a non-R5 closure", () => {
+  const row = (package_id: string, version: string, fhir_version = "4.0.1"): any => ({ package_id, version, fhir_version, dependencies: {} });
+  const registry = [row("hl7.fhir.uv.extensions", "5.4.0", "5.0.0"), row("hl7.fhir.uv.extensions", "5.1.0-snapshot1", "5.0.0"), row("hl7.fhir.uv.extensions", "5.2.0", "5.0.0"), row("ig.a", "1.0.0")];
+  const base: Array<[string, string]> = [["ig.a", "1.0.0"], ["hl7.fhir.r4.core", "4.0.1"]];
+  assert.deepEqual(ig.validationClosure(registry, registry[3], base), [...base, ["hl7.fhir.uv.extensions", "5.4.0"]]);
+  assert.deepEqual(ig.validationClosure(registry, row("ig.r5", "1.0.0", "5.0.0"), base), base);
+  assert.deepEqual(ig.validationClosure([registry[3]], registry[3], base), base);
+  const already: Array<[string, string]> = [...base, ["hl7.fhir.uv.extensions", "5.4.0"]];
+  assert.deepEqual(ig.validationClosure(registry, registry[3], already), already);
+});

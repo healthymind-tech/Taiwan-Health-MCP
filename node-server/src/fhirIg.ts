@@ -56,7 +56,7 @@
 import { pickCanonicalVersion } from "./fhirValidator.js";
 import { query } from "./db.js";
 import { resolveDependencyVersion } from "./loaders/igRegistry.js";
-import { rankCandidates } from "./fhirTerminology.js";
+import { VALIDATOR_EXTENSIONS_PACKAGE, cmpVersion, rankCandidates } from "./fhirTerminology.js";
 
 export class IGNotFoundError extends Error {
   code = "IG_NOT_FOUND";
@@ -765,8 +765,27 @@ function coveredBy(closure: Array<[string, string]>, needs: Need[], hits: OwnerH
   return needs.filter((n) => hits.some((h) => inClosure.has(`${h.package_id} ${h.package_version}`) && hitMatches(h, n)));
 }
 
+/**
+ * The validation closure: the IG's declared closure plus what validator_cli loads into every context itself.
+ * ValidationService.loadIgsAndExtensions (validation 7.0.1, l. 745-749): for any FHIR version but R5,
+ * hl7.fhir.uv.extensions without a version, i.e. the newest release in the package cache, before the IGs — appended
+ * last here, since a tie between equal resource versions goes to the later-loaded package (CanonicalResourceManager) and
+ * closure order breaks ties first-wins. Its own dependencies are not added: hl7.fhir.r5.core is a core package (never
+ * loaded by IgLoader.loadIg); a declared other version of the pack stays in the closure next to it, as both are loaded.
+ */
+export function validationClosure(registry: PackageRow[], row: PackageRow, closure: Array<[string, string]>): Array<[string, string]> {
+  const fv = String(row.fhir_version ?? "");
+  if (fv.startsWith("5.0")) return closure;
+  const releases = registry.filter((r) => r.package_id === VALIDATOR_EXTENSIONS_PACKAGE && !String(r.version).includes("-"));
+  if (!releases.length) return closure;
+  const newest = releases.reduce((a, b) => (cmpVersion(b.version, a.version) > 0 ? b : a));
+  if (closure.some(([p, v]) => p === newest.package_id && v === newest.version)) return closure;
+  return [...closure, [newest.package_id, newest.version]];
+}
+
 function withClosure(registry: PackageRow[], row: PackageRow, by: ResolvedBy, notes: string[]): ResolvedTarget {
-  const info = computeClosure(registry, row.package_id, row.version);
+  const declared = computeClosure(registry, row.package_id, row.version);
+  const info = { ...declared, closure: validationClosure(registry, row, declared.closure) };
   const pkg: PackageRow = { ...row, _closure: info.closure };
   return { pkg, resolvedBy: by, closure: info.closure, depsMissing: info.depsMissing, closureVersions: closureVersions(info.closure), notes };
 }

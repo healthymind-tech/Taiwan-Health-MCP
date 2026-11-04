@@ -161,7 +161,17 @@ function jsonOf(raw: any): Record<string, any> | null {
   return raw;
 }
 
-function cmpVersion(a: string | null | undefined, b: string | null | undefined): number {
+/**
+ * The extension pack validator_cli loads into every non-R5 validation itself, whatever the IG declares:
+ * ValidationService.loadIgsAndExtensions (validation 7.0.1, l. 745-749) → IgLoader.loadIg("hl7.fhir.uv.extensions"),
+ * no version = the newest one (an R5 build, e.g. 5.4.0). Its definitions take part in the context like any other loaded
+ * package (CanonicalResourceManager: highest resource version answers an unversioned canonical), so it is not one of the
+ * "other FHIR release" packages ranked last; its core dependency (hl7.fhir.r5.core) is never loaded (loadIg skips core
+ * packages).
+ */
+export const VALIDATOR_EXTENSIONS_PACKAGE = "hl7.fhir.uv.extensions";
+
+export function cmpVersion(a: string | null | undefined, b: string | null | undefined): number {
   const pa = String(a || "").split(/[.\-]/);
   const pb = String(b || "").split(/[.\-]/);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
@@ -196,6 +206,7 @@ export interface ArtifactCandidate {
  */
 export function rankCandidates<T extends ArtifactCandidate>(canonical: string, rows: T[]): T[] {
   const foreign = (r: T): number => {
+    if (r.packageId === VALIDATOR_EXTENSIONS_PACKAGE) return 0;
     const fv = r.fhirVersion || "";
     const r5 = /\.r5(\.|$)/.test(r.packageId) || (fv !== "" && !fv.startsWith("4"));
     return r5 ? 1 : 0;
@@ -246,6 +257,7 @@ export function rankHl7Current<T extends ArtifactCandidate & { version?: string 
     return !!res && (res.resourceType === "CodeSystem" || res.resourceType === "ValueSet" || (res.resourceType === "StructureDefinition" && res.derivation === "specialization"));
   };
   const foreign = (r: T): boolean => {
+    if (r.packageId === VALIDATOR_EXTENSIONS_PACKAGE) return false;
     const fv = r.fhirVersion || "";
     return /\.r5(\.|$)/.test(r.packageId) || (fv !== "" && !fv.startsWith("4"));
   };
