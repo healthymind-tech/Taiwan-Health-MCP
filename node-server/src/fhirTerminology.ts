@@ -325,12 +325,7 @@ export async function loadArtifactByCanonical(
   resourceType: string,
   url: string,
   pkg: PackageRow,
-  opts: {
-    hl7Current?: boolean;
-    packageFix?: (json: Record<string, any>, packageId: string) => Record<string, any>;
-    /** Only what validator_cli loads into its context: a package's package/example folder never is (NpmPackage / IgLoader). */
-    loadedOnly?: boolean;
-  } = {},
+  opts: { hl7Current?: boolean; packageFix?: (json: Record<string, any>, packageId: string) => Record<string, any> } = {},
 ): Promise<Record<string, any> | null> {
   const [pids, pvers] = closureArrays(pkg);
   const canonical = url.split("|")[0];
@@ -340,8 +335,7 @@ export async function loadArtifactByCanonical(
         "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) " +
         "  ON a.package_id = dep.pid AND a.package_version = dep.pver " +
         "JOIN fhir.ig_packages p ON p.package_id = a.package_id AND p.version = a.package_version " +
-        "WHERE a.resource_type = $3 AND a.canonical_url = $4" +
-        (opts.loadedOnly ? " AND a.grouping_id IS DISTINCT FROM 'examples'" : ""),
+        "WHERE a.resource_type = $3 AND a.canonical_url = $4",
       [pids, pvers, resourceType, canonical],
     )
   ).rows;
