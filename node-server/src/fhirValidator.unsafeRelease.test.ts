@@ -50,3 +50,17 @@ test("a uri under a loaded package's canonical that nothing loaded defines: No d
   assert.deepEqual(await errs(pat("http://hl7.org/fhir/uv/ig1/CodeSystem/held"), new Owned()), []);
   assert.deepEqual(await errs(pat("http://hl7.org/fhir/uv/other/CodeSystem/x"), new Owned()), []);
 });
+
+// InstanceValidator.checkSpecials l. 7249-7250: the jar runs StructureMapValidator on every StructureMap; not ported here
+test("a StructureMap is never fully checked (StructureMapValidator is not ported)", async () => {
+  const SM = "http://hl7.org/fhir/StructureDefinition/StructureMap";
+  class WithMap extends FakeResolver {
+    override async fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
+      if (url.split("|")[0] !== SM) return super.fetchStructureDefinition(url);
+      const e = (id: string, min: number, max: string, code?: string): Record<string, any> => ({ id, path: id, min, max, base: { path: id, min, max }, ...(code ? { type: [{ code }] } : {}) });
+      return { resourceType: "StructureDefinition", url: SM, type: "StructureMap", kind: "resource", snapshot: { element: [e("StructureMap", 0, "*"), e("StructureMap.status", 1, "1", "code")] } };
+    }
+  }
+  const issues = (await new InstanceValidator(new WithMap()).validate({ resourceType: "StructureMap", status: "draft" }, { profiles: [] })) as unknown as Array<Record<string, any>>;
+  assert.deepEqual(completenessOf(issues).rules_unchecked, ["StructureMapValidator"]);
+});

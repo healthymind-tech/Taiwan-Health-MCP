@@ -3151,6 +3151,17 @@ export class InstanceValidator {
       for (const x of await validateSearchParameter(resource, path, deps)) issues.push(x);
     }
     if (rt === "ImplementationGuide") for (const x of validateImplementationGuide(resource, path)) issues.push(x);
+    // InstanceValidator.checkSpecials l. 7249-7250: StructureMapValidator.validateStructureMap (imports, constants, groups,
+    // rule sources / targets / transforms with their variable types, FHIRPath checks) is not ported — never a silent pass
+    if (rt === "StructureMap") {
+      issues.push({
+        severity: "information",
+        path,
+        code: "rule-unchecked",
+        message: "The StructureMap content checks (StructureMapValidator) are not ported: groups, rules, sources, targets and transforms were not checked; not a conformance failure",
+        unchecked: { kind: "rule", canonical: "StructureMapValidator" },
+      });
+    }
     // InstanceValidator.checkSpecials l. 7233-7236
     if (rt === "Measure" || rt === "MeasureReport") {
       const fetchCanonical = async (t: "Measure" | "Library", u: string): Promise<Record<string, any> | null> => (this.resolver.fetchCanonical ? await this.resolver.fetchCanonical(t, u) : null);
