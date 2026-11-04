@@ -1211,6 +1211,8 @@ interface ResourceCtx {
    * resource ids as "!"+id (RESOURCE_DUPLICATE_CONTAINED_ID). A fresh map per pass (stack.resetIds()).
    */
   ids?: Map<string, object>;
+  /** Codings of this validation pass whose display their CodeableConcept's bound ValueSet lists (markValueSetDisplays). */
+  vsDisplays?: WeakSet<object>;
 }
 
 interface BundleEntryCtx {
@@ -3600,7 +3602,7 @@ export class InstanceValidator {
       running.add(url);
       const done = running;
       // validateResource / startInner: stack.resetIds() before each profile pass — element ids are tracked per pass
-      const passCtx: ResourceCtx = { ...rctx, ids: new Map() };
+      const passCtx: ResourceCtx = { ...rctx, ids: new Map(), vsDisplays: new WeakSet() };
       p = (async () => {
         const sdx = await this.sdx(url);
         const out: Issue[] = [];
@@ -4218,6 +4220,8 @@ export class InstanceValidator {
       const tsdx = await this.sdx(CORE + typeCode);
       if (tsdx) merge = { sdx: tsdx, el: tsdx.root };
     }
+    // the codings are walked below: their CodeableConcept's binding decides their displays first
+    await this.markValueSetDisplays(el, item.value, typeCode, rctx);
     if (typeProfilePass) await this.walkChildren(typeProfilePass, typeProfilePassEl ?? typeProfilePass.root, item, rctx, issues, depth, false, null);
     if (!childrenSkipped && !childForeign && !jarProfile && childSdx === sdx && childEl === el && !isResourceRoot && sdx.hasChildren(el)) {
       // the profile's own element: the same cache entry (getChildMap l. 492-495), which an element of another
@@ -4262,7 +4266,7 @@ export class InstanceValidator {
     if (!isResourceRoot) this.checkFixedPattern(el, v, item, sdx, issues);
     await this.checkBinding(el, v, typeCode, item, issues, sdx);
     await this.checkLanguageDisplay(el, v, typeCode, item, rctx, issues);
-    if (typeCode === "Coding") await this.checkCoding(v, item, issues, el);
+    if (typeCode === "Coding") await this.checkCoding(v, item, issues, el, rctx);
     if (QUANTITY_TYPES.includes(typeCode)) await this.checkQuantity(v, item, issues, el, sdx);
     if (typeCode === "Identifier") this.checkIdentifier(v, item, issues);
     if (typeCode === "Attachment") this.checkAttachment(v, el, item, issues);
@@ -6686,6 +6690,46 @@ export class InstanceValidator {
   }
 
   /**
+   * InstanceValidator.checkCodeableConcept (7.0.1, l. 1468-1531): a CodeableConcept with a binding (not example) and a
+   * resolvable ValueSet is validated only through validateBindingCodeableConcept → checkCodeOnServer(valueset, cc); its
+   * codings are not checked against their code systems on their own (checkCoding l. 2344-2357 returns at once inside a
+   * CodeableConcept), so display issues are what the ValueSet validation answers. For a system the terminology server
+   * answers, the server takes a display the ValueSet itself lists for the code (its include concept's display or
+   * designation, as ValueSetValidator's useValueSetDisplays branch, standalone l. 1373-1390) as correct — no
+   * INACTIVE_DISPLAY_FOUND / wrong display then (jar alone with -profile and the evaluator's standalone answers: mCODE
+   * 897275008 under mcode-cancer-staging-method-vs). Without a binding (or in a pass without one: the core definition) the
+   * CodeSystem check stays.
+   */
+  private async markValueSetDisplays(el: Record<string, any>, v: any, typeCode: string, rctx: ResourceCtx): Promise<void> {
+    const b = isObject(el.binding) ? el.binding : null;
+    if (!rctx.vsDisplays) return;
+    if (typeCode !== "CodeableConcept" || !b || typeof b.valueSet !== "string" || !b.valueSet || b.strength === "example") return;
+    if (!isObject(v) || !Array.isArray(v.coding)) return;
+    const codings = v.coding.filter((c: any) => isObject(c) && typeof c.system === "string" && typeof c.code === "string" && c.code && typeof c.display === "string" && c.display);
+    if (!codings.length) return;
+    const vs = await this.vsHeader(b.valueSet);
+    if (!vs || !isObject(vs.compose)) return;
+    const okLang = (l: unknown): boolean => typeof l !== "string" || l === "" || /^en(-|$)/iu.test(l);
+    for (const c of codings) {
+      if (serverPrefers(c.system) !== true) continue;
+      const want = String(c.display).toLowerCase();
+      const listed = (Array.isArray(vs.compose.include) ? vs.compose.include : []).some(
+        (inc: any) =>
+          isObject(inc) &&
+          inc.system === c.system &&
+          (Array.isArray(inc.concept) ? inc.concept : []).some(
+            (cc: any) =>
+              isObject(cc) &&
+              cc.code === c.code &&
+              ((typeof cc.display === "string" && okLang(vs.language) && cc.display.toLowerCase() === want) ||
+                (Array.isArray(cc.designation) ? cc.designation : []).some((d: any) => isObject(d) && typeof d.value === "string" && okLang(d.language) && d.value.toLowerCase() === want)),
+          ),
+      );
+      if (listed) rctx.vsDisplays.add(this.sourceOf(c));
+    }
+  }
+
+  /**
    * ValueSetValidator.checkValueSetOptions (standalone tag 7.0.1:1119-1127): every requested display language must parse as a
    * BCP-47 tag (LanguageTag against the registry), else INVALID_DISPLAY_NAME is thrown before any code is looked at. The
    * working language is the resource's language (checkLang), so an invalid one fails every binding the validator answers
@@ -7367,7 +7411,7 @@ export class InstanceValidator {
     }
   }
 
-  private async checkCoding(v: Record<string, any>, item: Item, issues: Issue[], el: Record<string, any> | null = null): Promise<void> {
+  private async checkCoding(v: Record<string, any>, item: Item, issues: Issue[], el: Record<string, any> | null = null, rctx: ResourceCtx | null = null): Promise<void> {
     const system = v.system;
     const code = typeof v.code === "number" || typeof v.code === "boolean" ? String(v.code) : v.code;
     // InstanceValidator.checkCoding (7.0.1): outside a CodeableConcept, or with a binding of its own, a code without a
@@ -7453,7 +7497,7 @@ export class InstanceValidator {
     } else if (r.status === "invalid-code") {
       issues.push(this.invalidCodeIssue(r, `${item.path}.${r.at ?? "code"}`, system));
     } else if (r.status === "invalid-display") {
-      issues.push({ severity: r.severity, path: `${item.path}.display`, code: "code-invalid", message: r.message });
+      if (!rctx?.vsDisplays?.has(this.sourceOf(v))) issues.push({ severity: r.severity, path: `${item.path}.display`, code: "code-invalid", message: r.message });
     } else if (r.status === "display-unchecked") {
       issues.push({ severity: "information", path: `${item.path}.display`, code: "informational", message: r.message, unchecked: r.rule ? { kind: "rule", canonical: r.rule } : { kind: "code", canonical: system } });
     } else if ((r.status === "silent" || r.status === "ok") && r.undecided) {

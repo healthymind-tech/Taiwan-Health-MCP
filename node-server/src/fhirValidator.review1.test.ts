@@ -862,3 +862,31 @@ test("BundleValidator.checkSearchSet: an entry whose resourceType is no resource
   assert.ok(got.includes("Bundle.entry[0].resource: This is not a matching resource type for the specified search (Resource expecting [Patient])"), JSON.stringify(got));
   assert.ok(got.includes("Bundle.entry[0].resource: Search results must have ids"), JSON.stringify(got));
 });
+
+test("a bound CodeableConcept: a display its ValueSet lists for the code of a server-side system is valid (checkCodeableConcept l. 1468-1531); unbound, the CodeSystem check stays", async () => {
+  const SCT = "http://snomed.info/sct";
+  const VSU = "http://example.org/fhir/ValueSet/staging-method";
+  const OLD = "Old staging system (tumor staging)";
+  const vs = { resourceType: "ValueSet", url: VSU, version: "1", name: "StagingMethod", compose: { include: [{ system: SCT, concept: [{ code: "897275008", display: OLD }] }] } };
+  class R3 extends Resolver {
+    override async fetchValueSet(url: string): Promise<Json | null> {
+      return url.split("|")[0] === VSU ? vs : super.fetchValueSet(url);
+    }
+    override async valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
+      return url.split("|")[0] === VSU ? system === SCT && code === "897275008" : super.valueSetContains(url, system, code);
+    }
+    override async checkCode(system: string, code: string, display: string | null): Promise<any> {
+      if (system === SCT) return display === null || display === "New staging system" ? { status: "ok" } : { status: "invalid-display", severity: "error", message: `'${display}' is no longer considered a correct display for code '${code}' (status = inactive). The correct display is one of New staging system` };
+      return super.checkCode(system, code, display);
+    }
+  }
+  const P = "http://example.org/fhir/StructureDefinition/cond-staging";
+  EXTRA[P] = sd(P, "Condition", "resource", [
+    ...SDS[CORE + "Condition"].snapshot.element.filter((e: Json) => e.path !== "Condition.code"),
+    el("Condition.code", 0, "1", ["CodeableConcept"], { binding: { strength: "extensible", valueSet: VSU } }),
+  ], { baseDefinition: CORE + "Condition", derivation: "constraint" });
+  const cond = { resourceType: "Condition", code: { coding: [{ system: SCT, code: "897275008", display: OLD }] } };
+  const display = (issues: Issue[]): string[] => issues.filter((i) => i.severity === "error" && i.path === "Condition.code.coding[0].display").map((i) => i.message);
+  assert.deepEqual(display(await new InstanceValidator(new R3()).validate(cond, { profiles: [P] })), []);
+  assert.equal(display(await new InstanceValidator(new R3()).validate(cond)).length, 1);
+});
