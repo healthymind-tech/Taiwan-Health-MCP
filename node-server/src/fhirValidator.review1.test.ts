@@ -784,3 +784,27 @@ test("checkExtension l. 2626-2629: SpecialExtensions carry their own definitions
   assert.deepEqual(notHere(await run({ resourceType: "Patient", extension: [{ url: "http://hl7.org/fhir/build/StructureDefinition/title", valueString: "x" }] })), []);
   assert.equal(notHere(await run({ resourceType: "Patient", extension: [{ url: "http://hl7.org/fhir/StructureDefinition/instance-namex", valueString: "x" }] })).length, 1);
 });
+
+test("several type profiles on an entry: an executed invariant is one message object (EXECUTED_CONSTRAINT_LIST), tagged per profile, no untagged copy", async () => {
+  const mk = (url: string, name: string, req: string): Json => {
+    EXTRA[url] = sd(url, "Patient", "resource", [
+      ...SDS[CORE + "Patient"].snapshot.element.filter((e: Json) => e.path !== req && e.path !== "Patient.active"),
+      el(req, 1, "1", [req === "Patient.gender" ? "code" : "date"]),
+      el("Patient.active", 0, "1", ["boolean"], { constraint: [{ key: "sh-1", severity: "error", human: "Shared", expression: "$this = false" }] }),
+    ], { baseDefinition: CORE + "Patient", derivation: "constraint", name, version: "1.0.0" });
+    return EXTRA[url];
+  };
+  const A = "http://example.org/fhir/StructureDefinition/pat-sh-a";
+  const Bp = "http://example.org/fhir/StructureDefinition/pat-sh-b";
+  mk(A, "ShA", "Patient.gender");
+  mk(Bp, "ShB", "Patient.birthDate");
+  const B = "http://example.org/fhir/StructureDefinition/bundle-sh";
+  EXTRA[B] = sd(B, "Bundle", "resource", [
+    ...SDS[CORE + "Bundle"].snapshot.element.filter((e: Json) => e.path !== "Bundle.entry.resource"),
+    el("Bundle.entry.resource", 1, "1", [], { type: [{ code: "Patient", profile: [A, Bp] }] }),
+  ], { baseDefinition: CORE + "Bundle", derivation: "constraint" });
+  const got = errs(await run({ resourceType: "Bundle", type: "collection", entry: [{ fullUrl: "urn:uuid:9b0e5a52-8f0c-4c2a-9a63-0d8f7c2d1e01", resource: { resourceType: "Patient", id: "p", active: true } }] }, [B]));
+  const sh = got.filter(([p, m]) => p === "Bundle.entry[0].resource.active" && m.startsWith("Constraint failed: sh-1"));
+  assert.equal(sh.length, 1, JSON.stringify(got));
+  assert.ok(sh[0][1].includes(`(validating against ${A}|1.0.0 [ShA])`) && sh[0][1].includes(`(validating against ${Bp}|1.0.0 [ShB])`), sh[0][1]);
+});

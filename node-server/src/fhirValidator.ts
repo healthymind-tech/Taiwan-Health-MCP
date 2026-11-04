@@ -63,6 +63,13 @@ import { ucumCanonicalForm } from "./fhirUcum.js";
 
 export const SOURCE = "builtin";
 
+/**
+ * On an issue: the untagged message of the executed invariant it is (reportProfileChoices). A symbol key survives the
+ * `{ ...issue }` copies of the path mapping and is not serialised.
+ */
+const SHARED_OF = Symbol("sharedOf");
+type SharedIssue = Issue & { [SHARED_OF]?: string };
+
 export interface Issue {
   severity: "fatal" | "error" | "warning" | "information";
   /** Instance location, e.g. `Patient.identifier[1].system`. */
@@ -1848,6 +1855,8 @@ export class InstanceValidator {
   /** > 0 while a slice discriminator's conformsTo validates a resource (its messages are discarded). */
   /** validator_contained_Id (IV:7533): the contained resources whose id has been checked in this run */
   private containedIdChecked = new WeakSet<object>();
+  /** a multi-profile resource pass tagged an executed invariant (issues carrying SHARED_OF) */
+  private sharedInvariantTagged = false;
   private strippedCache = new WeakMap<object, any>();
   private emptiedCache = new WeakMap<object, Promise<boolean>>();
   /**
@@ -2097,7 +2106,7 @@ export class InstanceValidator {
       issues.push(...found.filter((i) => i.message !== ELE1_MESSAGE));
       await this.settleVsSystems(issues);
       issues.push(...this.threw);
-      return dedupe(issues);
+      return dedupe(this.dropTaggedInvariantCopies(issues));
     }
     await this.validateResource(rctx, resource.resourceType, extra, issues, 0);
     // BundleValidator runs from start() (IV l. 9046-9047), i.e. not when the profile is for another type
@@ -2110,7 +2119,7 @@ export class InstanceValidator {
     } else await this.structuralPass(resource, resource.resourceType, issues, 0);
     await this.settleVsSystems(issues);
     issues.push(...this.threw);
-    return dedupe(issues);
+    return dedupe(this.dropTaggedInvariantCopies(issues));
   }
 
   /**
@@ -3479,6 +3488,7 @@ export class InstanceValidator {
     bad: Array<[string, Issue[]]>,
     taggable: (i: Issue) => boolean,
     issues: Issue[],
+    shareInvariants = false,
   ): Promise<void> {
     const tagOf = async (p: string): Promise<string> => {
       const psdx = await this.sdx(p);
@@ -3495,16 +3505,34 @@ export class InstanceValidator {
         const list = lists.find(([u]) => u === p)![1];
         const tag = await tagOf(p);
         const ele1 = list.filter((i) => i.message === ELE1_MESSAGE && i.path !== path && taggable(i));
-        const rest = list.filter((i) => !ele1.includes(i));
+        // a resource element (validateContains, then these passes): its executed invariants (checkInvariants l. 8806-8823,
+        // EXECUTED_CONSTRAINT_LIST) and its narratives' checks (checkXhtml l. 4412-4430, VALIDATION_XHTML_OUTCOME) are the
+        // message objects of the earlier passes over the same elements (the base definition's too) — one object, tagged
+        // once per occurrence in each profile's list, and no untagged copy is left
+        const replayed = (i: Issue): boolean => (i.code === "invariant" && i.message.startsWith("Constraint failed: ")) || /\.div(\/|$)/u.test(i.path);
+        const inv = shareInvariants ? list.filter((i) => !ele1.includes(i) && replayed(i) && taggable(i)) : [];
+        const rest = list.filter((i) => !ele1.includes(i) && !inv.includes(i));
         for (const i of rest) if (taggable(i)) i.message += tag;
         for (const i of ele1) {
           let m = shared.get(i.path);
           if (!m) {
-            m = { ...i };
+            m = shareInvariants ? ({ ...i, [SHARED_OF]: i.message } as Issue) : { ...i };
             shared.set(i.path, m);
             issues.push(m);
+            if (shareInvariants) this.sharedInvariantTagged = true;
           }
           m.message += tag + tag;
+        }
+        for (const i of inv) {
+          const k = `${i.severity}\u0000${i.path}\u0000${i.message}`;
+          let m = shared.get(k);
+          if (!m) {
+            m = { ...i, [SHARED_OF]: i.message } as Issue;
+            shared.set(k, m);
+            issues.push(m);
+            this.sharedInvariantTagged = true;
+          }
+          m.message += tag;
         }
         issues.push(...rest);
       }
@@ -3519,6 +3547,18 @@ export class InstanceValidator {
       issues.push({ severity: "warning", path, code: "structure", message: `Found multiple matching profiles among ${n} choice${n === 1 ? "" : "s"}: ${good.map(([p]) => p).sort().join(", ")}` });
       await emit(good);
     }
+  }
+
+  /** The untagged copies of the invariant messages reportProfileChoices tagged (in Java the same, mutated object). */
+  private dropTaggedInvariantCopies(issues: Issue[]): Issue[] {
+    if (!this.sharedInvariantTagged) return issues;
+    const keyOf = (i: Issue, m: string): string => `${i.severity}\u0000${i.path}\u0000${m}`;
+    const tagged = new Set<string>();
+    for (const i of issues) {
+      const from = (i as SharedIssue)[SHARED_OF];
+      if (from !== undefined) tagged.add(keyOf(i, from));
+    }
+    return issues.filter((i) => (i as SharedIssue)[SHARED_OF] !== undefined || !tagged.has(keyOf(i, i.message)));
   }
 
   /** Issues of `rctx.resource` against one StructureDefinition (memoised per resource object). */
@@ -3953,7 +3993,7 @@ export class InstanceValidator {
           const list = (await this.conformance(child, p, item.path, depth)).filter((i) => !isParseIssue(i)).map((i) => ({ ...i }));
           (list.some((i) => i.severity === "error" || i.severity === "fatal") ? bad : good).push([p, list]);
         }
-        await this.reportProfileChoices(item.path, profiles, good, bad, () => true, issues);
+        await this.reportProfileChoices(item.path, profiles, good, bad, () => true, issues, true);
         return;
       }
       if (profiles.length === 1 && !(await this.sdx(profiles[0]))) {
