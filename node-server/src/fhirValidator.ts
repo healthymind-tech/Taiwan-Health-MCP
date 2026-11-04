@@ -4744,7 +4744,9 @@ export class InstanceValidator {
       // A choice element with type slices but no slicer: every item ends up on the last slice (see choiceSlicesWithoutSlicer)
       const choiceNoSlicer = grp.slices.length > 0 && !!grp.base && !grp.base.slicing && grp.name.endsWith("[x]");
       // Cardinality (per parent instance) against the base definition of this group.
-      if (grp.base) this.checkCardinality(grp.base, choiceNoSlicer ? 0 : items.length, item, gsdx, issues);
+      // checkCardinalities(errors, profile, …): "(from …)" names the validator's profile, also for the children of another
+      // definition reached through an absolute contentReference
+      if (grp.base) this.checkCardinality(grp.base, choiceNoSlicer ? 0 : items.length, item, foreign ?? gsdx, issues);
 
       if (grp.slices.length && grp.base && grp.base.slicing) {
         await this.validateSliced(gsdx, grp, typedItems, item, rctx, issues, depth);
