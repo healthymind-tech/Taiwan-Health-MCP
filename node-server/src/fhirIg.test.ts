@@ -422,3 +422,13 @@ test("validationClosure: the newest hl7.fhir.uv.extensions release is appended t
   const already: Array<[string, string]> = [...base, ["hl7.fhir.uv.extensions", "5.4.0"]];
   assert.deepEqual(ig.validationClosure(registry, registry[3], already), already);
 });
+
+// ValidationEngine.loadExt (l. 445-460): an R4 context also loads hl7.fhir.uv.extensions.r4 at EXTENSIONS_WORKING_VERSION
+// (5.2.0), with the core definitions, i.e. before the newest pack: appended after it (reverse load order)
+test("validationClosure: hl7.fhir.uv.extensions.r4 5.2.0 for an R4 context, last", () => {
+  const row = (package_id: string, version: string, fhir_version = "4.0.1"): any => ({ package_id, version, fhir_version, dependencies: {} });
+  const registry = [row("hl7.fhir.uv.extensions", "5.4.0", "5.0.0"), row("hl7.fhir.uv.extensions.r4", "5.2.0"), row("hl7.fhir.uv.extensions.r4", "5.3.0"), row("ig.a", "1.0.0")];
+  const base: Array<[string, string]> = [["ig.a", "1.0.0"], ["hl7.fhir.r4.core", "4.0.1"]];
+  assert.deepEqual(ig.validationClosure(registry, registry[3], base), [...base, ["hl7.fhir.uv.extensions", "5.4.0"], ["hl7.fhir.uv.extensions.r4", "5.2.0"]]);
+  assert.deepEqual(ig.validationClosure(registry, row("ig.b", "1.0.0", "3.0.2"), base), [...base, ["hl7.fhir.uv.extensions", "5.4.0"]]);
+});

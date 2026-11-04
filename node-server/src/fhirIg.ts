@@ -766,21 +766,39 @@ function coveredBy(closure: Array<[string, string]>, needs: Need[], hits: OwnerH
 }
 
 /**
- * The validation closure: the IG's declared closure plus what validator_cli loads into every context itself.
- * ValidationService.loadIgsAndExtensions (validation 7.0.1, l. 745-749): for any FHIR version but R5,
- * hl7.fhir.uv.extensions without a version, i.e. the newest release in the package cache, before the IGs — appended
- * last here, since a tie between equal resource versions goes to the later-loaded package (CanonicalResourceManager) and
- * closure order breaks ties first-wins. Its own dependencies are not added: hl7.fhir.r5.core is a core package (never
- * loaded by IgLoader.loadIg); a declared other version of the pack stays in the closure next to it, as both are loaded.
+ * The packages validator_cli 7.0.1 loads into every context itself, in its load order (the oracle's log: "Load
+ * hl7.fhir.uv.extensions.r4#5.2.0" with the core definitions, then "Load hl7.fhir.uv.extensions#5.4.0" before the IG):
+ *  - ValidationEngine.loadExt (l. 445-460) for an R4 / R4B context: hl7.fhir.uv.extensions.r4 at
+ *    ExtensionDefinitions.EXTENSIONS_WORKING_VERSION (5.2.0);
+ *  - ValidationService.loadIgsAndExtensions (l. 745-749) for any version but R5: hl7.fhir.uv.extensions without a
+ *    version, i.e. the newest release in the package cache.
+ * `version: null` = the newest installed release.
+ */
+const VALIDATOR_IMPLICIT_PACKAGES: Array<{ id: string; version: string | null; when: (fhirVersion: string) => boolean }> = [
+  { id: "hl7.fhir.uv.extensions.r4", version: "5.2.0", when: (fv) => fv.startsWith("4.0") || fv.startsWith("4.3") },
+  { id: VALIDATOR_EXTENSIONS_PACKAGE, version: null, when: (fv) => !fv.startsWith("5.0") },
+];
+
+/**
+ * The validation closure: the IG's declared closure plus what validator_cli loads into every context itself
+ * (VALIDATOR_IMPLICIT_PACKAGES). They are loaded before the IGs, and a tie between equal resource versions goes to the
+ * later-loaded package (CanonicalResourceManager), while closure order breaks ties first-wins: so they are appended
+ * last, in reverse load order. Their own dependencies are not added (hl7.fhir.r5.core is a core package, never loaded
+ * by IgLoader.loadIg); an implicit package not installed is skipped. A package already in the closure at that version
+ * is not repeated; a declared other version stays next to it, as both are loaded.
  */
 export function validationClosure(registry: PackageRow[], row: PackageRow, closure: Array<[string, string]>): Array<[string, string]> {
   const fv = String(row.fhir_version ?? "");
-  if (fv.startsWith("5.0")) return closure;
-  const releases = registry.filter((r) => r.package_id === VALIDATOR_EXTENSIONS_PACKAGE && !String(r.version).includes("-"));
-  if (!releases.length) return closure;
-  const newest = releases.reduce((a, b) => (cmpVersion(b.version, a.version) > 0 ? b : a));
-  if (closure.some(([p, v]) => p === newest.package_id && v === newest.version)) return closure;
-  return [...closure, [newest.package_id, newest.version]];
+  const added: Array<[string, string]> = [];
+  for (const spec of VALIDATOR_IMPLICIT_PACKAGES) {
+    if (!spec.when(fv)) continue;
+    const rows = registry.filter((r) => r.package_id === spec.id && (spec.version === null ? !String(r.version).includes("-") : r.version === spec.version));
+    if (!rows.length) continue;
+    const pick = rows.reduce((a, b) => (cmpVersion(b.version, a.version) > 0 ? b : a));
+    if (closure.some(([p, v]) => p === pick.package_id && v === pick.version)) continue;
+    added.unshift([pick.package_id, pick.version]);
+  }
+  return added.length ? [...closure, ...added] : closure;
 }
 
 function withClosure(registry: PackageRow[], row: PackageRow, by: ResolvedBy, notes: string[]): ResolvedTarget {
