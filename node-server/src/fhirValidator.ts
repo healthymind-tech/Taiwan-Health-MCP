@@ -3175,6 +3175,13 @@ export class InstanceValidator {
       for (const x of await validateSearchParameter(resource, path, deps)) issues.push(x);
     }
     if (rt === "ImplementationGuide") for (const x of validateImplementationGuide(resource, path)) issues.push(x);
+    // InstanceValidator.checkSpecials → ParametersValidator.validateParameter (validation 7.0.1, l. 186-191): PARAM_RULES is a
+    // Map.ofEntries, whose get(null) throws for a parameter without a name value ("Cannot invoke Object.hashCode() because
+    // pk is null"): validator_cli fails the whole validation (official-crash), so never a pass
+    if (rt === "Parameters" && Array.isArray(resource.parameter)) {
+      const unnamed = resource.parameter.some((p: unknown) => isObject(p) && (p.name === undefined || p.name === null));
+      if (unnamed) this.threw.push({ severity: "error", path, code: "invalid", message: 'Cannot invoke "Object.hashCode()" because "pk" is null' });
+    }
     // InstanceValidator.checkSpecials l. 7249-7250: StructureMapValidator.validateStructureMap (imports, constants, groups,
     // rule sources / targets / transforms with their variable types, FHIRPath checks) is not ported — never a silent pass
     if (rt === "StructureMap") {

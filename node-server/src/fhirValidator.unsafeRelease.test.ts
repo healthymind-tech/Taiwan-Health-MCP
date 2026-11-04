@@ -88,3 +88,34 @@ test("a StructureMap is never fully checked (StructureMapValidator is not ported
   const issues = (await new InstanceValidator(new WithMap()).validate({ resourceType: "StructureMap", status: "draft" }, { profiles: [] })) as unknown as Array<Record<string, any>>;
   assert.deepEqual(completenessOf(issues).rules_unchecked, ["StructureMapValidator"]);
 });
+
+// ParametersValidator.validateParameter l. 186-191: PARAM_RULES (Map.ofEntries).get(null) throws for a parameter without
+// a name value — validator_cli 7.0.1 crashes (official-crash), so never a pass
+test("a Parameters resource with an unnamed parameter: the jar's crash is an error", async () => {
+  const PM = "http://hl7.org/fhir/StructureDefinition/Parameters";
+  class WithParams extends FakeResolver {
+    override async fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
+      if (url.split("|")[0] !== PM) return super.fetchStructureDefinition(url);
+      const e = (id: string, min: number, max: string, code?: string): Record<string, any> => ({ id, path: id, min, max, base: { path: id, min, max }, ...(code ? { type: [{ code }] } : {}) });
+      return { resourceType: "StructureDefinition", url: PM, type: "Parameters", kind: "resource", snapshot: { element: [e("Parameters", 0, "*"), e("Parameters.parameter", 0, "*", "BackboneElement"), e("Parameters.parameter.name", 1, "1", "string"), e("Parameters.parameter.value[x]", 0, "1", "string")] } };
+    }
+  }
+  const msg = 'Cannot invoke "Object.hashCode()" because "pk" is null';
+  const v = async (p: any[]): Promise<string[]> => (await new InstanceValidator(new WithParams()).validate({ resourceType: "Parameters", parameter: p }, { profiles: [] })).map((i) => i.message);
+  assert.ok((await v([{ valueString: "x", _name: { extension: [{ url: "http://hl7.org/fhir/StructureDefinition/data-absent-reason", valueCode: "unknown" }] } }])).includes(msg));
+  assert.ok(!(await v([{ name: "a", valueString: "x" }])).includes(msg));
+});
+
+// checkCodeOnServer passes the working language: a display the server would judge in that language and the resolver
+// cannot is a rules_unchecked note (never a pass on the English names)
+test("a display the resolver cannot judge in the working language is rules_unchecked", async () => {
+  class Lang extends FakeResolver {
+    override async checkCode(system: string, code: string, display: string | null, _v?: string | null, langs?: string[]): Promise<any> {
+      if (system === "http://loinc.org") return langs && langs[0] === "de-CH" && display !== null ? { status: "display-unchecked", message: "x", rule: "tx: http://loinc.org display in de-CH" } : { status: "ok" };
+      return super.checkCode(system, code, display);
+    }
+  }
+  const r = obs({ language: "de-CH", code: { coding: [{ system: "http://loinc.org", code: "8867-4", display: "Heart rate" }] } });
+  const issues = (await new InstanceValidator(new Lang()).validate(r, { profiles: [] })) as unknown as Array<Record<string, any>>;
+  assert.deepEqual(completenessOf(issues).rules_unchecked, ["tx: http://loinc.org display in de-CH"]);
+});
