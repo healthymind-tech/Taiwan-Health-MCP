@@ -381,11 +381,10 @@ function nonEnglishLangs(langs: string[] | undefined): boolean {
  * InstanceValidator.checkCodeOnServer passes the working language to the terminology server, which judges the display
  * against the code system's designations in that language (validator_cli corpus, Composition.language 'de-CH': "Wrong
  * Display Name 'Patient summary Document' for http://loinc.org#60591-5. Valid display is 'Patient Summary' (de-AT)").
- * The local LOINC / SNOMED CT tables hold no such designations: a display that matches an English designation is not
- * decided here (rules_unchecked "tx: <system> display in <lang>"), never passed on the English names; one that matches
- * none is still the error (with no designation in the language the server falls back to the default language's —
- * NO_VALID_DISPLAY_FOUND_NONE_FOR_LANG_OK — and with designations in it a display outside both sets is rejected too,
- * the case of a display written in that language apart).
+ * The local LOINC / SNOMED CT tables hold no such designations: the display is not decided here at all (rules_unchecked
+ * "tx: <system> display in <lang>", checked_fully=false) — a correct display in that language is accepted by the
+ * server and would be rejected on the English names, a wrong one is not released either; code existence is still
+ * checked.
  */
 function displayNeedsTx(system: string, code: string, langs: string[]): CodeCheck {
   const lang = langs.join(",");
@@ -904,7 +903,7 @@ export class DbValidatorResolver implements ValidatorResolver {
       // the descriptions held are the International edition's English ones: another working language is the server's
       // (its national editions' designations), see displayNeedsTx
       const otherLang = display !== null && nonEnglishLangs(langs);
-      const r = judgeSnomed(code, display, await terminology.snomedConcept(code), await terminology.snomedConceptDescriptions(code), strict);
+      const r = judgeSnomed(code, otherLang ? null : display, await terminology.snomedConcept(code), await terminology.snomedConceptDescriptions(code), strict);
       if (otherLang && (r.status === "ok" || r.status === "silent")) return { ...displayNeedsTx(system, code, langs!), ...(r.extra ? { extra: r.extra } : {}) };
       return r;
     }
@@ -925,9 +924,9 @@ export class DbValidatorResolver implements ValidatorResolver {
       // tx.fhir.org judges the display against the LOINC linguistic variants of that language (validator_cli corpus,
       // language 'de-CH': "Wrong Display Name 'Patient summary Document' for http://loinc.org#60591-5. Valid display is
       // 'Patient Summary' (de-AT)"), which are not held here — so not decided locally, never a silent pass
+      if (display !== null && nonEnglishLangs(langs)) return displayNeedsTx(system, code, langs!);
       if (display !== null) {
         const bad = judgeDisplay(system, code, display, held.displays, "error");
-        if (!bad && nonEnglishLangs(langs)) return displayNeedsTx(system, code, langs!);
         // tx.fhir.org names LOINC displays as designations: the display, the long common name again, then the others,
         // each '(en-US)', for the request's language (validator_cli corpus: "one of 3 choices: 'A' (en-US), 'A' (en-US)
         // or 'B' (en-US) (for the language(s) 'en')")
