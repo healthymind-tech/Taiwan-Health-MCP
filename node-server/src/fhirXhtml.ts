@@ -891,6 +891,10 @@ function elementIdMatches(node: unknown, fragment: string, out: unknown[], depth
   for (const [k, v] of Object.entries(o)) if (k !== "id") elementIdMatches(v, fragment, out, depth + 1);
 }
 
+function divHasAnyId(n: XNode): boolean {
+  return n.attributes.has("id") || n.children.some(divHasAnyId);
+}
+
 function divHasId(n: XNode, id: string): boolean {
   if (n.attributes.get("id") === id) return true;
   return n.children.some((c) => divHasId(c, id));
@@ -943,7 +947,13 @@ export function textLinkIssues(
   for (const ex of exts) {
     for (const h of sub(ex, "htmlid")) {
       const id = str(h);
-      if (id !== null && !divHasId(div, id)) err("TEXT_LINK_NO_ID", `The html id '${id}' was not found in the xhtml`);
+      // InstanceValidator.divHasId (validation tag 7.0.1:5196-5197): an htmlid without a value is `id.equals(…)` on
+      // null at the first xhtml node with an id attribute — the validation fails (official-crash)
+      if (id === null) {
+        if (divHasAnyId(div)) out.push({ severity: "error", id: "JAVA_NPE", message: 'Cannot invoke "String.equals(Object)" because "id" is null' });
+        continue;
+      }
+      if (!divHasId(div, id)) err("TEXT_LINK_NO_ID", `The html id '${id}' was not found in the xhtml`);
     }
     const data = str(sub(ex, "data")[0]);
     const notFound = (): void => err("TEXT_LINK_DATA_NOT_FOUND", `The target of the textLink data reference '${data}' was not found in the resource`);

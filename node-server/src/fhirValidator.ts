@@ -4293,7 +4293,10 @@ export class InstanceValidator {
       // textLink extensions (TEXT_LINK_*): the Bundle the resource sits in (getElementBundle), when it is an entry
       const inBundle = rctx.root !== rctx.resource && rctx.root?.resourceType === "Bundle" && Array.isArray(rctx.root.entry) && !rctx.container;
       const selectors: TextLinkSelector[] = [];
-      for (const x of textLinkIssues(v, rctx.resource, inBundle ? rctx.root.entry : null, selectors)) issues.push({ severity: x.severity, path: item.path, code: "structure", message: x.message });
+      for (const x of textLinkIssues(v, rctx.resource, inBundle ? rctx.root.entry : null, selectors)) {
+        if (x.id === "JAVA_NPE") this.threw.push({ severity: "error", path: item.path, code: "invalid", message: x.message });
+        else issues.push({ severity: x.severity, path: item.path, code: "structure", message: x.message });
+      }
       for (const s of selectors) {
         const type = await this.typeOfObjectIn(rctx.resource, s.target);
         if (type === null) continue;
@@ -5271,12 +5274,14 @@ export class InstanceValidator {
       if (p === "resolve()") return [slice];
       if (p.endsWith(".resolve()")) p = p.slice(0, -".resolve()".length);
     }
+    await this.discriminatorTypeSteps(sdx, slice, p);
     const own = this.elementAt(sdx, slice, p);
     if (own) out.push(own);
     for (const t of slice.type || []) {
       for (let pi = 0; pi < (t.profile || []).length; pi++) {
         const psdx = await this.scopedSdx(String(t.profile[pi]), sdx);
-        if (!psdx) continue;
+        // getCriteriaForDiscriminator (validation tag 7.0.1:5817-5819): SD_ED_TYPE_PROFILE_UNKNOWN
+        if (!psdx) throw new SlicingDefinitionError(`Unable to resolve profile CanonicalType[${t.profile[pi]}]`);
         // getCriteriaForDiscriminator l. 5815-5832: EXT_PROFILE_ELEMENT names the element of the profile to start from
         const from = profileElementOf(t, pi, psdx);
         const el = this.elementAt(psdx, from, p);
@@ -5284,6 +5289,35 @@ export class InstanceValidator {
       }
     }
     return out;
+  }
+
+  /**
+   * FHIRPathEngine.evaluateDefinition (r5 tag 7.0.1:7180-7197) on the slice: a name step on an element that has no
+   * children in the profile continues in the definition of its type (fetchStructureByType, 7310-7325); when that is a
+   * type profile that cannot be resolved it throws FHIRPATH_RESOLVE_DISCRIMINATOR_CANT_FIND (the profile list as
+   * Java prints it, the PathEngineException location of the step) → SLICING_CANNOT_BE_EVALUATED in matchSlice.
+   * Only that case is decided here; steps this port does not follow (functions, sliced elements, several types or
+   * profiles) end the walk.
+   */
+  private async discriminatorTypeSteps(sdx: SdIndex, start: Record<string, any>, path: string): Promise<void> {
+    if (path === "$this" || path === "") return;
+    let cur: Record<string, any> = start;
+    let col = 1;
+    for (const raw of path.split(".")) {
+      if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(raw) || cur.slicing) return;
+      if (!sdx.hasChildren(cur)) {
+        const types = cur.type || [];
+        if (types.length !== 1) return;
+        const profiles: unknown[] = types[0].profile || [];
+        if (profiles.length !== 1) return;
+        if (await this.scopedSdx(String(profiles[0]), sdx)) return;
+        throw new SlicingDefinitionError(`Problem with use of resolve() - profile [CanonicalType[${profiles[0]}]] on ${cur.id} could not be resolved (@char ${col})`);
+      }
+      const next = sdx.child(cur, raw);
+      if (!next) return;
+      cur = next;
+      col += raw.length + 1;
+    }
   }
 
   /**

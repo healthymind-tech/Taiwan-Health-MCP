@@ -115,3 +115,23 @@ test("memberOf slicing on a Coding with only _system: an NPE for a CodeableConce
     delete SDS[P];
   }
 });
+
+// FHIRPathEngine.evaluateDefinition 7.0.1:7180-7197 / fetchStructureByType: an extension slice without children whose
+// type profile is not resolvable cannot be evaluated (IPS 2.0.0 Patient-uv-ips: genderIdentity|5.3.0-ballot-tc1)
+test("an extension slice whose type profile cannot be resolved: Problem with use of resolve(), for every extension", async () => {
+  const missing = "http://example.tw/fhir/StructureDefinition/not-loaded|9.9.9";
+  SDS[P] = sd(P, "Patient", "resource", [
+    el("Patient", 0, "*"),
+    el("Patient.extension", 0, "*", ["Extension"], { slicing: { discriminator: [{ type: "value", path: "url" }], rules: "open" } }),
+    el("Patient.extension:gone", 0, "1", [], { type: [{ code: "Extension", profile: [missing] }] }),
+  ], { baseDefinition: CORE + "Patient" });
+  try {
+    const ext = (u: string): Record<string, any> => ({ url: u, valueString: "x" });
+    const issues = await run({ resourceType: "Patient", extension: [ext("http://a.org/x"), ext("http://a.org/y")] });
+    const msg = `Slicing cannot be evaluated: Problem with use of resolve() - profile [CanonicalType[${missing}]] on Patient.extension:gone could not be resolved (@char 1)`;
+    assert.deepEqual(issues.filter((i) => i.message === msg).map((i) => i.path), ["Patient.extension[0]", "Patient.extension[1]"]);
+    assert.deepEqual(errs(await run({ resourceType: "Patient" })), []);
+  } finally {
+    delete SDS[P];
+  }
+});

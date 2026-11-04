@@ -208,6 +208,10 @@ test("textLink (TEXT_LINK_*), Language_XHTML_*, data: URL mime types", () => {
   ]);
   const bad = { url: "http://hl7.org/fhir/StructureDefinition/textLink", extension: [{ url: "data", valueUri: "#n1" }, { url: "selector", valueString: "a.(" }] };
   assert.deepEqual(textLinkIssues(narr([bad]), res, null).map((i) => i.message), ["The textLink selector 'a.(' is invalid: Error @1, 4: Expression terminated unexpectedly"]);
+  // divHasId (7.0.1:5196-5197): an htmlid without a value is id.equals on null once a node has an id — the jar's crash
+  const noValue = { url: "http://hl7.org/fhir/StructureDefinition/textLink", extension: [{ url: "htmlid", _valueString: { extension: [] } }, { url: "data", valueUri: "#n1" }] };
+  assert.deepEqual(textLinkIssues(narr([noValue]), res, null).map((i) => [i.id, i.message]), [["JAVA_NPE", 'Cannot invoke "String.equals(Object)" because "id" is null']]);
+  assert.deepEqual(textLinkIssues({ div: `<div ${NS}><p>x</p></div>`, extension: [noValue] }, res, null), []);
   assert.deepEqual(languageXhtmlIssues("en", `<div ${NS} lang="de" xml:lang="de">x</div>`).map((i) => i.message), [
     // (sic) Java: no Different2 when xml:lang equals lang
     "Resource has a language (en), and the XHTML has a lang (de), but they differ",
