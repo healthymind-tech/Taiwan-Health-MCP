@@ -292,7 +292,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.130.0 (parity v3 wave 4): LOINC / SNOMED CT displays in a non-English working language are rules_unchecked (tx designations); a Parameters resource with an unnamed parameter fails like validator_cli.
   // 1.131.0 (parity v3 wave 4): such a display is rules_unchecked whether or not it matches an English designation (no longer an error when it matches none).
   // 1.133.0 (parity v3 wave 5): an extension slice whose type profile cannot be resolved is SLICING_CANNOT_BE_EVALUATED (FHIRPATH_RESOLVE_DISCRIMINATOR_CANT_FIND); a textLink htmlid without a value fails like validator_cli.
-  fhir_validate_bundle: "1.133.0",
+  // 1.134.0 (parity v3 ext wave 5, branch 1.133.0): memberOf slicing on a value set including the whole of an unresolvable system is a member.
+  fhir_validate_bundle: "1.134.0",
   // 1.132.0 (parity v3, branch 1.130.0): a bound CodeableConcept (not example, ValueSet found): a server-side system's display the ValueSet lists for the code is valid.
   // 1.128.0 / 1.129.0 (parity v3 ext waves 1-2, branch 1.126.0): a value discriminator on a type-sliced value[x] reads its type slice; a code-less versioned Coding of a system the server does not publish is a warning on .system, of a SERVER_SIDE_LIST system the server's warning; checkSearchSet reads a resourceType that is no resource name as an untyped Resource.
   // 1.114.0 (parity v3 scored extras): sub-extension urls below a sub-extension, a number Extension.url, meta.profile of an unknown version read as the current definition, memberOf slicing on a systemless Coding, a coding object for fixed / pattern.
@@ -416,7 +417,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.128.0: validation as fhir_validate_bundle 1.131.0.
   // 1.129.0: validation as fhir_validate_bundle 1.132.0.
   // 1.130.0: validation as fhir_validate_bundle 1.133.0.
-  fhir_validate_resource: "1.130.0",
+  // 1.131.0: validation as fhir_validate_bundle 1.134.0.
+  fhir_validate_resource: "1.131.0",
   // 1.111.0: validation as fhir_validate_bundle 1.114.0.
   // 1.112.0: validation as fhir_validate_bundle 1.115.0.
   // 1.102.0: validation as fhir_validate_bundle 1.105.0.
