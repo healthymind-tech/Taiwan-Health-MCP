@@ -2085,7 +2085,7 @@ export class InstanceValidator {
       // first isReferencedFromBase dereferences the null set and the validation fails (official-crash)
       const contained = firstEntry.contained;
       if (Array.isArray(contained) && contained.length && contained.every((c: unknown) => isObject(c) && typeof c.resourceType === "string")) {
-        this.threw.push({ severity: "error", path: `${resource.resourceType}.entry[0].resource`, code: "exception", message: 'Cannot invoke "java.util.Set.contains(Object)" because "baseRefs" is null' });
+        this.threw.push({ severity: "error", path: `${resource.resourceType}.entry[0].resource`, code: "invalid", message: 'Cannot invoke "java.util.Set.contains(Object)" because "baseRefs" is null' });
       }
       // the parser has run over the whole Bundle: its shape errors stand (a pass for them only — nothing it reaches throws)
       const threw = this.threw;
