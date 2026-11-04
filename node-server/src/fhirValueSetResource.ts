@@ -8,6 +8,7 @@
  */
 import { isAbsoluteUrl } from "./fhirSpecialSystems.js";
 import type { ResourceIssue } from "./fhirCodeSystemResource.js";
+import { txKnowsSystem } from "./txCodeTables.js";
 
 type Json = Record<string, any>;
 
@@ -318,7 +319,14 @@ export async function validateValueSetResource(vs: Json, path: string, deps: Val
         else err(p, `The system '${system}' is actually a value set, which itself refers to the systems ${systems.join(", ")}`);
       }
     }
-    if (validateConcepts) {
+    // BaseWorkerContext.getTxSupportInfo (standalone 7.0.1, l. 828-870): a held complete / fragment CodeSystem, else
+    // never example.org / acme.com / hl7.org/fhir/valueset-, else the terminology server's code system list
+    const supported =
+      (!!cs && (cs.content === "complete" || cs.content === "fragment")) ||
+      (!/^(?:http:\/\/example\.org|http:\/\/acme\.com|http:\/\/hl7\.org\/fhir\/valueset-)/.test(system) && txKnowsSystem(system) !== false);
+    // ValueSetValidator l. 462-464: more than one concept of a system no one supports is not validated at all (a hint,
+    // VALUESET_INC_CS_NO_SUPPORT — not reported here)
+    if (validateConcepts && !(concepts.length > 1 && !supported)) {
       for (const [i, concept] of concepts.entries()) {
         const code = has(concept.code) ? concept.code : null;
         if (code === null) continue;

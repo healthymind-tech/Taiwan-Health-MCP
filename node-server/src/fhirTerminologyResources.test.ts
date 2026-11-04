@@ -107,3 +107,12 @@ test("a SNOMED filter property outside SnomedCTChecker.listPropertyNames gets no
     "ValueSet.compose.include[0].filter[1] | The operation 'not-in' is not allowed for property '1142143009' in system 'http://snomed.info/sct'. Allowed ops: =,in",
   ]);
 });
+
+// ValueSetValidator l. 462-464 + BaseWorkerContext.getTxSupportInfo l. 828-870: an example.org system is supported by
+// no one, so several concepts of it are not validated at all (a hint); a single one reaches validateValueSetIncludeConcept
+test("ValueSet include of an unsupported system: one concept is the Example System error, several are not validated", async () => {
+  const d = vsDeps({ allowExamples: false, codeStatus: async () => ({ status: "unsupported" }) });
+  const inc = (codes: string[]): Json => ({ resourceType: "ValueSet", compose: { include: [{ system: "http://example.org/cs", concept: codes.map((code) => ({ code })) }] } });
+  assert.deepEqual(errors(await validateValueSetResource(inc(["a"]), "ValueSet", d)), ["ValueSet.compose.include[0] | Example System 'http://example.org/cs' specified, which is illegal. Concepts and Filters can't be checked"]);
+  assert.deepEqual(errors(await validateValueSetResource(inc(["a", "b"]), "ValueSet", d)), []);
+});
