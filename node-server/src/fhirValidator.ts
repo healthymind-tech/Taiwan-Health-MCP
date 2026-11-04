@@ -42,6 +42,7 @@ import { validateStructureDefinition } from "./fhirSdValidator.js";
 import { pushAll } from "./arrayUtils.js";
 import { UCUM_SYSTEM, checkUcumCode, convertUcum, ucumDisplayIssue, ucumUnknownCodeMessage } from "./fhirUcum.js";
 import { XVER_SOURCE, xverDefinition, xverElementId, xverMatchingUrl, xverStatus, xverVersion } from "./fhirXver.js";
+import { BUILD_EXTENSION_CONSTS, SPECIAL_EXTENSION_DEFINITIONS, SPECIAL_KNOWN_EXTENSIONS } from "./fhirSpecialExtensions.js";
 import { CANONICAL_RESOURCES, hl7UrlMustResolve, isKnownSpace, uriResolutionExempt, urlResolveMessage, urnSyntaxIssue } from "./fhirUriRules.js";
 import { codingVersionIssue } from "./fhirExternalTerminology.js";
 import { codingVersionIssues } from "./fhirCsVersion.js";
@@ -4271,6 +4272,17 @@ export class InstanceValidator {
     return p;
   }
 
+  private specialExtCache = new Map<string, SdIndex | null>();
+
+  /** SpecialExtensions.getDefinition (7.0.1): the definition validator_cli carries for an extension of its known list. */
+  private async specialExtensionSdx(url: string): Promise<SdIndex | null> {
+    if (!this.specialExtCache.has(url)) {
+      const sd = SPECIAL_EXTENSION_DEFINITIONS[url];
+      this.specialExtCache.set(url, sd ? indexOf(structuredClone(sd)) : null);
+    }
+    return this.specialExtCache.get(url) ?? null;
+  }
+
   /** InstanceValidator.isAbstractType: the type's definition is abstract. */
   private async isAbstractType(type: string): Promise<boolean> {
     const t = await this.sdx(/^[a-z][a-z0-9+.-]*:/i.test(type) ? type : CORE + type);
@@ -4401,6 +4413,13 @@ export class InstanceValidator {
           message: `Sub-extension url '${url}' is not defined by the Extension ${this.versionedUrl(parentSdx)}` /* EXTENSION_EXT_SUBEXTENSION_INVALID: profile.getVersionedUrl() */,
         });
       }
+    } else if (SPECIAL_KNOWN_EXTENSIONS.has(url)) {
+      // checkExtension l. 2626-2627: SpecialExtensions — the validator's own definition of the extension (R5 ones needed
+      // earlier), or none for the others of its list (not reported either)
+      const special = await this.specialExtensionSdx(url);
+      if (special) return special;
+    } else if (BUILD_EXTENSION_CONSTS.has(url)) {
+      // l. 2628-2629: a url of BuildExtensions (the FHIR build's own extensions): nothing
     } else if (allowUnknownExtension(url, this.allowExamples, this.extensionDomains)) {
       // InstanceValidator.allowUnknownExtension: tools / nema.org / structuredefinition-expression need no definition
     } else if (!inExtension || absolute) {

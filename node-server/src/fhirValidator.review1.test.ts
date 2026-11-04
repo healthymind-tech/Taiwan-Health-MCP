@@ -772,3 +772,15 @@ test("several type profiles on an entry (checkChildByDefinition l. 8114-8158 aft
   const one = errs(await run(bundle({ resourceType: "Patient", id: "p", birthDate: "2000-01-01" }), [B]));
   assert.ok(!one.some(([, m]) => m.startsWith("Unable to find a match") || m.includes("(validating against")), JSON.stringify(one));
 });
+
+test("checkExtension l. 2626-2629: SpecialExtensions carry their own definitions; BuildExtensions urls are not reported", async () => {
+  const notHere = (issues: Issue[]): string[] => errs(issues).map(([, m]) => m).filter((m) => m.includes("could not be found so is not allowed here"));
+  // (the kit has no Meta definition: the extension is put on the resource) validated against that definition: its
+  // context is Resource.meta and its value[x] a string
+  const wrong = errs(await run({ resourceType: "Patient", extension: [{ url: "http://hl7.org/fhir/StructureDefinition/instance-name", valueBoolean: true }] })).map(([, m]) => m);
+  assert.deepEqual(notHere(await run({ resourceType: "Patient", extension: [{ url: "http://hl7.org/fhir/StructureDefinition/instance-name", valueString: "x" }] })), []);
+  assert.ok(wrong.some((m) => m.includes("instance-name v4.5.0 is not allowed to be used at this point") && m.includes("e:Resource.meta")), JSON.stringify(wrong));
+  assert.ok(wrong.includes("The Extension 'http://hl7.org/fhir/StructureDefinition/instance-name' definition allows for the types [string] but found type boolean"), JSON.stringify(wrong));
+  assert.deepEqual(notHere(await run({ resourceType: "Patient", extension: [{ url: "http://hl7.org/fhir/build/StructureDefinition/title", valueString: "x" }] })), []);
+  assert.equal(notHere(await run({ resourceType: "Patient", extension: [{ url: "http://hl7.org/fhir/StructureDefinition/instance-namex", valueString: "x" }] })).length, 1);
+});
