@@ -5727,6 +5727,14 @@ export class InstanceValidator {
         // `memberOf('<vs>')`, answered by the terminology layer; a code system
         // neither the package closure nor tx.fhir.org can resolve is "not a
         // member", so no slice matches.
+        // A value set that includes the whole of such a system (no concepts, no filters): validateCode goes to the
+        // terminology server with the value set, which answers UNKNOWN_CODESYSTEM as a warning — ok, so a member
+        // (FHIRPathEngine.funcMemberOf: validateCode(…).isOk(); official CRD DeviceRequest: two ext-request-category
+        // codings of X12 1365 under X12ServiceType both match the ServiceCategory slice)
+        if (m === undefined && system !== null && wholeSystemInclude(await this.vsHeader(valueSet), system) && !(await this.systemResolvable(system))) {
+          hit = true;
+          continue;
+        }
         if (m === undefined && (system === null || (await this.systemResolvable(system)))) {
           unknown = true;
           for (const sys of system === null ? bareCodeSystems(await this.vsHeader(valueSet)) : [system]) this.undecidedCauses?.add(`${sys}|${valueSet}`);
@@ -8904,6 +8912,12 @@ export function narrativeLinkProblems(div: string, anchors: ReadonlySet<string>)
  * matching — slices by profile, reference target profiles — ignores them here too.
  */
 const PARSE_ISSUE = /^Error parsing XHTML: |^Invalid entity in the XHTML \(|^Unrecognized property '|^The property \S+ must be (?:a JSON Array|an Array|an Object), not |^This property must be (?:a simple value|an object), not |^Error parsing JSON: |^Array cannot be empty|^Object must have some content$|^The JSON array for '\d+' is invalid at index |^This base property must be an Array, not |^The JSON element 'resourceType' has the wrong JSON type: |^Unable to find resourceType property$|^Contained resource does not appear to be a FHIR resource \(unknown name /u;
+/** The value set's compose includes all of `system` (an include with no concept, filter or valueSet). */
+function wholeSystemInclude(vs: Record<string, any> | null, system: string): boolean {
+  const inc: any[] = vs && isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
+  return inc.some((i) => isObject(i) && i.system === system && !(Array.isArray(i.concept) && i.concept.length) && !(Array.isArray(i.filter) && i.filter.length) && !(Array.isArray(i.valueSet) && i.valueSet.length));
+}
+
 function isParseIssue(i: { message?: string }): boolean {
   return PARSE_ISSUE.test(String(i.message ?? ""));
 }

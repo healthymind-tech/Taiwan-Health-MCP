@@ -890,3 +890,38 @@ test("a bound CodeableConcept: a display its ValueSet lists for the code of a se
   assert.deepEqual(display(await new InstanceValidator(new R3()).validate(cond, { profiles: [P] })), []);
   assert.equal(display(await new InstanceValidator(new R3()).validate(cond)).length, 1);
 });
+
+test("memberOf slicing: a value set including the whole of a system nobody resolves is a member (server: UNKNOWN_CODESYSTEM warning, ok)", async () => {
+  const SYS = "https://codes.example.test/unresolved-1365";
+  const VSU = "http://acme-test.fhir.test/ValueSet/whole-unresolved";
+  const vs = { resourceType: "ValueSet", url: VSU, version: "1", name: "Whole", compose: { include: [{ system: SYS }] } };
+  class R4 extends Resolver {
+    override async fetchValueSet(url: string): Promise<Json | null> {
+      return url.split("|")[0] === VSU ? vs : super.fetchValueSet(url);
+    }
+    override async valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
+      return url.split("|")[0] === VSU ? undefined : super.valueSetContains(url, system, code);
+    }
+    async codeSystemResolvable(system: string): Promise<boolean> {
+      return system !== SYS;
+    }
+  }
+  const X = "http://acme-test.fhir.test/StructureDefinition/req-category";
+  EXTRA[X] = sd(X, "Extension", "complex-type", [
+    el("Extension", 0, "*"),
+    el("Extension.extension", 0, "0", ["Extension"]),
+    el("Extension.url", 1, "1", ["uri"], { fixedUri: X }),
+    el("Extension.value[x]", 0, "1", ["CodeableConcept"]),
+  ], { context: [{ type: "element", expression: "Element" }] });
+  const P = "http://example.org/fhir/StructureDefinition/pat-category";
+  EXTRA[P] = sd(P, "Patient", "resource", [
+    ...SDS[CORE + "Patient"].snapshot.element.filter((e: Json) => e.path !== "Patient.extension"),
+    el("Patient.extension", 0, "*", ["Extension"], { slicing: { discriminator: [{ type: "value", path: "url" }, { type: "value", path: "value" }], rules: "open" } }),
+    el("Patient.extension:svc", 0, "1", [], { sliceName: "svc", type: [{ code: "Extension", profile: [X] }] }),
+    el("Patient.extension:svc.url", 1, "1", ["uri"], { fixedUri: X }),
+    el("Patient.extension:svc.value[x]", 0, "1", ["CodeableConcept"], { binding: { strength: "required", valueSet: VSU } }),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint", version: "1.0.0" });
+  const ext = { url: X, valueCodeableConcept: { coding: [{ system: SYS, code: "18" }] } };
+  const got = errs(await new InstanceValidator(new R4()).validate({ resourceType: "Patient", extension: [ext, ext] }, { profiles: [P] })).map(([, m]) => m);
+  assert.ok(got.some((m) => m.startsWith("Patient.extension:svc: max allowed = 1, but found 2")), JSON.stringify(got));
+});
