@@ -64,6 +64,7 @@ export function sessionResolver(inner: ValidatorResolver, session: LookupSession
   if (hasReject("definitionExists")) view.definitionExists = (u) => pinned("definition", [u], u, () => inner.definitionExists!(u), { answer: true });
   if (hasReject("codeSystemVersions")) view.codeSystemVersions = (s) => pinned("code system versions", [s], s, () => inner.codeSystemVersions!(s), { answer: [] });
   if (hasReject("codeSystemExists")) view.codeSystemExists = (u) => pinned("code system", [u, "exists"], u, () => inner.codeSystemExists!(u), { answer: false });
+  if (hasReject("closureOwnedUrl")) view.closureOwnedUrl = (u) => pinned("owned definition", [u], u, () => inner.closureOwnedUrl!(u), { answer: null });
   if (hasReject("definitionVersionExists")) view.definitionVersionExists = (u, v) => pinned("definition version", [u, v], `${u}|${v}`, () => inner.definitionVersionExists!(u, v), { answer: true });
   // a code system's content (CodeSystemValidator / ValueSetValidator): without an answer the checks on it are skipped
   if (hasReject("fetchCodeSystem")) view.fetchCodeSystem = (u) => pinned("code system content", [u], u, () => inner.fetchCodeSystem!(u), { answer: null });

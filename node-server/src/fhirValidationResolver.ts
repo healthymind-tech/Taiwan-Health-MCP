@@ -50,6 +50,7 @@ import { TtlMemo } from "./ttlMemo.js";
 import { TransientLookupError, currentSnapshot } from "./fhirValidationSnapshot.js";
 import { generateSnapshotAsync } from "./fhirSnapshotGenerator.js";
 import { fixPackageResource } from "./fhirPackageHacker.js";
+import { findBaseUrl } from "./fhirUriRules.js";
 import { logWarning } from "./logger.js";
 import { txCodeVerdict, type TxCodeVerdict } from "./txCodeTables.js";
 import { enumeratedCodes, installedEnumeratedDisplay } from "./codeAcceptance.js";
@@ -485,6 +486,7 @@ const VERDICT_CACHE_MAX = 20000;
 const codeCheckMemo = new TtlMemo<CodeCheck>(VERDICT_TTL_MS, VERDICT_CACHE_MAX);
 const membershipMemo = new TtlMemo<boolean | undefined>(VERDICT_TTL_MS, VERDICT_CACHE_MAX);
 const scopedVersionMemo = new TtlMemo<string | null>(SD_TTL_MS, SD_CACHE_MAX);
+const ownedMemo = new TtlMemo<boolean | null>(SD_TTL_MS, SD_CACHE_MAX);
 
 /**
  * The dependency closure of a source definition's package (packageScopedVersion), memoised like the definitions (and
@@ -729,6 +731,29 @@ export class DbValidatorResolver implements ValidatorResolver {
         return true;
       }
     });
+  }
+
+  async closureOwnedUrl(url: string): Promise<boolean | null> {
+    const canonical = url.split("|")[0];
+    const base = findBaseUrl(canonical);
+    if (base === null) return null;
+    const [pids, pvers] = terminology.closureArrays(this.pkg);
+    return ownedMemo.get(`${this.closure}\0${canonical}`, () =>
+      guarded(async () => {
+        {
+          // BasePackageCacheManager.getPackageId(base): the package whose canonical is the base; more than one installed
+          // package id with it (an .r4 twin …) cannot be told apart offline
+          const owners = (await query<{ package_id: string }>("SELECT DISTINCT package_id FROM fhir.ig_packages WHERE rtrim(canonical, '/') = $1", [base])).rows;
+          if (owners.length !== 1 || !pids.includes(owners[0].package_id)) return null;
+          const hit = await query(
+            "SELECT 1 FROM fhir.artifacts a JOIN unnest($1::text[], $2::text[]) AS dep(pid, pver) ON a.package_id = dep.pid AND a.package_version = dep.pver " +
+              "WHERE a.canonical_url = $3 AND a.grouping_id IS DISTINCT FROM 'examples' LIMIT 1",
+            [pids, pvers, canonical],
+          );
+          return hit.rows.length > 0;
+        }
+      }),
+    );
   }
 
   async definitionExists(url: string): Promise<boolean> {

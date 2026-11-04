@@ -32,3 +32,21 @@ test("a code system neither held nor on the server's list: the jar's warning, fu
   assert.ok(issues.some((i) => i.severity === "warning" && i.message === "A definition for CodeSystem 'http://other.org/cs' could not be found, so the code cannot be validated"));
   assert.equal(completenessOf(issues).codes_unchecked, undefined);
 });
+
+// StandAloneValidatorFetcher.resolveURL l. 220-225: a url under the canonical of a loaded package resolves only through
+// what is loaded — an IG example (package/example, never loaded) does not count
+test("a uri under a loaded package's canonical that nothing loaded defines: No definition could be found", async () => {
+  class Owned extends FakeResolver {
+    async definitionExists(): Promise<boolean> {
+      return true;
+    }
+    async closureOwnedUrl(url: string): Promise<boolean | null> {
+      return url.startsWith("http://hl7.org/fhir/uv/ig1/") ? url.endsWith("/CodeSystem/held") : null;
+    }
+  }
+  const pat = (system: string): Record<string, any> => ({ resourceType: "Patient", identifier: [{ system, value: "1" }] });
+  const missing = await errs(pat("http://hl7.org/fhir/uv/ig1/CodeSystem/example-only"), new Owned());
+  assert.ok(missing.some(([p, m]) => p === "Patient.identifier[0].system" && m === "No definition could be found for URL value 'http://hl7.org/fhir/uv/ig1/CodeSystem/example-only'"), JSON.stringify(missing));
+  assert.deepEqual(await errs(pat("http://hl7.org/fhir/uv/ig1/CodeSystem/held"), new Owned()), []);
+  assert.deepEqual(await errs(pat("http://hl7.org/fhir/uv/other/CodeSystem/x"), new Owned()), []);
+});

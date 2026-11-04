@@ -42,7 +42,7 @@ import { validateStructureDefinition } from "./fhirSdValidator.js";
 import { pushAll } from "./arrayUtils.js";
 import { UCUM_SYSTEM, checkUcumCode, convertUcum, ucumDisplayIssue, ucumUnknownCodeMessage } from "./fhirUcum.js";
 import { XVER_SOURCE, xverDefinition, xverElementId, xverMatchingUrl, xverStatus, xverVersion } from "./fhirXver.js";
-import { CANONICAL_RESOURCES, hl7UrlMustResolve, uriResolutionExempt, urlResolveMessage, urnSyntaxIssue } from "./fhirUriRules.js";
+import { CANONICAL_RESOURCES, hl7UrlMustResolve, isKnownSpace, uriResolutionExempt, urlResolveMessage, urnSyntaxIssue } from "./fhirUriRules.js";
 import { codingVersionIssue } from "./fhirExternalTerminology.js";
 import { codingVersionIssues } from "./fhirCsVersion.js";
 import { isAbsoluteUrl, judgeLanguageTag, serverPrefers, specialSystemMember } from "./fhirSpecialSystems.js";
@@ -333,6 +333,13 @@ export interface ValidatorResolver {
   codeSystemExists?(url: string): Promise<boolean>;
   /** (v17.5) Is `version` an installed version of the definition `url`? Absent = not checked (fail-open). */
   definitionVersionExists?(url: string, version: string): Promise<boolean>;
+  /**
+   * StandAloneValidatorFetcher.resolveURL (7.0.1, l. 199-237): when the package that owns the url's base
+   * (findBaseUrl) is one of the loaded packages, the url resolves only if a loaded conformance resource (not an
+   * example: package/example is never loaded) has it — true / false; null when no loaded package owns the base
+   * (the HL7 validator would then fetch the owner from the registry). Optional.
+   */
+  closureOwnedUrl?(url: string): Promise<boolean | null>;
   /**
    * IValidatorResourceFetcher.fetch: the resource an external reference points at (used only with
    * ValidateOptions.validateReference). Absent = external references are never fetched.
@@ -7169,8 +7176,15 @@ export class InstanceValidator {
     if (typeCode !== "uri" && typeCode !== "url") return;
     const basePath = isObject(el.base) && typeof el.base.path === "string" ? el.base.path : String(el.path || "");
     if (uriResolutionExempt(basePath)) return;
-    if (!this.resolver.definitionExists || !hl7UrlMustResolve(v)) return;
+    if (!this.resolver.definitionExists) return;
     const u = (v.includes("|") ? v.slice(0, v.lastIndexOf("|")) : v).replace(/#.*$/, "");
+    if (!hl7UrlMustResolve(v)) {
+      // StandAloneValidatorFetcher.resolveURL l. 220-225: a url under the canonical of a loaded package resolves only
+      // through what is loaded ("maybe it's a package we've already loaded. if it is, we'll give up")
+      if (!isKnownSpace(v) || !this.resolver.closureOwnedUrl || this.containedUrls.has(u)) return;
+      if ((await this.resolver.closureOwnedUrl(u)) === false) issues.push({ severity: "error", path: item.path, code: "invalid", message: urlResolveMessage(v) });
+      return;
+    }
     if (this.containedUrls.has(u)) return;
     if (await this.defExists(u)) {
       // (v17.5) `url|version`: the HL7 validator resolves that version (Coding.system 'http://…/v2-0360|2.7' → not found)
