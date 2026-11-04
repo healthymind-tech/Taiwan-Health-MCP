@@ -3542,7 +3542,10 @@ export class InstanceValidator {
             lastName = k;
           }
         }
-        if (rctx.container === null) this.checkContainedReferences(rctx.resource, out); // once per validateResource, whatever defn is
+        // once per validateResource, whatever defn is; the element model holds a `contained` only where the type defines
+        // one (a Bundle's is an unrecognized property the parser drops: getChildrenByName("contained") is empty)
+        const coreDef = rctx.container === null ? await this.sdx(CORE + String(rctx.resource.resourceType)) : null;
+        if (coreDef && coreDef.child(coreDef.root, "contained")) this.checkContainedReferences(rctx.resource, out);
         return out;
       })().finally(() => done.delete(url));
       byUrl.set(url, p);

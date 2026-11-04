@@ -65,6 +65,16 @@ test("Bundle validated as its first entry's profile, the entry holding contained
   assert.ok(!(await new InstanceValidator(new FakeResolver()).validate(plain, { profiles: [PAT_PROFILE] })).some((i) => i.message.includes("baseRefs")));
 });
 
+// checkContainedReferences l. 9062-9081: element.getChildrenByName("contained") — a Bundle has no such element (the
+// parser drops the property as unrecognized), so there is no dom-3 check on it
+test("a contained array on a Bundle is no contained resource (no dom-3 orphan error)", async () => {
+  const b = { resourceType: "Bundle", type: "collection", contained: [{ resourceType: "Organization", id: "o1", name: "x" }] };
+  const issues = await new InstanceValidator(new FakeResolver()).validate(b, { profiles: [] });
+  assert.ok(!issues.some((i) => i.message.includes("is not referenced to from elsewhere")), JSON.stringify(issues));
+  const p = { resourceType: "Patient", contained: [{ resourceType: "Organization", id: "o1", name: "x" }] };
+  assert.ok((await new InstanceValidator(new FakeResolver()).validate(p, { profiles: [] })).some((i) => i.message.includes("is not referenced to from elsewhere")));
+});
+
 // InstanceValidator.checkSpecials l. 7249-7250: the jar runs StructureMapValidator on every StructureMap; not ported here
 test("a StructureMap is never fully checked (StructureMapValidator is not ported)", async () => {
   const SM = "http://hl7.org/fhir/StructureDefinition/StructureMap";
