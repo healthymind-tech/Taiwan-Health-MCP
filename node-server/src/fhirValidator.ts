@@ -7047,7 +7047,17 @@ export class InstanceValidator {
    * urn:iso:std:iso:3166 8 of 8, a Coding.version no held copy has 3 of 3; LOINC 0 of 76, SNOMED CT 0 of 60, ATC 0 of 8, CVX 0 of 5.
    */
   private serverAnswersCodeless(v: Record<string, any>, system: string): boolean {
-    return system.startsWith("urn:ietf:") || system.startsWith("urn:iso:") || (typeof v.version === "string" && v.version !== "");
+    return system.startsWith("urn:ietf:") || system.startsWith("urn:iso:") || (typeof v.version === "string" && v.version !== "" && !this.versionUnknownToServer(system));
+  }
+
+  /**
+   * A Coding.version of a system neither held nor published by the terminology server (its capability list) and outside
+   * the HL7 / THO space whose versions the server holds: BaseWorkerContext.validateCode does not ask the server, and
+   * ValueSetValidator answers UNKNOWN_CODESYSTEM_VERSION_NONE as a warning on `.system` (getUnknownCodeSystemMessage,
+   * standalone tag 7.0.1:543; official corpus: IMGT/HLA |3.23).
+   */
+  private versionUnknownToServer(system: string): boolean {
+    return serverPrefers(system) === false && !/^https?:\/\/(terminology\.)?hl7\.org\//u.test(system);
   }
 
   /** A CodeSystem the validator judges itself (ValueSetValidator l. 279): complete, fragment or supplement content. */
@@ -7332,6 +7342,8 @@ export class InstanceValidator {
       const message = `Coding has no code for system ${system} and cannot be validated`;
       issues.push({ severity: "error", path: item.path, code: "code-invalid", message });
       issues.push({ severity: "warning", path: item.path.replace(/\.coding\[\d+\]$/, ""), code: "code-invalid", message });
+    } else if (typeof v.version === "string" && v.version !== "" && this.versionUnknownToServer(system)) {
+      issues.push({ severity: "warning", path: `${item.path}.system`, code: "not-found", message: `A definition for CodeSystem '${system}' version '${v.version}' could not be found, so the code cannot be validated. No versions of this code system are known` });
     } else if ((await this.systemResolvable(system)) && serverPrefers(system) === true) {
       // the other systems the server answers: a warning on the coding (jar alone, LOINC and SNOMED CT)
       issues.push({ severity: "warning", path: item.path, code: "code-invalid", message: `Coding has no code for system ${system} and cannot be validated` });

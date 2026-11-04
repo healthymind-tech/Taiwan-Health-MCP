@@ -846,3 +846,8 @@ test("a value discriminator on a type-sliced value[x] reads the type slice's fix
   assert.ok(!got.some(([, m]) => m.includes("matches more than one slice") || m.includes("but is fixed to")), JSON.stringify(got));
 });
 
+test("a code-less Coding with a version of a system the terminology server does not publish: UNKNOWN_CODESYSTEM_VERSION_NONE warning, not the server's error", async () => {
+  const issues = await run({ resourceType: "Condition", code: { coding: [{ system: "http://unknown.example.test/hla", version: "3.23" }] } });
+  assert.ok(!errs(issues).some(([, m]) => m.startsWith("Coding has no code for system")), JSON.stringify(errs(issues)));
+  assert.ok(errs(issues, "warning").some(([p, m]) => p === "Condition.code.coding[0].system" && m === "A definition for CodeSystem 'http://unknown.example.test/hla' version '3.23' could not be found, so the code cannot be validated. No versions of this code system are known"), JSON.stringify(errs(issues, "warning")));
+});
