@@ -12,9 +12,9 @@
  * differs from their own url (the lookup follows the index, as NpmPackage does).
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import pg from "pg";
 import { indexPackages } from "../../../src/loaders/ig.js";
 
@@ -100,9 +100,12 @@ function visit(path: string): void {
   const dir = path.endsWith(".tgz") ? unpack(path) : path;
   const m = JSON.parse(readFileSync(join(dir, "package", "package.json"), "utf8")) as { name: string; version: string; dependencies?: Record<string, string> };
   const key = `${m.name}#${m.version}`;
+  const report = seen.has(key) ? "" : indexReport(dir);
+  // the unpacked copy is only read here; the import re-reads the tgz
+  if (dir !== path) rmSync(dir, { recursive: true, force: true });
   if (seen.has(key)) return;
   seen.add(key);
-  console.log(`${key}${installed.has(key) ? " (installed)" : ""}: ${indexReport(dir)}`);
+  console.log(`${key}${installed.has(key) ? " (installed)" : ""}: ${report}`);
   for (const [id, wanted] of Object.entries(m.dependencies ?? {})) {
     const version = resolveVersion(id, wanted);
     const dep = `${id}#${version}`;
@@ -127,7 +130,11 @@ if (missing.length) {
 console.log(`to import (dependencies first): ${order.map((o) => o.key).join(", ") || "nothing"}`);
 if (!dryRun) {
   // one call per package: a default-IG decision is the loader's, the existing default stays
-  for (const o of order) await indexPackages(pool, [toTgz(o.path)]);
+  for (const o of order) {
+    const tgz = toTgz(o.path);
+    await indexPackages(pool, [tgz]);
+    if (tgz !== o.path) rmSync(dirname(tgz), { recursive: true, force: true });
+  }
   console.log("imported");
 }
 await pool.end();
