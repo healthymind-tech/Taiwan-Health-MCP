@@ -820,3 +820,29 @@ test("memberOf on a text-only CodeableConcept is validateCode(CodeableConcept): 
   // a member coding: memberOf is true, the invariant fails
   assert.equal(await cc1({ coding: [{ system: "http://hl7.org/fhir/administrative-gender", code: "male" }] }), true);
 });
+
+test("a value discriminator on a type-sliced value[x] reads the type slice's fixed value (FHIRPathEngine.evaluateDefinition l. 7189-7194)", async () => {
+  const X = "http://example.org/fhir/StructureDefinition/line-type";
+  EXTRA[X] = sd(X, "Extension", "complex-type", [
+    el("Extension", 0, "*"),
+    el("Extension.extension", 0, "0", ["Extension"]),
+    el("Extension.url", 1, "1", ["uri"], { fixedUri: X }),
+    el("Extension.value[x]", 1, "1", ["code"]),
+  ], { context: [{ type: "element", expression: "Element" }] });
+  const slice = (name: string): Json[] => [
+    el(`Patient.extension:${name}`, 0, "1", [], { sliceName: name, type: [{ code: "Extension", profile: [X] }] }),
+    el(`Patient.extension:${name}.url`, 1, "1", ["uri"], { fixedUri: X }),
+    el(`Patient.extension:${name}.value[x]`, 1, "1", ["code"], { slicing: { discriminator: [{ type: "type", path: "$this" }], rules: "closed" } }),
+    el(`Patient.extension:${name}.value[x]:valueCode`, 1, "1", ["code"], { sliceName: "valueCode", fixedCode: name }),
+  ];
+  const P = "http://example.org/fhir/StructureDefinition/pat-line-type";
+  EXTRA[P] = sd(P, "Patient", "resource", [
+    ...SDS[CORE + "Patient"].snapshot.element.filter((e: Json) => e.path !== "Patient.extension"),
+    el("Patient.extension", 0, "*", ["Extension"], { slicing: { discriminator: [{ type: "value", path: "url" }, { type: "value", path: "value" }], rules: "open" } }),
+    ...slice("first"),
+    ...slice("second"),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint" });
+  const got = errs(await run({ resourceType: "Patient", extension: [{ url: X, valueCode: "second" }] }, [P]));
+  assert.ok(!got.some(([, m]) => m.includes("matches more than one slice") || m.includes("but is fixed to")), JSON.stringify(got));
+});
+

@@ -5723,7 +5723,16 @@ export class InstanceValidator {
         cur = sl || null;
         continue;
       }
-      cur = sdx.child(cur, seg);
+      // FHIRPathEngine.evaluateDefinition (services tag 7.0.1:7189-7194): the first child whose tail matches and that is
+      // not sliced — for a type-sliced value[x] that is its (first) type slice, which carries the fixed value
+      const base = sdx.child(cur, seg);
+      if (base && base.slicing) {
+        const grp = [...(sdx.children(cur)?.values() ?? [])].find((g) => g.base === base);
+        const unsliced = grp?.slices.find((s) => !s.slicing);
+        cur = unsliced ?? null;
+        continue;
+      }
+      cur = base;
     }
     return cur;
   }
