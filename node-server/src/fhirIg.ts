@@ -768,6 +768,8 @@ function coveredBy(closure: Array<[string, string]>, needs: Need[], hits: OwnerH
 /**
  * The packages validator_cli 7.0.1 loads into every context itself, in its load order (the oracle's log: "Load
  * hl7.fhir.uv.extensions.r4#5.2.0" with the core definitions, then "Load hl7.fhir.uv.extensions#5.4.0" before the IG):
+ *  - ValidationEngine.loadTx (l. 426-443) for an R4 / R4B context: hl7.terminology.r4 at Constants.THO_WORKING_VERSION
+ *    (6.2.0 in 7.0.1, oracle log "Load hl7.terminology.r4#6.2.0" first);
  *  - ValidationEngine.loadExt (l. 445-460) for an R4 / R4B context: hl7.fhir.uv.extensions.r4 at
  *    ExtensionDefinitions.EXTENSIONS_WORKING_VERSION (5.2.0);
  *  - ValidationService.loadIgsAndExtensions (l. 745-749) for any version but R5: hl7.fhir.uv.extensions without a
@@ -775,6 +777,7 @@ function coveredBy(closure: Array<[string, string]>, needs: Need[], hits: OwnerH
  * `version: null` = the newest installed release.
  */
 const VALIDATOR_IMPLICIT_PACKAGES: Array<{ id: string; version: string | null; when: (fhirVersion: string) => boolean }> = [
+  { id: "hl7.terminology.r4", version: "6.2.0", when: (fv) => fv.startsWith("4.0") || fv.startsWith("4.3") },
   { id: "hl7.fhir.uv.extensions.r4", version: "5.2.0", when: (fv) => fv.startsWith("4.0") || fv.startsWith("4.3") },
   { id: VALIDATOR_EXTENSIONS_PACKAGE, version: null, when: (fv) => !fv.startsWith("5.0") },
 ];
