@@ -291,7 +291,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.127.0 (parity v3): validator_cli's own hl7.terminology.r4 6.2.0 / hl7.fhir.uv.extensions.r4 5.2.0 in R4 validation closures; a contained Questionnaire's answerValueSet '#id' resolves in the response (QuestionnaireValidator.validateAnswerCode).
   // 1.130.0 (parity v3 wave 4): LOINC / SNOMED CT displays in a non-English working language are rules_unchecked (tx designations); a Parameters resource with an unnamed parameter fails like validator_cli.
   // 1.131.0 (parity v3 wave 4): such a display is rules_unchecked whether or not it matches an English designation (no longer an error when it matches none).
-  fhir_validate_bundle: "1.131.0",
+  fhir_validate_bundle: "1.132.0",
+  // 1.132.0 (parity v3, branch 1.130.0): a bound CodeableConcept (not example, ValueSet found): a server-side system's display the ValueSet lists for the code is valid.
   // 1.128.0 / 1.129.0 (parity v3 ext waves 1-2, branch 1.126.0): a value discriminator on a type-sliced value[x] reads its type slice; a code-less versioned Coding of a system the server does not publish is a warning on .system, of a SERVER_SIDE_LIST system the server's warning; checkSearchSet reads a resourceType that is no resource name as an untyped Resource.
   // 1.114.0 (parity v3 scored extras): sub-extension urls below a sub-extension, a number Extension.url, meta.profile of an unknown version read as the current definition, memberOf slicing on a systemless Coding, a coding object for fixed / pattern.
   // 1.115.0 (parity v3 wave 2): a Bundle with a -profile of another type validates its first entry's resource of that type against it (IV l. 9002-9012); no BundleValidator when the profile is for another type.
@@ -411,9 +412,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.124.0: validation as fhir_validate_bundle 1.127.0.
   // 1.125.0: validation as fhir_validate_bundle 1.128.0.
   // 1.126.0: validation as fhir_validate_bundle 1.129.0.
-  // 1.127.0: validation as fhir_validate_bundle 1.130.0.
   // 1.128.0: validation as fhir_validate_bundle 1.131.0.
-  fhir_validate_resource: "1.128.0",
+  // 1.129.0: validation as fhir_validate_bundle 1.132.0.
+  fhir_validate_resource: "1.129.0",
   // 1.111.0: validation as fhir_validate_bundle 1.114.0.
   // 1.112.0: validation as fhir_validate_bundle 1.115.0.
   // 1.102.0: validation as fhir_validate_bundle 1.105.0.
