@@ -5279,7 +5279,7 @@ export class InstanceValidator {
     if (own) out.push(own);
     for (const t of slice.type || []) {
       for (let pi = 0; pi < (t.profile || []).length; pi++) {
-        const psdx = await this.scopedSdx(String(t.profile[pi]), sdx);
+        const psdx = await this.findProfile(String(t.profile[pi]), sdx);
         // getCriteriaForDiscriminator (validation tag 7.0.1:5817-5819): SD_ED_TYPE_PROFILE_UNKNOWN
         if (!psdx) throw new SlicingDefinitionError(`Unable to resolve profile CanonicalType[${t.profile[pi]}]`);
         // getCriteriaForDiscriminator l. 5815-5832: EXT_PROFILE_ELEMENT names the element of the profile to start from
@@ -5299,6 +5299,14 @@ export class InstanceValidator {
    * Only that case is decided here; steps this port does not follow (functions, sliced elements, several types or
    * profiles) end the walk.
    */
+  /** ProfileUtilities.findProfile (r5 7.0.1:4316-4375): the loaded definition, else a valid cross-version extension's. */
+  private async findProfile(url: string, from: SdIndex): Promise<SdIndex | null> {
+    const own = await this.scopedSdx(url, from);
+    if (own) return own;
+    const u = stripVersion(url.split("#")[0]);
+    return xverStatus(u) === "Valid" ? this.xverSdx(u) : null;
+  }
+
   private async discriminatorTypeSteps(sdx: SdIndex, start: Record<string, any>, path: string): Promise<void> {
     if (path === "$this" || path === "") return;
     let cur: Record<string, any> = start;
@@ -5310,7 +5318,7 @@ export class InstanceValidator {
         if (types.length !== 1) return;
         const profiles: unknown[] = types[0].profile || [];
         if (profiles.length !== 1) return;
-        if (await this.scopedSdx(String(profiles[0]), sdx)) return;
+        if (await this.findProfile(String(profiles[0]), sdx)) return;
         throw new SlicingDefinitionError(`Problem with use of resolve() - profile [CanonicalType[${profiles[0]}]] on ${cur.id} could not be resolved (@char ${col})`);
       }
       const next = sdx.child(cur, raw);
