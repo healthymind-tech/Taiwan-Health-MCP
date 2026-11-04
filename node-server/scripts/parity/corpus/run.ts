@@ -74,7 +74,9 @@ interface PlanTarget extends Target {
 const reproPlan: PlanTarget[] | null = reproPlanFile ? (JSON.parse(readFileSync(reproPlanFile, "utf8")) as PlanTarget[]) : null;
 /** --family a,b: only the manifest families named (a family rerun without an id list). */
 const families = opt("--family")?.split(",").filter(Boolean) ?? null;
-const only = opt("--only")?.split(",") ?? (reproPlan ? [...new Set(reproPlan.map((t) => t.id))] : null);
+// --only @file: the comma-separated ids read from a file (an id list too long for the command line)
+const onlyArg = opt("--only");
+const only = (onlyArg?.startsWith("@") ? readFileSync(onlyArg.slice(1), "utf8").trim() : onlyArg)?.split(",") ?? (reproPlan ? [...new Set(reproPlan.map((t) => t.id))] : null);
 
 type Validate = (item: CorpusItem, instance: Res) => Promise<{ issues: SimpleIssue[]; flags: string[]; unchecked?: Res; extended?: Res }>;
 
