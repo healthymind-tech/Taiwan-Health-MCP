@@ -46,7 +46,7 @@ import { BUILD_EXTENSION_CONSTS, SPECIAL_EXTENSION_DEFINITIONS, SPECIAL_KNOWN_EX
 import { CANONICAL_RESOURCES, hl7UrlMustResolve, isKnownSpace, uriResolutionExempt, urlResolveMessage, urnSyntaxIssue } from "./fhirUriRules.js";
 import { codingVersionIssue } from "./fhirExternalTerminology.js";
 import { codingVersionIssues } from "./fhirCsVersion.js";
-import { isAbsoluteUrl, judgeLanguageTag, serverPrefers, specialSystemMember } from "./fhirSpecialSystems.js";
+import { isAbsoluteUrl, judgeLanguageTag, serverPrefers, serverSideListed, specialSystemMember } from "./fhirSpecialSystems.js";
 import { validateCodeSystemResource } from "./fhirCodeSystemResource.js";
 import { validateConceptMapResource } from "./fhirConceptMapResource.js";
 import { validateValueSetResource } from "./fhirValueSetResource.js";
@@ -7045,9 +7045,11 @@ export class InstanceValidator {
   /**
    * Which codings without a code the server answers with its own error. Official TW Core + IPS outcomes: urn:ietf:bcp:47 7 of 7,
    * urn:iso:std:iso:3166 8 of 8, a Coding.version no held copy has 3 of 3; LOINC 0 of 76, SNOMED CT 0 of 60, ATC 0 of 8, CVX 0 of 5.
+   * A SERVER_SIDE_LIST system keeps its warning with a version too (all corpora: SNOMED CT with an edition 14 of 14 warning;
+   * v2-0360 with a version 4 of 4 error).
    */
   private serverAnswersCodeless(v: Record<string, any>, system: string): boolean {
-    return system.startsWith("urn:ietf:") || system.startsWith("urn:iso:") || (typeof v.version === "string" && v.version !== "" && !this.versionUnknownToServer(system));
+    return system.startsWith("urn:ietf:") || system.startsWith("urn:iso:") || (typeof v.version === "string" && v.version !== "" && !serverSideListed(system) && !this.versionUnknownToServer(system));
   }
 
   /**

@@ -227,6 +227,11 @@ const SERVER_SIDE_LIST = new Set([
  * ValueSetValidator.preferServerSide (standalone tag 7.0.1:1135): SERVER_SIDE_LIST, then the server's published capability
  * list (txCodeTables.txKnowsSystem). null: not listed and the bundled capability list is unavailable.
  */
+/** ValueSetValidator.SERVER_SIDE_LIST (standalone tag 7.0.1): the systems always validated on the terminology server. */
+export function serverSideListed(system: string): boolean {
+  return SERVER_SIDE_LIST.has(system);
+}
+
 export function serverPrefers(system: string): boolean | null {
   return SERVER_SIDE_LIST.has(system) ? true : txKnowsSystem(system);
 }
