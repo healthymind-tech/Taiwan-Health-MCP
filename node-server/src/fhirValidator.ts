@@ -5689,7 +5689,9 @@ export class InstanceValidator {
    * server (LOINC, SNOMED CT …) or cannot resolve stay "no match" (not decided here).
    */
   private async codelessCodingMember(valueSet: string, value: any): Promise<boolean> {
-    if (!isObject(value) || Array.isArray(value.coding)) return false;
+    // a CodeableConcept (`coding` or `text`, which a Coding does not have) is validateCode(CodeableConcept): without a
+    // coding in the value set it is not ok (FHIRPathEngine.funcMemberOf l. 5178-5179)
+    if (!isObject(value) || Array.isArray(value.coding) || value.text !== undefined) return false;
     if (typeof value.code === "string" && value.code !== "") return false;
     if (value.code !== undefined && value.code !== null && typeof value.code !== "string") return false;
     if (!(await this.vsHeader(valueSet))) return false;

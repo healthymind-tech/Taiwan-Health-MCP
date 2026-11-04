@@ -808,3 +808,15 @@ test("several type profiles on an entry: an executed invariant is one message ob
   assert.equal(sh.length, 1, JSON.stringify(got));
   assert.ok(sh[0][1].includes(`(validating against ${A}|1.0.0 [ShA])`) && sh[0][1].includes(`(validating against ${Bp}|1.0.0 [ShB])`), sh[0][1]);
 });
+
+test("memberOf on a text-only CodeableConcept is validateCode(CodeableConcept): not ok, not a code-less Coding (FHIRPathEngine.funcMemberOf l. 5178-5179)", async () => {
+  const P = "http://example.org/fhir/StructureDefinition/cond-cc-member";
+  EXTRA[P] = sd(P, "Condition", "resource", [
+    el("Condition", 0, "*", [], { constraint: [{ key: "cc-1", severity: "error", human: "not a gender", expression: "code.memberOf('http://hl7.org/fhir/ValueSet/administrative-gender|4.0.1').not()" }] }),
+    ...SDS[CORE + "Condition"].snapshot.element.filter((e: Json) => e.path !== "Condition"),
+  ], { baseDefinition: CORE + "Condition", derivation: "constraint" });
+  const cc1 = async (code: Json): Promise<boolean> => errs(await run({ resourceType: "Condition", code }, [P])).some(([, m]) => m.startsWith("Constraint failed: cc-1"));
+  assert.equal(await cc1({ text: "free text" }), false);
+  // a member coding: memberOf is true, the invariant fails
+  assert.equal(await cc1({ coding: [{ system: "http://hl7.org/fhir/administrative-gender", code: "male" }] }), true);
+});
