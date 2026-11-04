@@ -217,7 +217,12 @@ test("rankHl7Current: highest major.minor wins (extensions pack over R4 core), t
   const core = row("hl7.fhir.r4.core", "4.0.1", 4);
   const extp = row("hl7.fhir.uv.extensions.r4", "5.2.0", 6);
   const r5 = row("hl7.fhir.uv.extensions", "5.3.0", 7, "5.0.0");
-  assert.equal(rankHl7Current(url, [core, extp, r5])[0], extp);
+  // validator_cli loads hl7.fhir.uv.extensions (an R5 build) itself (ValidationService.loadIgsAndExtensions l. 745-749)
+  // and CanonicalResourceManager answers by resource version: the official outputs name e.g. translation|5.4.0 over the
+  // r4 pack's 5.2.0 — so it is not ranked last as another FHIR release's package is
+  assert.equal(rankHl7Current(url, [core, extp, r5])[0], r5);
+  const otherR5 = row("hl7.fhir.uv.extensions.r5", "5.3.0", 7, "5.0.0");
+  assert.equal(rankHl7Current(url, [core, extp, otherR5])[0], extp);
   const ig = row("tw.gov.mohw.twcore", "1.0.0", 1);
   const dep = row("other", "1.0.3", 2);
   assert.equal(rankHl7Current("http://x/SD/a", [dep, ig])[0], ig); // same 1.0 line: closure order
