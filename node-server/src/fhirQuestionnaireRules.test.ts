@@ -149,3 +149,25 @@ test("an unresolved questionnaire stops the check: a warning, a hint for example
   const ex = await validateQuestionnaireResponse({ questionnaire: "http://example.org/none" }, "QuestionnaireResponse", deps({}));
   assert.deepEqual(ex.map((i) => i.severity), ["information"]);
 });
+
+// validateAnswerCode l. 1547-1551: a Questionnaire contained in the response resolves '#id' among the response's contained
+// resources; a coding without a system is judged by code alone (validator_cli: "The code 'ZZZ-9' in the system 'null' is
+// not in the options value set (VSPHQ9) …")
+test("QuestionnaireResponse: answerValueSet '#id' of a contained Questionnaire is the response's contained ValueSet", async () => {
+  const vs = { resourceType: "ValueSet", id: "vs1", name: "VS1", status: "draft", compose: { include: [{ system: "http://s", concept: [{ code: "a" }, { code: "b" }] }] } };
+  const q = { resourceType: "Questionnaire", id: "q1", status: "draft", item: [{ linkId: "1", type: "choice", answerValueSet: "#vs1" }] };
+  const qr = (code: string, system?: string): Record<string, any> => ({
+    resourceType: "QuestionnaireResponse",
+    questionnaire: "#q1",
+    status: "completed",
+    contained: [q, vs],
+    item: [{ linkId: "1", answer: [{ valueCoding: { ...(system ? { system } : {}), code } }] }],
+  });
+  const errs = async (r: Record<string, any>): Promise<string[]> => (await validateQuestionnaireResponse(r, "QuestionnaireResponse", deps({}))).filter((i) => i.severity === "error").map((i) => i.message);
+  assert.deepEqual(await errs(qr("a")), []);
+  assert.deepEqual(await errs(qr("a", "http://s")), []);
+  assert.deepEqual(await errs(qr("zz")), ["The code 'zz' in the system 'null' is not in the options value set (VS1) specified by the questionnaire. Terminology Error: Coding has no system. A code with no system has no defined meaning, and it cannot be validated. A system should be provided"]);
+  assert.equal((await errs(qr("a", "http://other"))).length, 1);
+  const noVs = await validateQuestionnaireResponse({ ...qr("a"), contained: [q] }, "QuestionnaireResponse", deps({}));
+  assert.ok(noVs.some((i) => i.severity === "warning" && i.message === "The valueSet reference #vs1 could not be resolved"));
+});

@@ -800,6 +800,32 @@ class ResponseValidator {
       this.codingOption(c, ns, qItem, open, answerCount);
     } else if (typeof qItem.answerValueSet === "string") {
       const vs = qItem.answerValueSet;
+      // validateAnswerCode l. 1547-1551: a Questionnaire contained in the response (qSrc.container) resolves '#id' among the
+      // response's contained resources (loadContainedResource); not found: TERMINOLOGY_TX_VALUESET_NOTFOUND (warning)
+      const qContained = list(this.response.contained).includes(this.q);
+      if (vs.startsWith("#") && qContained) {
+        const local = list(this.response.contained).find((c) => isObject(c) && c.resourceType === "ValueSet" && c.id === vs.slice(1)) ?? null;
+        if (!local) {
+          this.warning(false, ns, `The valueSet reference ${vs} could not be resolved`);
+          return;
+        }
+        if (noString(c.code) && noString(c.system) && !noString(c.display) && open) return;
+        if (constraint === "optionsOrType" || typeof c.code !== "string") return;
+        const system = typeof c.system === "string" ? c.system : null;
+        const inSet = enumeratedMember(local, system, c.code);
+        if (inSet === false) {
+          // ValueSetValidator: a coding with no system is judged by code alone; not in the set, the reason is the
+          // no-system message ({3} of QUESTIONNAIRE_QR_ITEM_BADOPTION, vs.present() as {2})
+          const name = [local.title, local.name, local.id].find((x) => typeof x === "string" && x) ?? vs;
+          const why =
+            system === null
+              ? "Coding has no system. A code with no system has no defined meaning, and it cannot be validated. A system should be provided"
+              : `The provided code '${system}#${c.code}' was not found in the value set '${local.url ?? vs}'`;
+          this.rule(false, ns, `The code '${c.code}' in the system '${system}' is not in the options value set (${name}) specified by the questionnaire. Terminology Error: ${why}`, "code-invalid");
+        }
+        if (inSet === undefined) this.undecided(ns, vs);
+        return;
+      }
       if (vs.startsWith("#") && list(this.q.contained).some((c) => isObject(c) && c.id === vs.slice(1))) {
         // resolveBindingReference finds the Questionnaire's contained ValueSet, which membership here cannot read
         if (constraint !== "optionsOrType") this.undecided(ns, vs);
@@ -874,6 +900,22 @@ class ResponseValidator {
     if (!values.length && !open) this.rule(false, ns, `Option list has no option values of type ${label}`, "invariant");
     else this.rule(values.includes(s), ns, `The ${label} ${s} is not in the set of permitted values`, "invariant");
   }
+}
+
+/**
+ * Membership of a coding in a ValueSet whose compose only enumerates concepts (include.concept, no filter / valueSet,
+ * no exclude): true / false; undefined when the compose needs a code system or another value set. A coding with no
+ * system matches by code alone.
+ */
+function enumeratedMember(vs: Json, system: string | null, code: string): boolean | undefined {
+  const compose = isObject(vs.compose) ? vs.compose : null;
+  if (!compose || list(compose.exclude).length) return undefined;
+  const includes = list(compose.include).filter(isObject);
+  if (!includes.length) return undefined;
+  for (const inc of includes) {
+    if (list(inc.filter).length || list(inc.valueSet).length || !list(inc.concept).length) return undefined;
+  }
+  return includes.some((inc) => (system === null || inc.system === system) && list(inc.concept).some((x) => isObject(x) && x.code === code));
 }
 
 /** QuestionnaireValidator.validateQuestionannaireResponse l. 514-567, QuestionnaireMode.CHECK. */
