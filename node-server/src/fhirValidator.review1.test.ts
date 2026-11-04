@@ -750,3 +750,25 @@ test("JsonParser.parseChildItem: a choice name of a wrong type next to a matchin
   const alone = errs(await run(obs({ effectiveString: "2020-01-01" })));
   assert.ok(alone.some(([, m]) => m === "Unrecognized property 'effectiveString'"), JSON.stringify(alone));
 });
+
+test("several type profiles on an entry (checkChildByDefinition l. 8114-8158 after validateContains): Validation_VAL_Profile_NoMatch and every profile's messages, tagged", async () => {
+  const TWO = "http://example.org/fhir/StructureDefinition/pat-two";
+  EXTRA[TWO] = sd(TWO, "Patient", "resource", [
+    ...SDS[CORE + "Patient"].snapshot.element.filter((e: Json) => e.path !== "Patient.birthDate"),
+    el("Patient.birthDate", 1, "1", ["date"]),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint", name: "Two", version: "1.0.0" });
+  const B = "http://example.org/fhir/StructureDefinition/bundle-two";
+  EXTRA[B] = sd(B, "Bundle", "resource", [
+    ...SDS[CORE + "Bundle"].snapshot.element.filter((e: Json) => e.path !== "Bundle.entry.resource"),
+    el("Bundle.entry.resource", 1, "1", [], { type: [{ code: "Patient", profile: [TWO, PAT_PROFILE] }] }),
+  ], { baseDefinition: CORE + "Bundle", derivation: "constraint" });
+  const bundle = (pat: Json): Json => ({ resourceType: "Bundle", type: "collection", entry: [{ fullUrl: "urn:uuid:9b0e5a52-8f0c-4c2a-9a63-0d8f7c2d1e01", resource: pat }] });
+  const none = errs(await run(bundle({ resourceType: "Patient", id: "p" }), [B]));
+  const at = none.filter(([p]) => p === "Bundle.entry[0].resource").map(([, m]) => m);
+  assert.ok(at.some((m) => m.startsWith("The entry resource did not match any of the allowed profiles")), JSON.stringify(none));
+  assert.ok(at.includes(`Unable to find a match for the specified profile among choices: ${[TWO, PAT_PROFILE].sort().join(", ")}`), JSON.stringify(none));
+  assert.ok(at.some((m) => m.startsWith("Patient.birthDate: minimum required = 1") && m.endsWith(` (validating against ${TWO}|1.0.0 [Two])`)), JSON.stringify(none));
+  // one profile matches: its (non-error) messages, no NoMatch, no tags
+  const one = errs(await run(bundle({ resourceType: "Patient", id: "p", birthDate: "2000-01-01" }), [B]));
+  assert.ok(!one.some(([, m]) => m.startsWith("Unable to find a match") || m.includes("(validating against")), JSON.stringify(one));
+});

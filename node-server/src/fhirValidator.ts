@@ -3464,6 +3464,62 @@ export class InstanceValidator {
     return view;
   }
 
+  /**
+   * InstanceValidator.checkChildByDefinition l. 8139-8158 (7.0.1), the outcome of several type profiles on one element:
+   * exactly one without errors → its messages as they are; none → Validation_VAL_Profile_NoMatch (the profiles sorted)
+   * and every profile's messages tagged ` (validating against url|version [name])`; several → VALIDATION_VAL_PROFILE_
+   * MULTIPLEMATCHES (warning) and the matching ones' messages tagged. `taggable` leaves out messages that do not belong
+   * to the profile pass.
+   */
+  private async reportProfileChoices(
+    path: string,
+    typeProfiles: string[],
+    good: Array<[string, Issue[]]>,
+    bad: Array<[string, Issue[]]>,
+    taggable: (i: Issue) => boolean,
+    issues: Issue[],
+  ): Promise<void> {
+    const tagOf = async (p: string): Promise<string> => {
+      const psdx = await this.sdx(p);
+      return ` (validating against ${psdx?.url ?? p}${psdx?.sd?.version ? `|${psdx.sd.version}` : ""} [${psdx?.sd?.name ?? ""}])`;
+    };
+    // l. 8144-8158: setMessage on the message object, over the HashMap's key order: an object two profiles share
+    // (an executed invariant) collects both tags.
+    // ele-1 of a child is one executed invariant (EXECUTED_CONSTRAINT_LIST): the same message object in every profile's
+    // list, there twice (the child's element definition and its type's root both carry ele-1), so it collects each
+    // profile's tag twice (official: `… (validating against A) (validating against A) (validating against B) …`)
+    const emit = async (lists: Array<[string, Issue[]]>): Promise<void> => {
+      const shared = new Map<string, Issue>();
+      for (const p of javaHashMapOrder(lists.map(([u]) => u))) {
+        const list = lists.find(([u]) => u === p)![1];
+        const tag = await tagOf(p);
+        const ele1 = list.filter((i) => i.message === ELE1_MESSAGE && i.path !== path && taggable(i));
+        const rest = list.filter((i) => !ele1.includes(i));
+        for (const i of rest) if (taggable(i)) i.message += tag;
+        for (const i of ele1) {
+          let m = shared.get(i.path);
+          if (!m) {
+            m = { ...i };
+            shared.set(i.path, m);
+            issues.push(m);
+          }
+          m.message += tag + tag;
+        }
+        issues.push(...rest);
+      }
+    };
+    if (good.length === 1) {
+      issues.push(...good[0][1]);
+    } else if (good.length === 0) {
+      issues.push({ severity: "error", path, code: "structure", message: `Unable to find a match for the specified profile among choices: ${[...typeProfiles].sort().join(", ")}` });
+      await emit(bad);
+    } else {
+      const n = good.length;
+      issues.push({ severity: "warning", path, code: "structure", message: `Found multiple matching profiles among ${n} choice${n === 1 ? "" : "s"}: ${good.map(([p]) => p).sort().join(", ")}` });
+      await emit(good);
+    }
+  }
+
   /** Issues of `rctx.resource` against one StructureDefinition (memoised per resource object). */
   private conformance(rctx: ResourceCtx, url: string, path: string, depth: number, subValidation = false): Promise<Issue[]> {
     let byUrl = this.conformCache.get(rctx.resource);
@@ -3882,6 +3938,21 @@ export class InstanceValidator {
         } else if (matchedUrls.length > 1) {
           issues.push({ severity: "information", path: item.path, code: "invalid", message: `The ${special} resource matched more than one of the allowed profiles (${matchedUrls.join(", ")})` });
         }
+        // checkChildByDefinition l. 8114-8158 (7.0.1): validateContains above does not end the element's check — its
+        // several type profiles are the `profiles.size() > 1` branch too: the resource is validated (validateElement)
+        // against each again, and that outcome is reported (Unknown profile for one not found). The parser's findings
+        // belong to no profile (they are the base pass's).
+        const good: Array<[string, Issue[]]> = [];
+        const bad: Array<[string, Issue[]]> = [];
+        for (const p of profiles) {
+          if (!(await this.sdx(p))) {
+            issues.push({ severity: "error", path: item.path, code: "structure", message: `Unknown profile ${p}`, unchecked: { kind: "profile", canonical: p } });
+            continue;
+          }
+          const list = (await this.conformance(child, p, item.path, depth)).filter((i) => !isParseIssue(i)).map((i) => ({ ...i }));
+          (list.some((i) => i.severity === "error" || i.severity === "fatal") ? bad : good).push([p, list]);
+        }
+        await this.reportProfileChoices(item.path, profiles, good, bad, () => true, issues);
         return;
       }
       if (profiles.length === 1 && !(await this.sdx(profiles[0]))) {
@@ -3959,47 +4030,7 @@ export class InstanceValidator {
         (errs.length ? bad : good).push([p, trial]);
       }
       pushAll(issues, bare.filter(isParseIssue));
-      // l. 8144-8158: setMessage on the message object, over the HashMap's key order: an object two profiles share
-      // (an executed invariant) collects both tags
-      const tagged = async (p: string, list: Issue[]): Promise<Issue[]> => {
-        const psdx = await this.sdx(p);
-        const tag = ` (validating against ${psdx?.url ?? p}${psdx?.sd?.version ? `|${psdx.sd.version}` : ""} [${psdx?.sd?.name ?? ""}])`;
-        for (const i of list) if (!own.has(key(i))) i.message += tag;
-        return list;
-      };
-      // ele-1 of a child is one executed invariant (EXECUTED_CONSTRAINT_LIST): the same message object in every profile's
-      // list, there twice (the child's element definition and its type's root both carry ele-1), so it collects each
-      // profile's tag twice (official: `… (validating against A) (validating against A) (validating against B) …`)
-      const emit = async (lists: Array<[string, Issue[]]>): Promise<void> => {
-        const shared = new Map<string, Issue>();
-        for (const p of javaHashMapOrder(lists.map(([u]) => u))) {
-          const list = lists.find(([u]) => u === p)![1];
-          const ele1 = list.filter((i) => i.message === ELE1_MESSAGE && i.path !== item.path && !own.has(key(i)));
-          const rest = await tagged(p, list.filter((i) => !ele1.includes(i)));
-          for (const i of ele1) {
-            const psdx = await this.sdx(p);
-            const tag = ` (validating against ${psdx?.url ?? p}${psdx?.sd?.version ? `|${psdx.sd.version}` : ""} [${psdx?.sd?.name ?? ""}])`;
-            let m = shared.get(i.path);
-            if (!m) {
-              m = { ...i };
-              shared.set(i.path, m);
-              issues.push(m);
-            }
-            m.message += tag + tag;
-          }
-          issues.push(...rest);
-        }
-      };
-      if (good.length === 1) {
-        issues.push(...good[0][1]);
-      } else if (good.length === 0) {
-        issues.push({ severity: "error", path: item.path, code: "structure", message: `Unable to find a match for the specified profile among choices: ${[...typeProfiles].sort().join(", ")}` });
-        await emit(bad);
-      } else {
-        const n = good.length;
-        issues.push({ severity: "warning", path: item.path, code: "structure", message: `Found multiple matching profiles among ${n} choice${n === 1 ? "" : "s"}: ${good.map(([p]) => p).sort().join(", ")}` });
-        await emit(good);
-      }
+      await this.reportProfileChoices(item.path, typeProfiles, good, bad, (i) => !own.has(key(i)), issues);
       return;
     }
 
