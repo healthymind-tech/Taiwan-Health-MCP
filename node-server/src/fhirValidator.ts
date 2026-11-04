@@ -1519,6 +1519,12 @@ interface Item {
   jpath?: string;
   /** (parity v3) The object holding the property (NodeStack parent). */
   parent?: Record<string, any>;
+  /**
+   * The profile InstanceValidator validates this item under when its definition comes from another
+   * StructureDefinition, reached through an absolute contentReference (getChildMap l. 507-516 returns that
+   * definition's children; validateElement keeps its `profile`).
+   */
+  foreignProfile?: SdIndex;
 }
 
 /** The element an extension sits on, as InstanceValidator.checkExtensionContext sees it. */
@@ -1837,6 +1843,16 @@ export class InstanceValidator {
   private containedIdChecked = new WeakSet<object>();
   private strippedCache = new WeakMap<object, any>();
   private emptiedCache = new WeakMap<object, Promise<boolean>>();
+  /**
+   * ProfileUtilities.childMapCache (7.0.1, l. 425 + 491-577), one per InstanceValidator (a fresh validator per input,
+   * ValidationEngine.getValidator l. 1068): `profile versioned url # element id` → the children validateElement
+   * found for an element of that profile (null: none). Only the entries that differ from the plain lookup matter
+   * here: an element of another definition reached through an absolute contentReference shares its id with the
+   * profile's own element (see validateItemAgainst).
+   */
+  private childMapCache = new Map<string, { sdx: SdIndex; el: Record<string, any> } | null>();
+  /** > 0 while children are walked for their parser findings only (no cache writes). */
+  private childMapFrozen = 0;
 
   /** The StructureDefinitions fpe.check reads. */
   private readonly pathCheckDeps = {
@@ -2048,6 +2064,8 @@ export class InstanceValidator {
     this.nullItems = holdsNullObjectItem(resource);
     this.strippedCache = new WeakMap();
     this.emptiedCache = new WeakMap();
+    this.childMapCache = new Map();
+    this.childMapFrozen = 0;
     // validateResource l. 9002-9012: a Bundle with a profile for another type whose first entry's resource is of the
     // profile's type — that resource is validated against the profile instead (at Bundle.entry[0].resource, the Bundle
     // stays the reference-resolution context); the Bundle itself is not validated
@@ -3964,10 +3982,46 @@ export class InstanceValidator {
     let childSdx = sdx;
     let childEl: Record<string, any> = el;
     const typeRootConstraints: Array<[SdIndex, Record<string, any>]> = [];
-    if (!sdx.hasChildren(el)) {
+    // The validator's profile when `el` comes from another definition (Item.foreignProfile), and the one the
+    // children get when they do
+    const jarProfile = item.foreignProfile && item.foreignProfile !== sdx ? item.foreignProfile : null;
+    let childForeign: SdIndex | null = null;
+    let childrenSkipped = false;
+    const abstractEl = !el.contentReference && (typeCode === "BackboneElement" || typeCode === "Element");
+    if (jarProfile && abstractEl && !isResourceRoot) {
+      // ProfileUtilities.getChildMap(profile, element, false) (l. 491-577) for an element that is not in the
+      // profile's snapshot: no inline children are found (elements.indexOf = -1), so the cached entry of the profile's
+      // own element with the same id answers, or nothing does; validateElement then stops without a message
+      // (l. 7733-7738) — the element's own invariants (checkChildByDefinition l. 8009-8010) still run
+      const key = `${this.versionedUrl(jarProfile)}#${String(el.id || el.path || "")}`;
+      const hit = this.childMapCache.get(key);
+      if (hit) {
+        childSdx = hit.sdx;
+        childEl = hit.el;
+      } else {
+        if (hit === undefined && !this.childMapFrozen) this.childMapCache.set(key, null);
+        childrenSkipped = true;
+      }
+    } else if (!sdx.hasChildren(el)) {
       if (el.contentReference) {
-        const target = sdx.byId.get(String(el.contentReference).replace(/^.*#/, ""));
-        if (target) childEl = target;
+        // getChildMap l. 501-524: `#id` is an element of the validator's profile; `url#id` (an external reference) is
+        // that definition's element — whose children are then validated under the same profile
+        const ref = String(el.contentReference);
+        const hash = ref.indexOf("#");
+        const owner = jarProfile ?? sdx;
+        const external = hash > 0 ? await this.scopedSdx(ref.slice(0, hash), owner) : null;
+        const ext = external?.byId.get(ref.slice(hash + 1));
+        if (external && ext && (external.url !== owner.url || external.sd?.version !== owner.sd?.version)) {
+          childSdx = external;
+          childEl = ext;
+          childForeign = owner;
+        } else {
+          const target = owner.byId.get(ref.slice(hash + 1));
+          if (target) {
+            childSdx = owner;
+            childEl = target;
+          }
+        }
       } else if (!isResourceRoot) {
         const typeProfile = this.typeProfileFor(el, typeCode);
         let tsdx: SdIndex | null = null;
@@ -4051,7 +4105,27 @@ export class InstanceValidator {
       if (tsdx) merge = { sdx: tsdx, el: tsdx.root };
     }
     if (typeProfilePass) await this.walkChildren(typeProfilePass, typeProfilePassEl ?? typeProfilePass.root, item, rctx, issues, depth, false, null);
-    await this.walkChildren(childSdx, childEl, item, rctx, issues, depth, isResourceRoot, merge);
+    if (!childrenSkipped && !childForeign && !jarProfile && childSdx === sdx && childEl === el && !isResourceRoot && sdx.hasChildren(el)) {
+      // the profile's own element: the same cache entry (getChildMap l. 492-495), which an element of another
+      // definition with this id may have filled with nothing
+      const key = `${this.versionedUrl(sdx)}#${String(el.id || el.path || "")}`;
+      const hit = this.childMapCache.get(key);
+      if (hit === null) childrenSkipped = true;
+      else if (hit === undefined && !this.childMapFrozen) this.childMapCache.set(key, { sdx, el });
+    }
+    if (childrenSkipped) {
+      // not validated: what the parser (elementmodel JsonParser, over the type's own definition) says stands
+      const scratch: Issue[] = [];
+      this.childMapFrozen++;
+      try {
+        await this.walkChildren(childSdx, childEl, item, { ...rctx, ids: new Map() }, scratch, depth, isResourceRoot, null);
+      } finally {
+        this.childMapFrozen--;
+      }
+      for (const i of scratch) if (isParseIssue(i)) issues.push(i);
+    } else {
+      await this.walkChildren(childSdx, childEl, item, rctx, issues, depth, isResourceRoot, merge, false, childForeign);
+    }
     if (typeCode === "Extension" && childSdx.type === "Extension" && childSdx.url !== CORE + "Extension") {
       // checkExtension l. 2655-2669: a simple extension (value[x] min > 0) with no parsed value
       const ved = childSdx.byId.get("Extension.value[x]");
@@ -4359,6 +4433,8 @@ export class InstanceValidator {
     merge: { sdx: SdIndex; el: Record<string, any> } | null = null,
     /** The `_x` object of a primitive (its id / extension); the definition's `value` child is the JSON value itself. */
     primitiveInline = false,
+    /** `el` belongs to another definition than the validator's profile (Item.foreignProfile): that profile. */
+    foreign: SdIndex | null = null,
   ): Promise<void> {
     const node = item.value as Record<string, any>;
     const groups = sdx.children(el);
@@ -4416,7 +4492,7 @@ export class InstanceValidator {
           const idx = /\[(\d+)\]$/.exec(p);
           // JsonParser's npath counts the JSON array as written; the element model (and so every later path) only what it built
           const jpath = idx && p !== path ? `${jbase}[${rawIndex ?? idx[1]}]` : jbase;
-          return { value, ext, key, path: p, jpath, parent: node, typeCode, lp, lit, parentExtUrl, host, inList: baseMax0 !== "1" && baseMax0 !== "0", profileType: profileTypeKeys.has(key), actualType: profileTypeKeys.get(key) };
+          return { value, ext, key, path: p, jpath, parent: node, typeCode, lp, lit, parentExtUrl, host, inList: baseMax0 !== "1" && baseMax0 !== "0", profileType: profileTypeKeys.has(key), actualType: profileTypeKeys.get(key), ...(foreign ? { foreignProfile: foreign } : {}) };
         };
         const raw = node[key];
         const rawExt = node["_" + key];
