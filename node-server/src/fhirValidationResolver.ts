@@ -747,7 +747,7 @@ export class DbValidatorResolver implements ValidatorResolver {
           if (owners.length !== 1 || !pids.includes(owners[0].package_id)) return null;
           const hit = await query(
             "SELECT 1 FROM fhir.artifacts a JOIN unnest($1::text[], $2::text[]) AS dep(pid, pver) ON a.package_id = dep.pid AND a.package_version = dep.pver " +
-              "WHERE a.canonical_url = $3 AND a.grouping_id IS DISTINCT FROM 'examples' LIMIT 1",
+              "WHERE a.canonical_url = $3 LIMIT 1",
             [pids, pvers, canonical],
           );
           return hit.rows.length > 0;

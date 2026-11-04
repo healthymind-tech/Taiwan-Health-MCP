@@ -34,7 +34,7 @@ test("a code system neither held nor on the server's list: the jar's warning, fu
 });
 
 // StandAloneValidatorFetcher.resolveURL l. 220-225: a url under the canonical of a loaded package resolves only through
-// what is loaded — an IG example (package/example, never loaded) does not count
+// what is loaded
 test("a uri under a loaded package's canonical that nothing loaded defines: No definition could be found", async () => {
   class Owned extends FakeResolver {
     async definitionExists(): Promise<boolean> {

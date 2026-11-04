@@ -335,8 +335,7 @@ export interface ValidatorResolver {
   definitionVersionExists?(url: string, version: string): Promise<boolean>;
   /**
    * StandAloneValidatorFetcher.resolveURL (7.0.1, l. 199-237): when the package that owns the url's base
-   * (findBaseUrl) is one of the loaded packages, the url resolves only if a loaded conformance resource (not an
-   * example: package/example is never loaded) has it — true / false; null when no loaded package owns the base
+   * (findBaseUrl) is one of the loaded packages, the url resolves only if a loaded resource of the closure has it — true / false; null when no loaded package owns the base
    * (the HL7 validator would then fetch the owner from the registry). Optional.
    */
   closureOwnedUrl?(url: string): Promise<boolean | null>;
