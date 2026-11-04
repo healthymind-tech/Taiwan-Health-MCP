@@ -165,7 +165,7 @@ async function dbEngine(): Promise<{ validate: Validate; close: () => Promise<vo
     // why an item is not fully checked (report: not-checked-fully breakdown)
     const unchecked: Res = {};
     if (d.checked_fully === false) {
-      for (const k of ["profiles_unchecked", "valuesets_unchecked", "codes_unchecked", "slices_unchecked", "invariants_unchecked", "undecided_causes", "lookups_failed", "deps_missing", "unverified", "fallback_reason"]) {
+      for (const k of ["profiles_unchecked", "valuesets_unchecked", "codes_unchecked", "slices_unchecked", "invariants_unchecked", "undecided_causes", "lookups_failed", "deps_missing", "unverified", "fallback_reason", "rules_unchecked", "limits_exceeded"]) {
         const x = d[k];
         if (x !== undefined && !(Array.isArray(x) && x.length === 0)) unchecked[k] = x;
       }

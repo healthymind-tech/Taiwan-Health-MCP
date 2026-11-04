@@ -110,6 +110,8 @@ export function classifyUnchecked(it: Res): Array<[UncheckedClass, string]> {
   if (u.fallback_reason) out.push(["other", "official validator fallback"]);
   for (const x of u.unverified ?? []) out.push(["other", `unverified ${String(x?.message ?? x).slice(0, 80)}`]);
   for (const c of u.invariants_unchecked ?? []) out.push(["local", `invariant ${c}`]);
+  for (const c of u.rules_unchecked ?? []) out.push(["other", `validator rule not ported: ${c}`]);
+  for (const c of u.limits_exceeded ?? []) out.push(["other", `validator limit exceeded: ${c}`]);
   // a profile the instance itself names wrongly (typo, malformed canonical) is not a missing IG dependency
   for (const c of u.profiles_unchecked ?? []) out.push(isNetwork(it) || !/^https?:\/\/[^\s]+$/u.test(String(c)) ? ["other", "instance names an unknown profile (mutation)"] : ["dependency", `profile ${c}`]);
   // implicit ValueSets of a terminology (LOINC answer lists loinc.org/vs/LL…, SNOMED CT ?fhir_vs) live at the terminology server
