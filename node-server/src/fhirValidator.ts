@@ -2865,15 +2865,17 @@ export class InstanceValidator {
           continue;
         }
         const rpath = `${epath}.resource`;
-        const rt = String(res.resourceType);
+        const typed = R4_RESOURCE_NAMES.has(res.resourceType);
+        // JsonParser: a resource whose resourceType is not a resource name is an untyped `Resource` element with no children
+        const rt = typed ? String(res.resourceType) : "Resource";
         const ok = check(rt);
         if (ok === null) {
           typeProblem = true;
           if (!self) issues.push({ severity: "information", path: rpath, code: "invalid", message: "Unable to determine if this resource is a valid resource type for this search" });
-          if (!(typeof res.id === "string" || rt === "OperationOutcome")) issues.push({ severity: "warning", path: rpath, code: "invalid", message: "Search results must have ids" });
+          if (!((typed && typeof res.id === "string") || rt === "OperationOutcome")) issues.push({ severity: "warning", path: rpath, code: "invalid", message: "Search results must have ids" });
         } else if (ok) {
           if (rt !== "OperationOutcome") {
-            if (typeof res.id !== "string") issues.push({ severity: "warning", path: rpath, code: "invalid", message: "Search results must have ids" });
+            if (!typed || typeof res.id !== "string") issues.push({ severity: "warning", path: rpath, code: "invalid", message: "Search results must have ids" });
             if (rtype !== null && rt !== rtype) typeProblem = true;
             else if (rtype === null) rtype = rt;
           }
@@ -2894,8 +2896,9 @@ export class InstanceValidator {
           continue;
         }
         const rpath = `${epath}.resource`;
-        const rt = String(res.resourceType);
-        const hasId = typeof res.id === "string";
+        const typed = R4_RESOURCE_NAMES.has(res.resourceType);
+        const rt = typed ? String(res.resourceType) : "Resource";
+        const hasId = typed && typeof res.id === "string";
         if (sm === "match") {
           if (!hasId) issues.push({ severity: "error", path: rpath, code: "invalid", message: "Search results must have ids" });
           if (!(types.length === 0 || check(rt))) issues.push({ severity: "error", path: rpath, code: "invalid", message: `This is not a matching resource type for the specified search (${rt} expecting ${typesStr})` });

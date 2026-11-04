@@ -851,3 +851,14 @@ test("a code-less Coding with a version of a system the terminology server does 
   assert.ok(!errs(issues).some(([, m]) => m.startsWith("Coding has no code for system")), JSON.stringify(errs(issues)));
   assert.ok(errs(issues, "warning").some(([p, m]) => p === "Condition.code.coding[0].system" && m === "A definition for CodeSystem 'http://unknown.example.test/hla' version '3.23' could not be found, so the code cannot be validated. No versions of this code system are known"), JSON.stringify(errs(issues, "warning")));
 });
+
+test("BundleValidator.checkSearchSet: an entry whose resourceType is no resource name is an untyped Resource without an id", async () => {
+  const got = errs(await run({
+    resourceType: "Bundle",
+    type: "searchset",
+    link: [{ relation: "self", url: "http://example.test/fhir/Patient?name=a" }],
+    entry: [{ fullUrl: "http://example.test/fhir/Patient/1", resource: { resourceType: "patient", id: "1" }, search: { mode: "match" } }],
+  })).map(([p, m]) => `${p}: ${m}`);
+  assert.ok(got.includes("Bundle.entry[0].resource: This is not a matching resource type for the specified search (Resource expecting [Patient])"), JSON.stringify(got));
+  assert.ok(got.includes("Bundle.entry[0].resource: Search results must have ids"), JSON.stringify(got));
+});
