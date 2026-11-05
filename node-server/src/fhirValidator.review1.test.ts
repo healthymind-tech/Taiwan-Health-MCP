@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { codingsOf, InstanceValidator, type Issue } from "./fhirValidator.js";
-import { CORE, FakeResolver, PAT_PROFILE, SDS, el, sd } from "./fhirTestKit.test.js";
+import { BUNDLE_PROFILE, CORE, FakeResolver, PAT_PROFILE, SDS, el, sd } from "./fhirTestKit.test.js";
 
 type Json = Record<string, any>;
 const EXTRA: Record<string, Json> = {};
@@ -948,4 +948,33 @@ test("a bound CodeableConcept: a server-side code its ValueSet lists (expansion)
   const unknown = (issues: Issue[]): number => issues.filter((i) => i.severity === "error" && i.message.startsWith("Unknown code '453231000124104'")).length;
   assert.equal(unknown(await new InstanceValidator(new R5()).validate(cond, { profiles: [P] })), 0);
   assert.equal(unknown(await new InstanceValidator(new R5()).validate(cond)), 1);
+});
+
+test("a Bundle reached as a reference target resolves its entries' references in itself, not in the outer Bundle (BaseValidator.getFromBundle)", async () => {
+  const BO = "http://example.org/fhir/StructureDefinition/bundle-open";
+  EXTRA[BO] = { ...SDS[BUNDLE_PROFILE], url: BO, snapshot: { element: SDS[BUNDLE_PROFILE].snapshot.element.map((e: Json) => (e.path === "Bundle.entry" && !e.sliceName ? { ...e, slicing: { ...e.slicing, rules: "open" } } : e)) } };
+  const PB = "http://example.org/fhir/StructureDefinition/pat-to-bundle";
+  EXTRA[PB] = sd(PB, "Patient", "resource", [
+    ...SDS[CORE + "Patient"].snapshot.element.filter((e: Json) => e.path !== "Patient.managingOrganization"),
+    el("Patient.managingOrganization", 0, "1", [], { type: [{ code: "Reference", targetProfile: [BO] }] }),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint" });
+  const inner = {
+    resourceType: "Bundle",
+    id: "b1",
+    type: "collection",
+    entry: [
+      { fullUrl: "http://example.test/fhir/Patient/p1", resource: { resourceType: "Patient", id: "p1", identifier: [{ system: "http://www.moi.gov.tw", value: "A123456789" }], managingOrganization: { reference: "Organization/o1" } } },
+      { fullUrl: "http://example.test/fhir/Organization/o1", resource: { resourceType: "Organization", id: "o1", name: "x" } },
+    ],
+  };
+  const outer = {
+    resourceType: "Bundle",
+    type: "collection",
+    entry: [
+      { fullUrl: "http://example.test/fhir/Patient/p0", resource: { resourceType: "Patient", id: "p0", meta: { profile: [PB] }, managingOrganization: { reference: "Bundle/b1" } } },
+      { fullUrl: "http://example.test/fhir/Bundle/b1", resource: inner },
+    ],
+  };
+  const got = errs(await run(outer)).map(([p, m]) => `${p}: ${m}`);
+  assert.ok(!got.some((m) => m.includes("whose entry is missing a fullUrl") || m.includes("Unable to find a profile match")), JSON.stringify(got));
 });

@@ -5580,7 +5580,11 @@ export class InstanceValidator {
     }
   }
 
-  private async resourceConformsOn(ctx: ResourceCtx, url: string, path: string, depth: number, checkSpecials: boolean, forReference: boolean): Promise<boolean> {
+  private async resourceConformsOn(ctx0: ResourceCtx, url: string, path: string, depth: number, checkSpecials: boolean, forReference: boolean): Promise<boolean> {
+    // a Bundle reached as a reference target / conformsTo() focus is the Bundle its own entries resolve in
+    // (BaseValidator.getFromBundle takes the nearest Bundle on the stack): its entries are not entries of the outer one
+    const ctx: ResourceCtx =
+      ctx0.resource?.resourceType === "Bundle" && ctx0.bundle?.bundle !== ctx0.resource ? { ...ctx0, bundle: this.bundleCtx(ctx0.resource, path), entry: null } : ctx0;
     // validateResource(forReference = true): checkContainedReferences is skipped (IV:9051)
     const counted = (i: Issue): boolean => !isParseIssue(i) && !(forReference && / \(dom-3\)$/u.test(i.message));
     // start (IV:6905-7001) never stops at a failure: `ok = startInner(…) && ok` for defn, its dependencies and every
