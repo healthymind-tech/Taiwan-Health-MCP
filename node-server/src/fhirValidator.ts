@@ -1213,6 +1213,8 @@ interface ResourceCtx {
   ids?: Map<string, object>;
   /** Codings of this validation pass whose display their CodeableConcept's bound ValueSet lists (markValueSetDisplays). */
   vsDisplays?: WeakSet<object>;
+  /** Codings of this pass that their CodeableConcept's bound ValueSet lists (its expansion or an include concept). */
+  vsMembers?: WeakSet<object>;
 }
 
 interface BundleEntryCtx {
@@ -3602,7 +3604,7 @@ export class InstanceValidator {
       running.add(url);
       const done = running;
       // validateResource / startInner: stack.resetIds() before each profile pass — element ids are tracked per pass
-      const passCtx: ResourceCtx = { ...rctx, ids: new Map(), vsDisplays: new WeakSet() };
+      const passCtx: ResourceCtx = { ...rctx, ids: new Map(), vsDisplays: new WeakSet(), vsMembers: new WeakSet() };
       p = (async () => {
         const sdx = await this.sdx(url);
         const out: Issue[] = [];
@@ -6760,10 +6762,16 @@ export class InstanceValidator {
     if (!rctx.vsDisplays) return;
     if (typeCode !== "CodeableConcept" || !b || typeof b.valueSet !== "string" || !b.valueSet || b.strength === "example") return;
     if (!isObject(v) || !Array.isArray(v.coding)) return;
-    const codings = v.coding.filter((c: any) => isObject(c) && typeof c.system === "string" && typeof c.code === "string" && c.code && typeof c.display === "string" && c.display);
-    if (!codings.length) return;
+    const coded = v.coding.filter((c: any) => isObject(c) && typeof c.system === "string" && typeof c.code === "string" && c.code);
+    if (!coded.length) return;
     const vs = await this.vsHeader(b.valueSet);
-    if (!vs || !isObject(vs.compose)) return;
+    if (!vs) return;
+    // the code itself: a code the ValueSet lists (its expansion, an include concept) is answered by the server in the
+    // ValueSet's own edition, not as unknown in ours (US Core CareTeam role: a SNOMED US-edition code in the VSAC
+    // expansion; validator_cli reports nothing)
+    if (rctx.vsMembers) for (const c of coded) if (serverPrefers(c.system) === true && valueSetLists(vs, c.system, c.code)) rctx.vsMembers.add(this.sourceOf(c));
+    const codings = coded.filter((c: any) => typeof c.display === "string" && c.display);
+    if (!codings.length || !isObject(vs.compose)) return;
     const okLang = (l: unknown): boolean => typeof l !== "string" || l === "" || /^en(-|$)/iu.test(l);
     for (const c of codings) {
       if (serverPrefers(c.system) !== true) continue;
@@ -7550,7 +7558,7 @@ export class InstanceValidator {
         ...(serverPrefers(system) === true ? { unchecked: { kind: "code" as const, canonical: system } } : {}),
       });
     } else if (r.status === "invalid-code") {
-      issues.push(this.invalidCodeIssue(r, `${item.path}.${r.at ?? "code"}`, system));
+      if (!rctx?.vsMembers?.has(this.sourceOf(v))) issues.push(this.invalidCodeIssue(r, `${item.path}.${r.at ?? "code"}`, system));
     } else if (r.status === "invalid-display") {
       if (!rctx?.vsDisplays?.has(this.sourceOf(v))) issues.push({ severity: r.severity, path: `${item.path}.display`, code: "code-invalid", message: r.message });
     } else if (r.status === "display-unchecked") {
@@ -8917,6 +8925,14 @@ export function narrativeLinkProblems(div: string, anchors: ReadonlySet<string>)
  * matching — slices by profile, reference target profiles — ignores them here too.
  */
 const PARSE_ISSUE = /^Error parsing XHTML: |^Invalid entity in the XHTML \(|^Unrecognized property '|^The property \S+ must be (?:a JSON Array|an Array|an Object), not |^This property must be (?:a simple value|an object), not |^Error parsing JSON: |^Array cannot be empty|^Object must have some content$|^The JSON array for '\d+' is invalid at index |^This base property must be an Array, not |^The JSON element 'resourceType' has the wrong JSON type: |^Unable to find resourceType property$|^Contained resource does not appear to be a FHIR resource \(unknown name /u;
+/** The value set lists system#code: in its expansion (any depth) or as an include concept. */
+function valueSetLists(vs: Record<string, any>, system: string, code: string): boolean {
+  const inc: any[] = isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
+  if (inc.some((i) => isObject(i) && i.system === system && Array.isArray(i.concept) && i.concept.some((c: any) => isObject(c) && c.code === code))) return true;
+  const walk = (list: unknown): boolean => Array.isArray(list) && list.some((c: any) => isObject(c) && ((c.system === system && c.code === code) || walk(c.contains)));
+  return isObject(vs.expansion) && walk(vs.expansion.contains);
+}
+
 /** The value set's compose includes all of `system` (an include with no concept, filter or valueSet). */
 function wholeSystemInclude(vs: Record<string, any> | null, system: string): boolean {
   const inc: any[] = vs && isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];

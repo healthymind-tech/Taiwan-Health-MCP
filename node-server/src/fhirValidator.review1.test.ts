@@ -925,3 +925,27 @@ test("memberOf slicing: a value set including the whole of a system nobody resol
   const got = errs(await new InstanceValidator(new R4()).validate({ resourceType: "Patient", extension: [ext, ext] }, { profiles: [P] })).map(([, m]) => m);
   assert.ok(got.some((m) => m.startsWith("Patient.extension:svc: max allowed = 1, but found 2")), JSON.stringify(got));
 });
+
+test("a bound CodeableConcept: a server-side code its ValueSet lists (expansion) is not unknown in the local edition (checkCodeableConcept l. 1468-1531)", async () => {
+  const SCT = "http://snomed.info/sct";
+  const VSU = "http://example.org/fhir/ValueSet/member-function";
+  const vs = { resourceType: "ValueSet", url: VSU, version: "1", name: "MemberFunction", compose: { include: [{ valueSet: ["http://example.org/fhir/ValueSet/other"] }] }, expansion: { contains: [{ system: SCT, version: "http://snomed.info/sct/731000124108/version/20230901", code: "453231000124104", display: "Primary care provider (occupation)" }] } };
+  class R5 extends Resolver {
+    override async fetchValueSet(url: string): Promise<Json | null> {
+      return url.split("|")[0] === VSU ? vs : super.fetchValueSet(url);
+    }
+    override async checkCode(system: string, code: string, display: string | null): Promise<any> {
+      if (system === SCT) return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${SCT}' version 'x' (International Edition)` };
+      return super.checkCode(system, code, display);
+    }
+  }
+  const P = "http://example.org/fhir/StructureDefinition/cond-member";
+  EXTRA[P] = sd(P, "Condition", "resource", [
+    ...SDS[CORE + "Condition"].snapshot.element.filter((e: Json) => e.path !== "Condition.code"),
+    el("Condition.code", 0, "1", ["CodeableConcept"], { binding: { strength: "extensible", valueSet: VSU } }),
+  ], { baseDefinition: CORE + "Condition", derivation: "constraint" });
+  const cond = { resourceType: "Condition", code: { coding: [{ system: SCT, code: "453231000124104" }] } };
+  const unknown = (issues: Issue[]): number => issues.filter((i) => i.severity === "error" && i.message.startsWith("Unknown code '453231000124104'")).length;
+  assert.equal(unknown(await new InstanceValidator(new R5()).validate(cond, { profiles: [P] })), 0);
+  assert.equal(unknown(await new InstanceValidator(new R5()).validate(cond)), 1);
+});
