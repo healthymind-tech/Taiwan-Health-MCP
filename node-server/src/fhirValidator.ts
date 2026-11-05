@@ -5731,7 +5731,8 @@ export class InstanceValidator {
         // terminology server with the value set, which answers UNKNOWN_CODESYSTEM as a warning — ok, so a member
         // (FHIRPathEngine.funcMemberOf: validateCode(…).isOk(); official CRD DeviceRequest: two ext-request-category
         // codings of X12 1365 under X12ServiceType both match the ServiceCategory slice)
-        if (m === undefined && system !== null && wholeSystemInclude(await this.vsHeader(valueSet), system) && !(await this.systemResolvable(system))) {
+        // (only a coded value: funcMemberOf answers empty for another type — a `coding` written on a Period is none)
+        if (m === undefined && system !== null && ["CodeableConcept", "Coding", undefined].includes(isObject(a0) ? this.choiceTypeOf.get(a0) : undefined) && wholeSystemInclude(await this.vsHeader(valueSet), system) && !(await this.systemResolvable(system))) {
           hit = true;
           continue;
         }
@@ -5880,6 +5881,9 @@ export class InstanceValidator {
   }
 
   /** Values at a discriminator path inside an instance value. */
+  /** The type of a choice value discriminatorValues took from its `<stem><Type>` property. */
+  private choiceTypeOf = new WeakMap<object, string>();
+
   private discriminatorValues(value: any, path: string, rctx: ResourceCtx): any[] {
     let cur: any[] = [value];
     if (path === "$this") return cur;
@@ -5920,6 +5924,7 @@ export class InstanceValidator {
             for (const k of Object.keys(c)) {
               if (k.startsWith(raw) && k.length > raw.length && /[A-Z]/.test(k[raw.length]) && (!ofType || k === raw + ofType[0].toUpperCase() + ofType.slice(1))) {
                 const x = c[k];
+                for (const y of Array.isArray(x) ? x : [x]) if (isObject(y)) this.choiceTypeOf.set(y, k.slice(raw.length));
                 if (Array.isArray(x)) pushAll(next, x);
                 else if (x !== undefined && x !== null) next.push(x);
               }
