@@ -4,7 +4,7 @@
  * ValueSet membership and expansion. No DB access — every lookup goes through
  * the injected `TerminologyDeps`, so the logic is unit-testable with fakes.
  */
-import { specialSystemMember } from "./fhirSpecialSystems.js";
+import { specialSystemMember, terminologyServerKnows } from "./fhirSpecialSystems.js";
 
 const STANDARDS_STATUS_EXT = "http://hl7.org/fhir/StructureDefinition/structuredefinition-standards-status";
 
@@ -483,6 +483,11 @@ async function systemPartContains(
     // VSV:2136-2150: a system neither held nor known to the terminology server: inComponent gives up (null), neither member nor
     // not. The caller knows the answer (jar, CodeableConcept under a required binding: UNKNOWN_CODESYSTEM only, no binding issue)
     if (!listed && !cs && system !== null && deps.systemUnknown && (await deps.systemUnknown(system))) return undefined;
+    // VSV:2113-2118 (standalone 7.0.1): the include pins a version no held copy has (resolveCodeSystem(system, version) → null),
+    // so the include goes to the terminology server, whose answer is not known here; only a system the server does not know
+    // is taken at face value (CODESYSTEM_UNSUPPORTED, l. 2131-2142). Held at another version → undecided, never a pass
+    // (jar: v2-0532#Y in an include pinned to version 'HL7 v2.5' → not in the value set)
+    if (listed && !cs && typeof part.version === "string" && part.version && terminologyServerKnows(system) && (await deps.loadCodeSystem(system))) return undefined;
     return listed;
   }
   const filters: ComposeFilter[] = part.filter || [];

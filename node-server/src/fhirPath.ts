@@ -1913,6 +1913,16 @@ function numericRoot(value: number | bigint, base: string): any {
 }
 
 /**
+ * A primitive element without a value, only its `_x` shadow (id / extensions): the element model's node with no value and
+ * those children (JsonParser.parseChildPrimitive; InstanceValidator.checkInvariants still evaluates the element's
+ * invariants, IV l. 8010). `hasValue()` is false, `extension(…)` sees the shadow's extensions, `$this as T` keeps the node.
+ */
+export function primitiveNoValueNode(shadow: Record<string, any>, base: string, type: string | null): any {
+  const ctx = { model: r4Model, getDecimal: fpTypes.FP_Decimal_Native.getDecimal };
+  return fpTypes.ResourceNode.makeResNode(ctx, null, null, base, shadow, type ?? (r4Model.path2Type as Record<string, string>)[base] ?? null);
+}
+
+/**
  * Evaluate an expression against one node with the invariant engine (same
  * model, options, user functions and variables as evaluateConstraint) and
  * return the raw result collection. Throws on syntax / evaluation errors and

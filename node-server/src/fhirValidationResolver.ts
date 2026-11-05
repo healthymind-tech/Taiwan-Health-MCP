@@ -515,6 +515,15 @@ const VERDICT_CACHE_MAX = 20000;
 const codeCheckMemo = new TtlMemo<CodeCheck>(VERDICT_TTL_MS, VERDICT_CACHE_MAX);
 const membershipMemo = new TtlMemo<boolean | undefined>(VERDICT_TTL_MS, VERDICT_CACHE_MAX);
 const scopedVersionMemo = new TtlMemo<string | null>(SD_TTL_MS, SD_CACHE_MAX);
+/**
+ * The resource types validator_cli 7.0.1 loads from a package into its worker context: ValidatorUtils.loaderForVersion
+ * (R4: CapabilityStatement, StructureDefinition, ValueSet, CodeSystem, SearchParameter, OperationDefinition, Questionnaire,
+ * ConceptMap, StructureMap, NamingSystem; ValidatorUtils.java l. 112-114) plus ImplementationGuide
+ * (SimpleWorkerContext.loadFromPackageInt l. 574). Every folder of the package is listed (NpmPackage.listIndexedResources
+ * l. 990-1004, example/ included), but a Library, PlanDefinition, ActivityDefinition, Measure … is never in the context, so
+ * a URL naming one does not resolve (context.fetchResource → null; ValidationEngine.resolveURL l. 1420).
+ */
+const CONTEXT_LOADED_TYPES = ["CapabilityStatement", "StructureDefinition", "ValueSet", "CodeSystem", "SearchParameter", "OperationDefinition", "Questionnaire", "ConceptMap", "StructureMap", "NamingSystem", "ImplementationGuide"];
 const ownedMemo = new TtlMemo<boolean | null>(SD_TTL_MS, SD_CACHE_MAX);
 
 /**
@@ -765,12 +774,17 @@ export class DbValidatorResolver implements ValidatorResolver {
     });
   }
 
-  /** Does any loaded package (any version) define a conformance resource with this canonical URL? */
-  /** (v17.5) A definition of `url` with exactly `version` installed (any package); fail-open on DB trouble. */
+  /**
+   * (v17.5) A definition of `url` installed at `version` (any package); fail-open on DB trouble. The version is matched like
+   * BaseWorkerContext.fetchResourceWithExceptionByVersion → CanonicalResourceManager.getByPackage(url, version) (7.0.1,
+   * CanonicalResourceManager.java l. 699-737): the exact version, else the same major.minor line, else a wildcard match
+   * (pickCanonicalVersion). Only the resource types the validator loads into its context count (CONTEXT_LOADED_TYPES).
+   */
   async definitionVersionExists(url: string, version: string): Promise<boolean> {
     return guarded(async () => {
       try {
-        return (await query("SELECT 1 FROM fhir.artifacts WHERE canonical_url = $1 AND raw_json->>'version' = $2 LIMIT 1", [url, version])).rows.length > 0;
+        const rows = (await query<{ version: string | null }>("SELECT DISTINCT raw_json->>'version' AS version FROM fhir.artifacts WHERE canonical_url = $1 AND resource_type = ANY($2::text[])", [url, CONTEXT_LOADED_TYPES])).rows;
+        return pickCanonicalVersion(rows, version) !== null;
       } catch {
         return true;
       }
@@ -791,8 +805,8 @@ export class DbValidatorResolver implements ValidatorResolver {
           if (owners.length !== 1 || !pids.includes(owners[0].package_id)) return null;
           const hit = await query(
             "SELECT 1 FROM fhir.artifacts a JOIN unnest($1::text[], $2::text[]) AS dep(pid, pver) ON a.package_id = dep.pid AND a.package_version = dep.pver " +
-              "WHERE a.canonical_url = $3 LIMIT 1",
-            [pids, pvers, canonical],
+              "WHERE a.canonical_url = $3 AND a.resource_type = ANY($4::text[]) LIMIT 1",
+            [pids, pvers, canonical, CONTEXT_LOADED_TYPES],
           );
           return hit.rows.length > 0;
         }
@@ -807,7 +821,7 @@ export class DbValidatorResolver implements ValidatorResolver {
     return guarded(async () => {
       let ok = true; // fail-open on DB trouble: never invent a resolution error
       try {
-        ok = (await query("SELECT 1 FROM fhir.artifacts WHERE canonical_url = $1 LIMIT 1", [canonical])).rows.length > 0;
+        ok = (await query("SELECT 1 FROM fhir.artifacts WHERE canonical_url = $1 AND resource_type = ANY($2::text[]) LIMIT 1", [canonical, CONTEXT_LOADED_TYPES])).rows.length > 0;
       } catch {
         // Not cached: a transient DB error must not suppress the check for the next
         // 30 minutes (the "reported in some rounds only" nondeterminism).

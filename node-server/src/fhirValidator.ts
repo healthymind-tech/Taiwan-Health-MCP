@@ -35,7 +35,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { evaluateConstraint, evaluateExpression, fhirPathBase, invariantExpression, primitiveValueAlias, type FhirPathEnv } from "./fhirPath.js";
+import { evaluateConstraint, evaluateExpression, fhirPathBase, invariantExpression, primitiveNoValueNode, primitiveValueAlias, type FhirPathEnv } from "./fhirPath.js";
 import { fixedPattern } from "./fhirSnapshot.js";
 import { generateSnapshotAsync } from "./fhirSnapshotGenerator.js";
 import { validateStructureDefinition } from "./fhirSdValidator.js";
@@ -4111,6 +4111,9 @@ export class InstanceValidator {
     let childSdx = sdx;
     let childEl: Record<string, any> = el;
     const typeRootConstraints: Array<[SdIndex, Record<string, any>]> = [];
+    // checkChildByDefinition l. 7957-7964 / 8010 (7.0.1): for a contentReference element the invariants checked are the
+    // referenced element's (typeDefn), not the referencing one's (RequestGroup.action.action → rqg-1 of RequestGroup.action)
+    let contentRefConstraints: [SdIndex, Record<string, any>] | null = null;
     // The validator's profile when `el` comes from another definition (Item.foreignProfile), and the one the
     // children get when they do
     const jarProfile = item.foreignProfile && item.foreignProfile !== sdx ? item.foreignProfile : null;
@@ -4144,11 +4147,13 @@ export class InstanceValidator {
           childSdx = external;
           childEl = ext;
           childForeign = owner;
+          contentRefConstraints = [external, ext];
         } else {
           const target = owner.byId.get(ref.slice(hash + 1));
           if (target) {
             childSdx = owner;
             childEl = target;
+            contentRefConstraints = [owner, target];
           }
         }
       } else if (!isResourceRoot) {
@@ -4322,7 +4327,8 @@ export class InstanceValidator {
       }
     }
     if (typeCode === "Reference") await this.checkReference(el, v, item, rctx, issues, depth, sdx);
-    await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
+    if (contentRefConstraints) await this.checkConstraints(contentRefConstraints[0], contentRefConstraints[1], item, typeCode, rctx, issues);
+    else await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
     for (const [tsdx, troot] of typeRootConstraints) {
       if (tsdx === sdx && troot === el) continue;
       await this.checkConstraints(tsdx, troot, item, typeCode, rctx, issues);
@@ -4531,6 +4537,13 @@ export class InstanceValidator {
     if (xhtml) return;
     let list = ext.extension;
     if (list === undefined) return;
+    if (Array.isArray(list) && list.length === 0) {
+      // the fork's `extension` is a complex child: JsonParser.parseChildComplex reports ARRAY_CANNOT_BE_EMPTY for `[]`
+      // (jar: Subscription `_criteria: {"extension": []}` → error at Subscription.criteria.extension)
+      const at = item.jpath ?? item.parserPath ?? path;
+      if (!this.xmlSource) issues.push({ severity: "error", path: `${at}.extension`, code: "structure", message: "Array cannot be empty - the property should not be present if it has no values" });
+      return;
+    }
     if (!Array.isArray(list)) {
       // parseChildComplex (JsonParser.java:521-525): the error, then an object is the one child
       const at = item.jpath ?? item.parserPath ?? path;
@@ -7259,9 +7272,8 @@ export class InstanceValidator {
   }
 
   private async checkMaxValueSet(maxRef: string, codings: Array<[string | null, string | null]>, typeCode: string, item: Item, issues: Issue[]): Promise<void> {
-    // BaseValidator.resolveBindingReference (validation tag 7.0.1:1007-1009): the BCP-13 document URL R4's
-    // Expression.language max binding names is the mimetypes value set
-    const maxUrl = maxRef === "http://www.rfc-editor.org/bcp/bcp13.txt" ? "http://hl7.org/fhir/ValueSet/mimetypes" : maxRef;
+    // BaseValidator.resolveBindingReference l. 1007-1009 (7.0.1): bcp13.txt is read as the mimetypes ValueSet
+    const maxUrl = stripVersion(maxRef) === "http://www.rfc-editor.org/bcp/bcp13.txt" ? "http://hl7.org/fhir/ValueSet/mimetypes" : maxRef;
     const mvs = await this.vsHeader(maxUrl);
     if (!mvs) {
       if (this.resolver.codeSystemExists && (await this.resolver.codeSystemExists(maxUrl).catch(() => false))) {
@@ -7282,10 +7294,10 @@ export class InstanceValidator {
       issues.push({ severity: "information", path: item.path, code: "informational", message: `Membership in the maximum value set ${maxUrl} could not be decided with local terminology`, unchecked: { kind: "code", canonical: maxUrl } });
       return;
     }
-    // InstanceValidator.describeReference (validation tag 7.0.1:5698-5714): a reference that is not the value set's own url
-    // names what it actually refers to
-    const named = `'${mvs.title || mvs.name || maxUrl}' (${mvs.url}${mvs.version ? `|${mvs.version}` : ""})`;
-    const desc = maxRef.split("|")[0] === mvs.url ? named : `${maxRef}(which actually refers to ${named})`;
+    // InstanceValidator.describeReference l. 5698-5714: a reference that is not the resolved ValueSet's url|version names both
+    const [uref, vref] = maxRef.includes("|") ? [maxRef.slice(0, maxRef.lastIndexOf("|")), maxRef.slice(maxRef.lastIndexOf("|") + 1)] : [maxRef, null];
+    const target = `'${mvs.title || mvs.name || maxUrl}' (${mvs.url}${mvs.version ? `|${mvs.version}` : ""})`;
+    const desc = uref === mvs.url && (vref === null || vref === mvs.version) ? target : `${maxRef}(which actually refers to ${target})`;
     const shown = codings.map(([s, c]) => `${s ?? "null"}#${c}`).join(", ");
     let message: string;
     if (typeCode === "CodeableConcept" || typeCode === "CodeableReference") {
@@ -7497,7 +7509,13 @@ export class InstanceValidator {
       // outside http://hl7.org/fhir and not a canonical → "assume they are valid". So a uri / url on example.com,
       // example.net or acme.org resolves and is no URL_EXAMPLE (corpus: all 13344 official ones are example.org / acme.com)
       const engineResolves = (typeCode === "uri" || typeCode === "url") && (!/^https?:\/\//u.test(u) || (!u.includes("example.org") && !u.includes("acme.com") && !u.startsWith("http://hl7.org/fhir")));
-      const found = /^(?:tel|mailto|llp|urn):/u.test(u) || (!!this.resolver.definitionExists && (await this.defExists(u))) || engineResolves;
+      // ValidationEngine.resolveURL l. 1420 passes the whole `url|version` to context.fetchResource, which resolves that
+      // version only (BaseWorkerContext l. 2646-2650 → CanonicalResourceManager.getByPackage(url, version)): a definition
+      // installed at another version does not resolve it (jar: QuestionnaireResponse.questionnaire '…/satisfaction|2.1'
+      // with the Questionnaire at 1.0.0 → URL_EXAMPLE)
+      const ver = v.includes("|") ? v.slice(v.lastIndexOf("|") + 1) : "";
+      const defFound = !!this.resolver.definitionExists && (await this.defExists(u)) && (!ver || !this.resolver.definitionVersionExists || (await this.resolver.definitionVersionExists(u, ver).catch(() => true)));
+      const found = /^(?:tel|mailto|llp|urn):/u.test(u) || defFound || engineResolves;
       // settings.isAllowExamples(): "nothing - these do need to resolve"
       // a value with whitespace has failed the URI rule (validateElement: the URL checks run on a good value only)
       if (!found && !this.allowExamples && !/\s/.test(v)) issues.push({ severity: "error", path: item.path, code: "invalid", message: `Example URLs are not allowed in this context (${short(v)})` });
@@ -8581,7 +8599,11 @@ export class InstanceValidator {
   ): Promise<void> {
     const constraints: Array<Record<string, any>> = el.constraint || [];
     if (!constraints.length) return;
-    if (item.value === null || item.value === undefined) return;
+    // a primitive with only its `_x` shadow is an element without a value: checkChildByDefinition l. 8010 still runs its
+    // invariants (jar: us-core-1 `($this as dateTime).toString().length() >= 8` fails on a value-less effectiveDateTime
+    // carrying a data-absent-reason extension)
+    const shadowOnly = (item.value === null || item.value === undefined) && item.primitiveValue === undefined && isPrimitive(typeCode) && typeCode !== "xhtml" && isObject(item.ext);
+    if ((item.value === null || item.value === undefined) && !shadowOnly) return;
     const env: FhirPathEnv = {
       resource: this.fhirPathView(rctx.resource),
       rootResource: this.fhirPathView(rctx.container || rctx.resource),
@@ -8600,7 +8622,9 @@ export class InstanceValidator {
     const base = fhirPathBase(String(el.path || sdx.type), item.actualType && isPrimitive(typeCode) ? item.actualType : typeCode);
     // the element model: a resource's dropped properties are not there for FHIRPath (bdl-9 on an `identifier` array …)
     let constraintNode = item.primitiveValue !== undefined ? { value: item.primitiveValue } : this.fhirPathView(item.value);
-    if (item.value === rctx.resource && isObject(item.value) && typeof item.value.resourceType === "string") {
+    if (shadowOnly) {
+      constraintNode = primitiveNoValueNode(item.ext as Record<string, any>, base, typeCode);
+    } else if (item.value === rctx.resource && isObject(item.value) && typeof item.value.resourceType === "string") {
       const own = await this.sdx(CORE + item.value.resourceType);
       if (own) constraintNode = await this.constraintView(await this.parsedView(this.fhirPathView(item.value), own), own, own.root, item.value.resourceType);
     } else if (typeCode === "Extension" && isObject(item.value)) {
