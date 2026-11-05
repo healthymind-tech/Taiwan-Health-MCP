@@ -4111,7 +4111,7 @@ export class InstanceValidator {
     let childSdx = sdx;
     let childEl: Record<string, any> = el;
     const typeRootConstraints: Array<[SdIndex, Record<string, any>]> = [];
-    // checkChildByDefinition l. 7957-7964 / 8010 (7.0.1): for a contentReference element the invariants checked are the
+    // checkChildByDefinition l. 7957-7964 / 8010 (7.0.1): for a `#id` contentReference element the invariants checked are the
     // referenced element's (typeDefn), not the referencing one's (RequestGroup.action.action → rqg-1 of RequestGroup.action)
     let contentRefConstraints: [SdIndex, Record<string, any>] | null = null;
     // The validator's profile when `el` comes from another definition (Item.foreignProfile), and the one the
@@ -4147,13 +4147,14 @@ export class InstanceValidator {
           childSdx = external;
           childEl = ext;
           childForeign = owner;
-          contentRefConstraints = [external, ext];
         } else {
           const target = owner.byId.get(ref.slice(hash + 1));
           if (target) {
             childSdx = owner;
             childEl = target;
-            contentRefConstraints = [owner, target];
+            // resolveNameReference (l. 6291-6296) matches `#id` only: an absolute `url#id` gives no typeDefn, so the
+            // referencing element's own invariants are checked (jar: cpg-strategy RequestGroup.action.action → no rqg-1)
+            if (hash === 0) contentRefConstraints = [owner, target];
           }
         }
       } else if (!isResourceRoot) {

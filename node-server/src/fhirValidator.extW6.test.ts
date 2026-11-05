@@ -22,6 +22,15 @@ const TEST_SDS: Record<string, Record<string, any>> = {
     el("RequestGroup.action.resource", 0, "1", ["Reference"]),
     el("RequestGroup.action.action", 0, "*", [], { contentReference: "#RequestGroup.action" }),
   ]),
+  "http://example.org/StructureDefinition/rg-profile": sd("http://example.org/StructureDefinition/rg-profile", "RequestGroup", "resource", [
+    ...base("RequestGroup"),
+    el("RequestGroup.action", 0, "*", ["BackboneElement"], {
+      constraint: [{ key: "rqg-1", severity: "error", human: "Must have resource or action but not both", expression: "resource.exists() != action.exists()" }],
+    }),
+    el("RequestGroup.action.title", 0, "1", ["string"]),
+    el("RequestGroup.action.resource", 0, "1", ["Reference"]),
+    el("RequestGroup.action.action", 0, "*", [], { contentReference: CORE + "RequestGroup#RequestGroup.action" }),
+  ], { baseDefinition: CORE + "RequestGroup", derivation: "constraint" }),
   [CORE + "Observation"]: sd(CORE + "Observation", "Observation", "resource", [
     ...base("Observation"),
     el("Observation.effective[x]", 0, "1", ["dateTime"], {
@@ -64,6 +73,12 @@ test("invariants of a contentReference element are the referenced element's", as
   const e = await errs({ resourceType: "RequestGroup", action: [{ title: "a", action: [{ title: "b" }] }, { title: "c", resource: { reference: "Task/t" } }] });
   const rqg = e.filter(([, m]) => m.startsWith("Constraint failed: rqg-1"));
   assert.deepEqual(rqg.map(([p]) => p), ["RequestGroup.action[0].action[0]"], JSON.stringify(e));
+  // resolveNameReference l. 6291-6296 matches `#id` only: an absolute `url#id` keeps the referencing element's invariants
+  const issues = await new InstanceValidator(new W6Resolver()).validate(
+    { resourceType: "RequestGroup", meta: { profile: ["http://example.org/StructureDefinition/rg-profile"] }, action: [{ title: "a", action: [{ title: "b" }] }] },
+    { profiles: ["http://example.org/StructureDefinition/rg-profile"] },
+  );
+  assert.ok(!issues.some((i) => i.message.startsWith("Constraint failed: rqg-1")), JSON.stringify(issues));
 });
 
 // checkChildByDefinition l. 8010: the invariants of a primitive element without a value (only its `_x` shadow) still run
