@@ -3446,7 +3446,10 @@ export class InstanceValidator {
   private async constraintView(node: Record<string, any>, sdx: SdIndex, el: Record<string, any>, typeCode: string): Promise<Record<string, any>> {
     let memo = this.constraintViews.get(node);
     if (!memo) this.constraintViews.set(node, (memo = new Map()));
-    const hit = memo.get(typeCode);
+    // the view depends on the definition it is read with: a contentReference element seen without children (only the
+    // BackboneElement properties survive) must not answer for the referenced element of another pass
+    const memoKey = `${typeCode}\u0000${sdx.url}|${sdx.sd?.version ?? ""}\u0000${String(el.id ?? el.path ?? "")}`;
+    const hit = memo.get(memoKey);
     if (hit) return hit;
     let owner = sdx;
     let groups = sdx.children(el);
@@ -3500,7 +3503,7 @@ export class InstanceValidator {
     }
     const view = changed ? out : node;
     if (changed) this.viewSource.set(out, node);
-    memo.set(typeCode, view);
+    memo.set(memoKey, view);
     return view;
   }
 
