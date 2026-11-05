@@ -1012,17 +1012,25 @@ export async function snomedConcept(code: string): Promise<SnomedConceptRow | nu
   }
 }
 
-/** Every English FSN / synonym of a concept: snomed.descriptions + snomed.inactive_descriptions. */
+/**
+ * Every English FSN / synonym of a concept: snomed.descriptions + snomed.inactive_descriptions, in the order tx.fhir.org
+ * lists a concept's displays — the preferred term (US-preferred synonym) first, then by description id (official corpus:
+ * 'Malignant neoplasm of ovary, Malignant tumour of ovary, …, Malignant neoplasm of ovary (disorder)', 'Penicillin,
+ * Substance with penicillin structure (substance), Substance with penicillin structure').
+ */
 export async function snomedConceptDescriptions(code: string): Promise<SnomedDescriptionRow[]> {
   if (!isDigits(code)) return [];
   try {
     return (
       await query<{ term: string; active: boolean; effective_time: string | null; first_released: string | null }>(
-        `SELECT term, active, NULL::text AS effective_time, ${DATE("first_released")} AS first_released
-           FROM snomed.descriptions WHERE concept_id = $1 AND active = TRUE
-         UNION ALL
-         SELECT term, active, ${DATE("effective_time")}, ${DATE("first_released")}
-           FROM snomed.inactive_descriptions WHERE concept_id = $1`,
+        `SELECT term, active, effective_time, first_released FROM (
+           SELECT term, active, NULL::text AS effective_time, ${DATE("first_released")} AS first_released,
+                  (type_id = 900000000000013009 AND us_preferred) AS pt, description_id
+             FROM snomed.descriptions WHERE concept_id = $1 AND active = TRUE
+           UNION ALL
+           SELECT term, active, ${DATE("effective_time")}, ${DATE("first_released")}, FALSE, description_id
+             FROM snomed.inactive_descriptions WHERE concept_id = $1
+         ) d ORDER BY pt DESC, description_id`,
         [code],
       )
     ).rows.map((r) => ({ term: r.term, active: r.active === true, effectiveTime: r.effective_time, firstReleased: r.first_released }));
