@@ -194,3 +194,13 @@ test("ROUND 11: Unknown code names the CodeSystem's own url; a string property f
   assert.equal(codeInFilter(idx, f, findConcept(idx, "B")!), true);
   assert.equal(codeInFilter(idx, f, findConcept(idx, "A")!), false);
 });
+
+test("an include pinned to a CodeSystem version not held (another version is): an enumerated code is undecided, not a face-value member", async () => {
+  const idx = indexCodeSystem({ ...CS, version: "2.0.0" });
+  const deps: TerminologyDeps = { ...depsWith(null), loadCodeSystem: async (u) => (u === "http://x/cs" || u === "http://x/cs|2.0.0" ? idx : null) };
+  const pinned = { include: [{ system: "http://x/cs", version: "HL7 v2.5", concept: [{ code: "A" }] }] };
+  assert.equal(await composeContains(pinned, "http://x/cs", "A", deps), undefined);
+  assert.equal(await composeContains({ include: [{ system: "http://x/cs", version: "2.0.0", concept: [{ code: "A" }] }] }, "http://x/cs", "A", deps), true);
+  // nothing held at all: the enumerated list stands
+  assert.equal(await composeContains(pinned, "http://x/cs", "A", depsWith(null)), true);
+});

@@ -472,6 +472,11 @@ async function systemPartContains(
   if (Array.isArray(part.concept) && part.concept.length) {
     // ValueSetValidator.inComponent: an enumerated concept matches exactly (cc.getCode().equals(code))
     const listed = part.concept.some((c: any) => String(c.code) === code);
+    // an include pinned to a version of the CodeSystem nobody here holds, while another version is held: the
+    // validator resolves that version (getCodeSystemVersionFromValueSet → resolveCodeSystem) and, not finding it, asks
+    // the terminology server, whose answer is not known here (official eCR: PHIN VADS YNU includes v2-0532 version
+    // 'HL7 v2.5' — the code is not accepted). Undecided rather than a face-value member.
+    if (listed && !loaded && typeof part.version === "string" && part.version && (await deps.loadCodeSystem(system))) return undefined;
     // REVIEW_port_2 G19 (VSV:2211 validateCodeInConceptList before the include's concept list): a listed code the
     // complete CodeSystem does not define is not a member
     if (listed && cs && cs.content === "complete" && !findConcept(cs, code)) return false;
