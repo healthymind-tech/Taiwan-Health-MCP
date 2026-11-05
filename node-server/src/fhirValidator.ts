@@ -6622,11 +6622,31 @@ export class InstanceValidator {
         const there = await this.resolver.fetchCodeSystem!(`${system}|${scoped}`).catch(() => null);
         if (!there || there.content !== "not-present") return false;
         const used = await this.resolver.fetchCodeSystem!(system).catch(() => null);
-        return !!used && (used.content === "complete" || used.content === "fragment");
+        if (!used || (used.content !== "complete" && used.content !== "fragment")) return false;
+        // the server evaluates the value set's compose, never a shipped expansion (addServerValidationParameters, r5 tag
+        // 7.0.1:2003-2005 drops it): a local answer from the compose and a complete copy is the server's too; one an
+        // expansion (of the value set or of one it imports) can give is not
+        return this.carriesExpansion(vs, 0, new Set());
       })();
       this.serverBindingCache.set(key, p);
     }
     return p;
+  }
+
+  /** The value set, or one its includes / excludes import (transitively), carries an expansion. */
+  private async carriesExpansion(vs: Record<string, any> | null, depth: number, seen: Set<string>): Promise<boolean> {
+    if (!isObject(vs) || depth > 5) return false;
+    if (isObject(vs.expansion) && Array.isArray(vs.expansion.contains)) return true;
+    const parts: any[] = isObject(vs.compose) ? [...(vs.compose.include || []), ...(vs.compose.exclude || [])] : [];
+    for (const part of parts) {
+      for (const u of isObject(part) && Array.isArray(part.valueSet) ? part.valueSet : []) {
+        const url = String(u);
+        if (seen.has(url)) continue;
+        seen.add(url);
+        if (await this.carriesExpansion(await this.resolver.fetchValueSet(url).catch(() => null), depth + 1, seen)) return true;
+      }
+    }
+    return false;
   }
 
   /** The issue of an invalid-code answer; one local data could not decide carries `unchecked` (F5). */

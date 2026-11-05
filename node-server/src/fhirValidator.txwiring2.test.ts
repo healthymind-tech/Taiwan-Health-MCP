@@ -691,7 +691,10 @@ test("a binding whose code system, seen from the value set's package, is a not-p
   const VSM = "http://x/ValueSet/ms";
   const CS = "http://x/cs";
   class R extends FakeResolver {
-    constructor(private readonly scoped: string | null) {
+    constructor(
+      private readonly scoped: string | null,
+      private readonly expanded = true,
+    ) {
       super();
     }
     async fetchStructureDefinition(url: string): Promise<Json | null> {
@@ -703,6 +706,10 @@ test("a binding whose code system, seen from the value set's package, is a not-p
     }
     async fetchValueSet(url: string): Promise<Json | null> {
       if (url.split("|")[0] === VSM) return { resourceType: "ValueSet", url: VSM, version: "1.0.0", title: "MS", compose: { include: [{ valueSet: ["http://x/ValueSet/imported"] }] } };
+      if (url === "http://x/ValueSet/imported") {
+        const compose = { include: [{ system: CS, filter: [{ property: "concept", op: "descendent-of", value: "root" }] }] };
+        return { resourceType: "ValueSet", url, compose, ...(this.expanded ? { expansion: { contains: [{ system: CS, code: "a" }] } } : {}) };
+      }
       return super.fetchValueSet(url);
     }
     async valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
@@ -723,8 +730,12 @@ test("a binding whose code system, seen from the value set's package, is a not-p
   }
   const pat = { resourceType: "Condition", id: "c1", meta: { profile: [PM] }, category: [{ text: "x" }], subject: { reference: "Patient/p1" }, clinicalStatus: { coding: [{ system: CS, code: "a" }] } };
   const stub = await new InstanceValidator(new R("3.0.1")).validate(pat);
-  assert.deepEqual(errors(stub), []);
+  // (the core clinicalStatus binding, condition-clinical, stays as before)
+  assert.deepEqual(errors(stub).filter((i) => i.message.includes(VSM)), []);
   assert.ok(stub.some((i: any) => i.severity === "information" && i.unchecked?.canonical === VSM && /could not be confirmed as members of the value set 'MS'/.test(i.message)), JSON.stringify(stub));
   const held = await new InstanceValidator(new R("1.2")).validate(pat);
   assert.ok(!held.some((i: any) => i.unchecked?.canonical === VSM), JSON.stringify(held));
+  // no shipped expansion on the way: the compose over the complete copy is what the server evaluates too
+  const composed = await new InstanceValidator(new R("3.0.1", false)).validate(pat);
+  assert.ok(!composed.some((i: any) => i.unchecked?.canonical === VSM), JSON.stringify(composed));
 });
