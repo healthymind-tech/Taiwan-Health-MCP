@@ -28,7 +28,7 @@
  * what terminology this install holds), the all-corpus figures with the network bucket, and the items no tool call can
  * carry (flag tool-boundary: outside the gate, measured through validateText, with what rejects them in the service).
  *
- * --corrections file (the evaluator's corrections_v<n>.jsonl: one {ig, id, issues} per line, `issues` in the shape of a
+ * --corrections file (the evaluator's corrections_v<n>.jsonl: one {ig, id, issues[, crash]} per line — `crash: true` puts the item in the official-crash bucket —, `issues` in the shape of a
  * <id>.official.json, one validator_cli JVM per item): the batch run of validator_cli reuses cached code validations,
  * so listed items are scored against that standalone result instead; the official files are not touched.
  *
@@ -67,6 +67,13 @@ if (correctionsFile) {
     const it = byId.get(`${c.ig}/${c.id}`);
     if (!it) {
       correctionsUnmatched.push(`${c.ig}/${c.id}`);
+      continue;
+    }
+    if (c.crash === true) {
+      // the standalone validator_cli crashed on it: official-crash bucket (PASS iff TS reports >= 1 error), never compared
+      it.officialErrors = [];
+      it.officialCrash = true;
+      corrected++;
       continue;
     }
     const official: SimpleIssue[] = (c.issues as Res[])
