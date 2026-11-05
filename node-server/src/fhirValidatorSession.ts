@@ -70,6 +70,7 @@ export function sessionResolver(inner: ValidatorResolver, session: LookupSession
   if (hasReject("fetchCodeSystem")) view.fetchCodeSystem = (u) => pinned("code system content", [u], u, () => inner.fetchCodeSystem!(u), { answer: null });
   // without an answer the reference resolves as an unscoped one
   if (hasReject("scopedDefinitionVersion")) view.scopedDefinitionVersion = (u, s, t) => pinned("scoped definition", [u, String(s.url), String(s.version), t ?? ""], u, () => inner.scopedDefinitionVersion!(u, s, t), { answer: null });
+  if (hasReject("scopedCodeSystemVersion")) view.scopedCodeSystemVersion = (s, vs) => pinned("scoped code system", [s, String(vs.url), String(vs.version)], s, () => inner.scopedCodeSystemVersion!(s, vs), { answer: null });
   if (hasReject("fetchReference")) view.fetchReference = (r) => pinned("reference", [r], r, () => inner.fetchReference!(r), null);
   if (hasReject("fetchSearchParameter")) view.fetchSearchParameter = (u) => pinned("search parameter", [u], u, () => inner.fetchSearchParameter!(u), { answer: null });
   if (hasReject("fetchCanonical")) view.fetchCanonical = (t, u) => pinned("canonical", [t, u], u, () => inner.fetchCanonical!(t, u), { answer: null });

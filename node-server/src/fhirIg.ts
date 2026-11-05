@@ -379,7 +379,12 @@ export interface ClosureInfo {
 }
 
 /** Pure closure walk over registry rows (same order as the historical per-row queries). */
-export function computeClosure(registry: PackageRow[], packageId: string, packageVersion: string): ClosureInfo {
+export function computeClosure(
+  registry: PackageRow[],
+  packageId: string,
+  packageVersion: string,
+  declaredOrder?: (packageId: string, version: string) => string[] | undefined,
+): ClosureInfo {
   const byKey = new Map(registry.map((r) => [`${r.package_id} ${r.version}`, r]));
   const versionsOf = new Map<string, string[]>();
   for (const r of registry) versionsOf.set(r.package_id, [...(versionsOf.get(r.package_id) ?? []), r.version]);
@@ -396,7 +401,17 @@ export function computeClosure(registry: PackageRow[], packageId: string, packag
     closure.push([pid, pver]);
     const row = byKey.get(key);
     if (!row) continue;
-    for (const [depId, rawVer] of Object.entries(normalizeDependencies(row.dependencies))) {
+    let deps = Object.entries(normalizeDependencies(row.dependencies));
+    const order = declaredOrder?.(pid, pver);
+    if (order) {
+      // package.json order (the package's ImplementationGuide.dependsOn); one dependsOn leaves out (core) comes first
+      const rank = (id: string): number => order.indexOf(id);
+      deps = deps
+        .map((d, i) => [d, i] as const)
+        .sort((a, b) => rank(a[0][0]) - rank(b[0][0]) || a[1] - b[1])
+        .map(([d]) => d);
+    }
+    for (const [depId, rawVer] of deps) {
       // A never-published declared version (core 4.0.0) means the one that exists (4.0.1).
       const depVer = resolveDependencyVersion(depId, rawVer, versionsOf.get(depId) ?? []);
       const depKey = `${depId} ${depVer}`;
@@ -412,6 +427,41 @@ export function computeClosure(registry: PackageRow[], packageId: string, packag
 
 export async function packageClosureInfo(packageId: string, packageVersion: string): Promise<ClosureInfo> {
   return computeClosure(await loadRegistry(), packageId, packageVersion);
+}
+
+const dependsOnMemo = new Map<string, Promise<string[] | undefined>>();
+function dependsOnOrder(packageId: string, version: string): Promise<string[] | undefined> {
+  const key = `${packageId}#${version}`;
+  let p = dependsOnMemo.get(key);
+  if (!p) {
+    p = query<{ ids: unknown }>(
+      "SELECT jsonb_path_query_array(raw_json, '$.dependsOn[*].packageId') AS ids FROM fhir.artifacts " +
+        "WHERE package_id = $1 AND package_version = $2 AND resource_type = 'ImplementationGuide' LIMIT 1",
+      [packageId, version],
+    ).then(
+      (r) => (Array.isArray(r.rows[0]?.ids) ? (r.rows[0].ids as unknown[]).map(String) : undefined),
+      () => {
+        dependsOnMemo.delete(key);
+        return undefined;
+      },
+    );
+    dependsOnMemo.set(key, p);
+  }
+  return p;
+}
+
+/**
+ * BaseWorkerContext.populatePVList (r5 tag 7.0.1:2685-2702): the source package, then its dependencies layer by layer,
+ * each package's in its package.json order (PackageInformation.getDependencies). fhir.ig_packages.dependencies (jsonb)
+ * does not keep that order; the package's ImplementationGuide.dependsOn does. The packages reached do not depend on the
+ * order, so one walk finds them and a second one orders them.
+ */
+export async function packageClosureDeclaredOrder(packageId: string, packageVersion: string): Promise<Array<[string, string]>> {
+  const registry = await loadRegistry();
+  const reached = computeClosure(registry, packageId, packageVersion).closure;
+  const orders = new Map<string, string[] | undefined>();
+  await Promise.all(reached.map(async ([pid, ver]) => orders.set(`${pid}#${ver}`, await dependsOnOrder(pid, ver))));
+  return computeClosure(registry, packageId, packageVersion, (pid, ver) => orders.get(`${pid}#${ver}`)).closure;
 }
 
 /** Target package + transitive declared dependencies, breadth-first (target first). */

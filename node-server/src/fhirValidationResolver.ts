@@ -20,7 +20,7 @@
  * "display not checked", never an error.
  */
 
-import { packageClosure, type PackageRow } from "./fhirIg.js";
+import { packageClosure, packageClosureDeclaredOrder, type PackageRow } from "./fhirIg.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "./fhirValidator.js";
 import { variantsOf, type HeldVerdict } from "./extendedFindings/index.js";
 import { conceptInactive, conceptStatus, findConcept, type CodeSystemIndex, type CsConcept, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains } from "./fhirCodeSystem.js";
@@ -519,6 +519,10 @@ const closureMemo = new TtlMemo<Array<[string, string]>>(SD_TTL_MS, 200);
 function sourceClosure(packageId: string, version: string): Promise<Array<[string, string]>> {
   return closureMemo.get(`${packageId}#${version}`, () => packageClosure(packageId, version));
 }
+const declaredClosureMemo = new TtlMemo<Array<[string, string]>>(SD_TTL_MS, 200);
+function declaredSourceClosure(packageId: string, version: string): Promise<Array<[string, string]>> {
+  return declaredClosureMemo.get(`${packageId}#${version}`, () => packageClosureDeclaredOrder(packageId, version));
+}
 
 async function memoised<V>(memo: TtlMemo<V>, key: string, compute: () => Promise<V>): Promise<V> {
   const hit = memo.peek(key);
@@ -598,6 +602,17 @@ export class DbValidatorResolver implements ValidatorResolver {
   scopedDefinitionVersion(url: string, source: Record<string, any>, resourceType = "StructureDefinition"): Promise<string | null> {
     return memoised(scopedVersionMemo, `${this.closure}\0${resourceType}\0${url}\0${source.url}|${source.version}`, () =>
       guarded(() => terminology.packageScopedVersion(resourceType, url, source, this.pkg, sourceClosure)),
+    );
+  }
+
+  /**
+   * The version of CodeSystem `system` ValueSetValidator.resolveCodeSystem gets with the value set as source: the first
+   * holder in populatePVList order (each package's dependencies in their declared order, packageClosureDeclaredOrder).
+   */
+  scopedCodeSystemVersion(system: string, valueSet: Record<string, any>): Promise<string | null> {
+    const source: Record<string, any> = { ...valueSet, resourceType: "ValueSet" };
+    return memoised(scopedVersionMemo, `${this.closure}\0declared-cs\0${system}\0${source.url}|${source.version}`, () =>
+      guarded(() => terminology.packageScopedVersion("CodeSystem", system, source, this.pkg, declaredSourceClosure)),
     );
   }
 

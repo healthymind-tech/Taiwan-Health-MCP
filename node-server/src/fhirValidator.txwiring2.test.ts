@@ -683,3 +683,48 @@ test("the implicit LOINC answer-list ValueSet: titled as tx.fhir.org names it, t
   assert.equal(loincAnswerListValueSet("LL1-1", []), null);
   assert.equal(vs?.implicitAtServer, true);
 });
+
+// ValueSetValidator.validateCode (standalone tag 7.0.1:805, 883-885): the code system resolved in the value set's package has
+// no codes (content not-present) → VSCheckerException → the terminology server decides (US Core 7.0.0 Detailed Race / CDCREC)
+test("a binding whose code system, seen from the value set's package, is a not-present stub is not decided locally", async () => {
+  const PM = "http://x/StructureDefinition/pat-ms";
+  const VSM = "http://x/ValueSet/ms";
+  const CS = "http://x/cs";
+  class R extends FakeResolver {
+    constructor(private readonly scoped: string | null) {
+      super();
+    }
+    async fetchStructureDefinition(url: string): Promise<Json | null> {
+      if (url.split("|")[0] !== PM) return super.fetchStructureDefinition(url);
+      const base = JSON.parse(JSON.stringify(await super.fetchStructureDefinition("http://example.tw/fhir/StructureDefinition/cond")));
+      base.url = PM;
+      for (const e of base.snapshot.element) if (e.path === "Condition.clinicalStatus") e.binding = { strength: "required", valueSet: VSM };
+      return base;
+    }
+    async fetchValueSet(url: string): Promise<Json | null> {
+      if (url.split("|")[0] === VSM) return { resourceType: "ValueSet", url: VSM, version: "1.0.0", title: "MS", compose: { include: [{ valueSet: ["http://x/ValueSet/imported"] }] } };
+      return super.fetchValueSet(url);
+    }
+    async valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
+      if (url.split("|")[0] === VSM) return system === CS && code === "a";
+      return super.valueSetContains(url, system, code);
+    }
+    async checkCode(system: string, code: string, display: string | null): Promise<CodeCheck> {
+      return system === CS ? { status: "ok" } : super.checkCode(system, code, display);
+    }
+    async fetchCodeSystem(url: string): Promise<Json | null> {
+      if (url === CS) return { resourceType: "CodeSystem", url: CS, version: "1.2", content: "complete", concept: [{ code: "a" }] };
+      if (url === `${CS}|3.0.1`) return { resourceType: "CodeSystem", url: CS, version: "3.0.1", content: "not-present" };
+      return null;
+    }
+    async scopedCodeSystemVersion(): Promise<string | null> {
+      return this.scoped;
+    }
+  }
+  const pat = { resourceType: "Condition", id: "c1", meta: { profile: [PM] }, category: [{ text: "x" }], subject: { reference: "Patient/p1" }, clinicalStatus: { coding: [{ system: CS, code: "a" }] } };
+  const stub = await new InstanceValidator(new R("3.0.1")).validate(pat);
+  assert.deepEqual(errors(stub), []);
+  assert.ok(stub.some((i: any) => i.severity === "information" && i.unchecked?.canonical === VSM && /could not be confirmed as members of the value set 'MS'/.test(i.message)), JSON.stringify(stub));
+  const held = await new InstanceValidator(new R("1.2")).validate(pat);
+  assert.ok(!held.some((i: any) => i.unchecked?.canonical === VSM), JSON.stringify(held));
+});

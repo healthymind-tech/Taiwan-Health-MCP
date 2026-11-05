@@ -310,6 +310,8 @@ export interface ValidatorResolver {
    * it, or `source` comes from no package, or from a core one (ProfileUtilities.findProfile "switch the extension pack in").
    */
   scopedDefinitionVersion?(url: string, source: Record<string, any>, resourceType?: string): Promise<string | null>;
+  /** ValueSetValidator.resolveCodeSystem with the value set as source (populatePVList order). Optional. */
+  scopedCodeSystemVersion?(system: string, valueSet: Record<string, any>): Promise<string | null>;
   /** ValueSet header (url/title) or null when the ValueSet is not held (`|version` honoured as above). */
   fetchValueSet(url: string): Promise<Record<string, any> | null>;
   /** Membership; system null for bare `code` values. undefined = cannot decide locally. `|version` honoured. */
@@ -1821,6 +1823,7 @@ export class InstanceValidator {
   /** (v13) Any IG ValueSet canonical written as a Coding.system (issues carry VS_SYSTEM) — decided at the end of validate(). */
   private pendingVsSystems = false;
   private memberCache = new Map<string, Promise<boolean | undefined>>();
+  private serverBindingCache = new Map<string, Promise<boolean>>();
   /** While a slicing is evaluated: the `system|valueSet` pairs its discriminators could not decide. */
   private undecidedCauses: Set<string> | null = null;
   private codeCache = new Map<string, Promise<CodeCheck>>();
@@ -6598,6 +6601,34 @@ export class InstanceValidator {
     }
   }
 
+  /**
+   * ValueSetValidator.validateCode (standalone tag 7.0.1:797-805, 883-885): the code system of a coding is resolved in
+   * the package of the value set (resolveCodeSystem(system, wv, null, valueset)); when that copy has no codes (content
+   * not-present) VSCheckerException is thrown and BaseWorkerContext.validateCode (r5 tag 7.0.1:1506-1530) hands the
+   * check to the terminology server, which judges the value set itself (US Core 7.0.0 Detailed Race: THO's CDCREC stub,
+   * while VSAC's complete copy and expansions are loaded too). True when this host's answer would come from another,
+   * complete copy the jar does not use there: the membership is then not decided locally. Unpinned includes only.
+   */
+  private async serverAnswersBinding(vs: Record<string, any>, system: string): Promise<boolean> {
+    if (!this.resolver.scopedCodeSystemVersion || !this.resolver.fetchCodeSystem) return false;
+    const includes: any[] = isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
+    if (includes.some((x) => isObject(x) && x.system === system && typeof x.version === "string" && x.version)) return false;
+    const key = `${vs.url}|${vs.version ?? ""}\u0000${system}`;
+    let p = this.serverBindingCache.get(key);
+    if (!p) {
+      p = (async () => {
+        const scoped = await this.resolver.scopedCodeSystemVersion!(system, vs).catch(() => null);
+        if (!scoped) return false;
+        const there = await this.resolver.fetchCodeSystem!(`${system}|${scoped}`).catch(() => null);
+        if (!there || there.content !== "not-present") return false;
+        const used = await this.resolver.fetchCodeSystem!(system).catch(() => null);
+        return !!used && (used.content === "complete" || used.content === "fragment");
+      })();
+      this.serverBindingCache.set(key, p);
+    }
+    return p;
+  }
+
   /** The issue of an invalid-code answer; one local data could not decide carries `unchecked` (F5). */
   private invalidCodeIssue(r: Extract<CodeCheck, { status: "invalid-code" }>, path: string, system: string): Issue {
     const note = r.severity === "information";
@@ -6971,7 +7002,11 @@ export class InstanceValidator {
     for (const [system, code] of codings) {
       // ValueSetValidator: a Coding without a system cannot be validated (Coding_has_no_system__cannot_validate) and is
       // never a member — only bare primitive codes infer their system from the value set
-      const m = system === null && typeCode !== "code" && typeCode !== "string" && typeCode !== "uri" && typeCode !== "url" && typeCode !== "canonical" ? faceValueMember(vs, code!) : await this.member(url, system, code!);
+      let m = system === null && typeCode !== "code" && typeCode !== "string" && typeCode !== "uri" && typeCode !== "url" && typeCode !== "canonical" ? faceValueMember(vs, code!) : await this.member(url, system, code!);
+      if (m !== undefined && system !== null && (typeCode === "Coding" || typeCode === "CodeableConcept")) {
+        const c = list.find((x) => isObject(x) && x.code === code && (x.system ?? null) === system);
+        if (!(isObject(c) && c.version) && (await this.serverAnswersBinding(vs, system))) m = undefined;
+      }
       if (m === true) {
         const idx = list.findIndex((c) => isObject(c) && c.code === code && (c.system ?? null) === system);
         const c = idx >= 0 ? list[idx] : null;

@@ -432,3 +432,17 @@ test("validationClosure: hl7.fhir.uv.extensions.r4 5.2.0 for an R4 context, last
   assert.deepEqual(ig.validationClosure(registry, registry[3], base), [...base, ["hl7.fhir.uv.extensions", "5.4.0"], ["hl7.fhir.uv.extensions.r4", "5.2.0"]]);
   assert.deepEqual(ig.validationClosure(registry, row("ig.b", "1.0.0", "3.0.2"), base), [...base, ["hl7.fhir.uv.extensions", "5.4.0"]]);
 });
+
+// BaseWorkerContext.populatePVList (r5 tag 7.0.1:2685-2702): dependencies in their declared (package.json) order
+test("computeClosure: a declared dependency order replaces the stored one; dependencies it leaves out come first", () => {
+  const dep = (package_id: string, version: string, dependencies: Record<string, string>): any => ({ package_id, version, dependencies });
+  const registry = [
+    dep("ig", "1.0.0", { "us.nlm.vsac": "1", "hl7.fhir.r4.core": "4.0.1", "hl7.terminology.r4": "5" }),
+    dep("us.nlm.vsac", "1", {}),
+    dep("hl7.fhir.r4.core", "4.0.1", {}),
+    dep("hl7.terminology.r4", "5", {}),
+  ];
+  assert.deepEqual(ig.computeClosure(registry, "ig", "1.0.0").closure.map(([p]) => p), ["ig", "us.nlm.vsac", "hl7.fhir.r4.core", "hl7.terminology.r4"]);
+  const declared = ig.computeClosure(registry, "ig", "1.0.0", (p) => (p === "ig" ? ["hl7.terminology.r4", "us.nlm.vsac"] : undefined)).closure;
+  assert.deepEqual(declared.map(([p]) => p), ["ig", "hl7.fhir.r4.core", "hl7.terminology.r4", "us.nlm.vsac"]);
+});
