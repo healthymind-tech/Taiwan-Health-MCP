@@ -33,6 +33,11 @@ test("judgeSpecialSystem: Unknown_Code_in error for an invalid language tag / MI
   assert.equal(judgeSpecialSystem("urn:ietf:bcp:13", "application/pdf", null)?.status, "silent");
   assert.equal(judgeSpecialSystem("urn:ietf:bcp:13", "text/plain; charset=utf-8", null)?.status, "silent");
   assert.equal(judgeSpecialSystem("http://loinc.org", "1-8", null), null);
+  // UN M49: three digits; anything else is the server's Unknown_Code_in_Version (no version), a 3-digit code needs the list
+  const m49 = "http://unstats.un.org/unsd/methods/m49/m49.htm";
+  const z = judgeSpecialSystem(m49, "ZZZ-9", null);
+  assert.equal(z && "message" in z ? z.message : "", `Unknown code 'ZZZ-9' in the CodeSystem '${m49}'`);
+  assert.equal(judgeSpecialSystem(m49, "001", null), null);
 });
 
 test("whole-system include of BCP-47 / BCP-13 decides membership by validity", async () => {

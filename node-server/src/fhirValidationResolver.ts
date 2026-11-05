@@ -83,6 +83,7 @@ const SILENT_SYSTEMS = [
  */
 
 const ICD10CM = "http://hl7.org/fhir/sid/icd-10-cm";
+const M49 = "http://unstats.un.org/unsd/methods/m49/m49.htm";
 const ISO3166 = "urn:iso:std:iso:3166";
 
 /** ICD-10-CM code shape (category, optional dot + up to 4 characters). */
@@ -352,6 +353,11 @@ export function judgeSpecialSystem(system: string, code: string, display: string
   } else if (system === RFC3986) {
     // URICodeSystem: the display is the Coding's own display → never a display issue
     return isAbsoluteUrl(code) ? { status: "silent" } : { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}'` };
+  } else if (system === M49) {
+    // UN M49 codes are three digits (UNSD "Standard country or area codes for statistical use"): anything else is no
+    // code of it, the terminology server's Unknown_Code_in_Version (no version: tx names none). A three-digit code needs
+    // the code list, which is not held: undecided as before.
+    return /^\d{3}$/.test(code) ? null : { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}'` };
   } else return null;
   if (reason !== null) {
     return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}'`, extra: [{ severity: "information", message: reason }] };
@@ -855,6 +861,10 @@ export class DbValidatorResolver implements ValidatorResolver {
     if (system === CVX) return judgeCvx(code, display);
     if (system === ICD10_WHO) return this.checkIcd10Who(code, display);
     if (system === RXNORM) return this.checkRxnorm(code, display);
+    if (system === M49) {
+      const special = judgeSpecialSystem(system, code, display);
+      if (special) return special;
+    }
     if (SILENT_SYSTEMS.includes(system)) {
       const special = judgeSpecialSystem(system, code, display);
       if (special) return special;
