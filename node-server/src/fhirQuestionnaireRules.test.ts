@@ -171,3 +171,24 @@ test("QuestionnaireResponse: answerValueSet '#id' of a contained Questionnaire i
   const noVs = await validateQuestionnaireResponse({ ...qr("a"), contained: [q] }, "QuestionnaireResponse", deps({}));
   assert.ok(noVs.some((i) => i.severity === "warning" && i.message === "The valueSet reference #vs1 could not be resolved"));
 });
+
+// validateAnswerCode: the Questionnaire's own contained ValueSet (resolveBindingReference) — an enumerated one is judged
+// on its list, with the ValueSetValidator messages as {3} (official corpus: sdc PHQ9 / loinc bad-format)
+test("QuestionnaireResponse: an answer against the Questionnaire's contained enumerated ValueSet", async () => {
+  const vs = { resourceType: "ValueSet", id: "vs1", url: "http://acme-test.fhir.test/ValueSet/vs1", title: "VS One", compose: { include: [{ system: "http://acme-test.fhir.test/cs", concept: [{ code: "a", display: "A" }] }] } };
+  const q = { contained: [vs], item: [{ linkId: "x", type: "choice", answerValueSet: "#vs1" }] };
+  const answer = (coding: Record<string, any>): Record<string, any> => ({ item: [{ linkId: "x", answer: [{ valueCoding: coding }] }] });
+  const known = { ...deps(q), codeSystemKnown: async (s: string) => s === "http://acme-test.fhir.test/cs" };
+  const all = async (coding: Record<string, any>) => validateQuestionnaireResponse({ resourceType: "QuestionnaireResponse", questionnaire: URL, status: "completed", ...answer(coding) }, "QuestionnaireResponse", known);
+  const errs = async (coding: Record<string, any>): Promise<string[]> => (await all(coding)).filter((i) => i.severity === "error").map((i) => i.message);
+  assert.deepEqual(await errs({ system: "http://acme-test.fhir.test/cs", code: "a", display: "A" }), []);
+  assert.deepEqual(await errs({ code: "zz", display: "Z" }), [
+    "The code 'zz' in the system 'null' is not in the options value set (VS One) specified by the questionnaire. Terminology Error: Coding has no system. A code with no system has no defined meaning, and it cannot be validated. A system should be provided; The provided code '#zz ('Z')' was not found in the value set 'http://acme-test.fhir.test/ValueSet/vs1'",
+  ]);
+  assert.deepEqual(await errs({ system: " http://x.org", code: "a" }), [
+    "The code 'a' in the system ' http://x.org' is not in the options value set (VS One) specified by the questionnaire. Terminology Error: A definition for CodeSystem ' http://x.org' could not be found, so the code cannot be validated; Coding.system must be an absolute reference, not a local reference; The provided code ' http://x.org#a' was not found in the value set 'http://acme-test.fhir.test/ValueSet/vs1'",
+  ]);
+  // a display other than the value set's is the code system's to judge: not decided here
+  const other = await all({ system: "http://acme-test.fhir.test/cs", code: "a", display: "Other" });
+  assert.ok(!other.some((i) => i.severity === "error") && other.some((i: any) => i.unchecked?.canonical === "#vs1"), JSON.stringify(other));
+});

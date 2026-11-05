@@ -50,7 +50,9 @@ test("LOINC LA / LP / LL displays as tx.fhir.org (2.82)", () => {
   assert.equal(judgeLoincOther("LP7057-5", "Bld", lp, false).status, "ok");
   assert.equal(judgeLoincOther("LP7057-5", "blood", lp, false).status, "ok");
   const lpw = judgeLoincOther("LP7057-5", "foo bar", lp, false);
-  assert.ok(bad(lpw) && lpw.status === "invalid-display" && lpw.message.includes("Valid display is 'Bld'"));
+  assert.ok(bad(lpw) && lpw.status === "invalid-display" && lpw.message.includes("Valid display is 'Bld' (en-US) (for the language(s) 'en')"));
+  const law = judgeLoincOther("LA6752-5", "Severe", la, false);
+  assert.ok(bad(law) && law.message === "Wrong Display Name 'Severe' for http://loinc.org#LA6752-5. Valid display is 'Mild' (en-US) (for the language(s) 'en')", law.message);
   const dep = judgeLoincOther("LP183737-8", null, { kind: "part", display: "x", altDisplay: null, status: "DEPRECATED" }, false);
   assert.equal(dep.status, "ok");
   assert.equal(dep.extra?.[0]?.severity, "warning");

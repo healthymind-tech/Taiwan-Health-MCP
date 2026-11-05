@@ -3224,6 +3224,14 @@ export class InstanceValidator {
         fetchQuestionnaire: async (u: string) => (this.resolver.fetchQuestionnaire ? await this.resolver.fetchQuestionnaire(u) : null),
         valueSetKnown: async (u: string) => !!(await this.vsHeader(u)),
         member: (vs: string, system: string | null, code: string) => this.member(vs, system, code),
+        ...(this.resolver.codeSystemResolvable ? { codeSystemKnown: (s: string) => this.resolver.codeSystemResolvable!(s).catch(() => true) } : {}),
+        displayError: async (s: string, code: string, display: string) => {
+          const r = await this.codeCheck(s, code, display);
+          if (r.status === "invalid-display" && r.severity === "error") return r.message;
+          if (r.status === "ok" || (r.status === "silent" && !r.undecided)) return null;
+          return undefined;
+        },
+        valueSetHeader: (u: string) => this.vsHeader(u),
         evaluate: (expression: string, response: Record<string, any>) => {
           const outcome = evaluateConstraint(response, "QuestionnaireResponse", expression, { resource: response, rootResource: response });
           return outcome.status === "pass" ? true : outcome.status === "fail" && !outcome.error ? false : undefined;
@@ -7246,7 +7254,10 @@ export class InstanceValidator {
     return cs && ["complete", "fragment", "supplement"].includes(String(cs.content)) ? cs : null;
   }
 
-  private async checkMaxValueSet(maxUrl: string, codings: Array<[string | null, string | null]>, typeCode: string, item: Item, issues: Issue[]): Promise<void> {
+  private async checkMaxValueSet(maxRef: string, codings: Array<[string | null, string | null]>, typeCode: string, item: Item, issues: Issue[]): Promise<void> {
+    // BaseValidator.resolveBindingReference (validation tag 7.0.1:1007-1009): the BCP-13 document URL R4's
+    // Expression.language max binding names is the mimetypes value set
+    const maxUrl = maxRef === "http://www.rfc-editor.org/bcp/bcp13.txt" ? "http://hl7.org/fhir/ValueSet/mimetypes" : maxRef;
     const mvs = await this.vsHeader(maxUrl);
     if (!mvs) {
       if (this.resolver.codeSystemExists && (await this.resolver.codeSystemExists(maxUrl).catch(() => false))) {
@@ -7267,7 +7278,10 @@ export class InstanceValidator {
       issues.push({ severity: "information", path: item.path, code: "informational", message: `Membership in the maximum value set ${maxUrl} could not be decided with local terminology`, unchecked: { kind: "code", canonical: maxUrl } });
       return;
     }
-    const desc = `'${mvs.title || mvs.name || maxUrl}' (${mvs.url}${mvs.version ? `|${mvs.version}` : ""})`;
+    // InstanceValidator.describeReference (validation tag 7.0.1:5698-5714): a reference that is not the value set's own url
+    // names what it actually refers to
+    const named = `'${mvs.title || mvs.name || maxUrl}' (${mvs.url}${mvs.version ? `|${mvs.version}` : ""})`;
+    const desc = maxRef.split("|")[0] === mvs.url ? named : `${maxRef}(which actually refers to ${named})`;
     const shown = codings.map(([s, c]) => `${s ?? "null"}#${c}`).join(", ");
     let message: string;
     if (typeCode === "CodeableConcept" || typeCode === "CodeableReference") {

@@ -182,6 +182,11 @@ export function judgeLoincOther(
     // LP: tx names PartName (alt) and also accepts PartDisplayName.
     const listed = row.kind === "part" ? [row.altDisplay ?? row.display ?? ""] : [row.display ?? ""];
     const bad = judgeExternalDisplay(LOINC, code, display, accepted, listed);
+    // tx.fhir.org names a LOINC answer / part display as a designation of 'en-US' (official corpus, 96 of 96 LA / LP
+    // messages: "Valid display is 'Positive' (en-US) (for the language(s) 'en')")
+    if (bad && bad.status === "invalid-display" && listed.length === 1) {
+      return { ...bad, message: bad.message.replace(/(\. Valid display is '.*')( \(for the language\(s\) )/su, "$1 (en-US)$2"), extra: notes };
+    }
     if (bad) return { ...bad, extra: notes };
   }
   return { status: "ok", extra: notes };

@@ -39,6 +39,12 @@ export interface QuestionnaireDeps {
   valueSetKnown(url: string): Promise<boolean>;
   /** undefined: not decidable here (no error is raised). */
   member(valueSet: string, system: string | null, code: string): Promise<boolean | undefined>;
+  /** Can the code system be resolved (locally or by the terminology server)? Optional. */
+  codeSystemKnown?(system: string): Promise<boolean>;
+  /** The error a code's display gets from its code system: null when valid, undefined when not decidable. Optional. */
+  displayError?(system: string, code: string, display: string): Promise<string | null | undefined>;
+  /** The value set (title / name) for messages. Optional. */
+  valueSetHeader?(url: string): Promise<Json | null>;
   /** evaluateToBoolean on the QuestionnaireResponse; undefined when the expression cannot be evaluated. */
   evaluate(expression: string, response: Json): boolean | undefined;
   ucumCanonical(value: string, code: string): { value: string; code: string } | null;
@@ -827,8 +833,38 @@ class ResponseValidator {
         return;
       }
       if (vs.startsWith("#") && list(this.q.contained).some((c) => isObject(c) && c.id === vs.slice(1))) {
-        // resolveBindingReference finds the Questionnaire's contained ValueSet, which membership here cannot read
-        if (constraint !== "optionsOrType") this.undecided(ns, vs);
+        // resolveBindingReference finds the Questionnaire's contained ValueSet; an enumerated one is judged on its list
+        const local = list(this.q.contained).find((x) => isObject(x) && x.resourceType === "ValueSet" && x.id === vs.slice(1)) ?? null;
+        if (constraint === "optionsOrType") return;
+        if (noString(c.code) && noString(c.system) && !noString(c.display) && open) return;
+        const system = typeof c.system === "string" ? c.system : null;
+        let inSet = local && typeof c.code === "string" ? enumeratedMember(local, system, c.code) : undefined;
+        if (inSet === true && typeof c.display === "string" && c.display) {
+          // the code is validated with its display (a wrong one fails the option); the value set's own display is valid
+          // (useValueSetDisplays) — any other is the code system's to judge, not decided here
+          const listed = list(local!.compose.include)
+            .filter((i: Json) => isObject(i) && (system === null || i.system === system))
+            .flatMap((i: Json) => list(i.concept))
+            .find((x: Json) => isObject(x) && x.code === c.code);
+          if (!(isObject(listed) && listed.display === c.display)) inSet = undefined;
+        }
+        if (inSet === false) {
+          // QUESTIONNAIRE_QR_ITEM_BADOPTION {3} = the ValueSetValidator messages (official corpus, sdc PHQ9 / loinc
+          // bad-format): the system problem, then NONE_OF_THE_PROVIDED_CODES_ARE_IN_THE_VALUE_SET_ONE with the coding as
+          // Coding.toString ('system#code (display)') and the value set's versioned url, '(unidentified)' without one
+          const name = [local!.title, local!.name, local!.id].find((x) => typeof x === "string" && x) ?? vs;
+          const parts: string[] = [];
+          if (system === null) parts.push("Coding has no system. A code with no system has no defined meaning, and it cannot be validated. A system should be provided");
+          else if (this.deps.codeSystemKnown && !(await this.deps.codeSystemKnown(system))) {
+            parts.push(`A definition for CodeSystem '${system}' could not be found, so the code cannot be validated`);
+            if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(system)) parts.push("Coding.system must be an absolute reference, not a local reference");
+          }
+          const shown = `${system ?? ""}#${c.code}${typeof c.display === "string" && c.display ? ` ('${c.display}')` : ""}`;
+          const vurl = typeof local!.url === "string" ? `${local!.url}${typeof local!.version === "string" ? `|${local!.version}` : ""}` : "(unidentified)";
+          parts.push(`The provided code '${shown}' was not found in the value set '${vurl}'`);
+          this.rule(false, ns, `The code '${c.code}' in the system '${system}' is not in the options value set (${name}) specified by the questionnaire. Terminology Error: ${parts.join("; ")}`, "code-invalid");
+        }
+        if (inSet === undefined) this.undecided(ns, vs);
         return;
       }
       if (!(await this.deps.valueSetKnown(vs))) {
@@ -843,6 +879,17 @@ class ResponseValidator {
         // "({2})" is the ValueSet's presentation name
         if (inSet === false) this.rule(false, ns, `The code '${c.code}' in the system '${c.system}' is not in the options value set (${vs}) specified by the questionnaire. Terminology Error: The provided code '${c.system}#${c.code}' was not found in the value set '${vs}'`, "code-invalid");
         if (inSet === undefined) this.undecided(ns, vs);
+        if (inSet === true && typeof c.system === "string" && typeof c.display === "string" && c.display && this.deps.displayError) {
+          // validateAnswerCode (QuestionnaireValidator): context.validateCode checks the display too; a wrong one is not ok
+          // → QUESTIONNAIRE_QR_ITEM_BADOPTION with the code system's message (official corpus: LOINC answer list LL623-0)
+          const bad = await this.deps.displayError(c.system, c.code, c.display);
+          if (bad === undefined) this.undecided(ns, vs);
+          else if (bad !== null) {
+            const header = await this.deps.valueSetHeader?.(vs);
+            const name = [header?.title, header?.name].find((x) => typeof x === "string" && x) ?? vs;
+            this.rule(false, ns, `The code '${c.code}' in the system '${c.system}' is not in the options value set (${name}) specified by the questionnaire. Terminology Error: ${bad}`, "code-invalid");
+          }
+        }
       }
     } else {
       this.hint(ns, "Cannot validate options because no option or options are provided");
