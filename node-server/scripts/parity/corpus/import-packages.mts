@@ -30,6 +30,8 @@ if (!/:55432\//.test(url)) {
   process.exit(2);
 }
 
+const CORE_PACKAGES = new Set(["hl7.fhir.core", "hl7.fhir.r2.core", "hl7.fhir.r2b.core", "hl7.fhir.r3.core", "hl7.fhir.r4.core", "hl7.fhir.r4b.core", "hl7.fhir.r5.core", "hl7.fhir.r6.core"]);
+
 /** A package as a directory holding package/package.json. */
 function unpack(tgz: string): string {
   const dir = mkdtempSync(join(tmpdir(), "pkg-"));
@@ -107,6 +109,8 @@ function visit(path: string): void {
   seen.add(key);
   console.log(`${key}${installed.has(key) ? " (installed)" : ""}: ${report}`);
   for (const [id, wanted] of Object.entries(m.dependencies ?? {})) {
+    // validator_cli never loads a core package as a dependency (IgLoader l. 150 / 576, VersionUtilities.isCorePackage)
+    if (CORE_PACKAGES.has(id)) continue;
     const version = resolveVersion(id, wanted);
     const dep = `${id}#${version}`;
     if (seen.has(dep)) continue;
