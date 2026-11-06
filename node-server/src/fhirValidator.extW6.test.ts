@@ -113,6 +113,9 @@ test("an enumerated include pinned to a version not held: membership undecided f
   const ICD10 = "http://hl7.org/fhir/sid/icd-10";
   assert.equal(await composeContains(inc(ICD10, "2020"), ICD10, "Y", deps), undefined);
   assert.equal(await composeContains(inc(ICD10), ICD10, "Y", deps), true);
-  // a terminology this host answers in the server's stead keeps its answer
+  // UCUM keeps its face-value answer; SNOMED CT / LOINC (external tables here) pinned to another version do not
+  // (jar probes: VSAC 0.9.0 includes pinned to SNOMED US 20220301 / LOINC 2.72 reject their listed codes)
   assert.equal(await composeContains(inc("http://unitsofmeasure.org", "2.1"), "http://unitsofmeasure.org", "Y", deps), true);
+  assert.equal(await composeContains(inc("http://loinc.org", "2.72"), "http://loinc.org", "Y", deps), undefined);
+  assert.equal(await composeContains(inc("http://loinc.org", "2.72"), "http://loinc.org", "Q", deps), false);
 });

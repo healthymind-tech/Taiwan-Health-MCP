@@ -6,19 +6,15 @@
  */
 import { specialSystemMember, terminologyServerKnows } from "./fhirSpecialSystems.js";
 
-/** Server-side terminologies this host answers from its own tables / bundled data (the validator's tx in its stead). */
-const EMULATED_SERVER_SYSTEMS = new Set([
-  "http://snomed.info/sct",
-  "http://loinc.org",
-  "http://hl7.org/fhir/sid/icd-10-cm",
-  "http://www.cms.gov/Medicare/Coding/ICD10",
-  "http://www.nlm.nih.gov/research/umls/rxnorm",
-  "http://unitsofmeasure.org",
-  "http://hl7.org/fhir/sid/cvx",
-  "urn:iso:std:iso:3166",
-  "urn:ietf:bcp:13",
-  "urn:ietf:bcp:47",
-]);
+/**
+ * Server-side terminologies whose version-pinned enumerated includes keep this host's face-value answer. SNOMED CT,
+ * LOINC, ICD-10-CM, RxNorm and CVX are not among them: jar probes (validator_cli 7.0.1 + tx.fhir.org, 61 VSAC 0.9.0 value
+ * sets, one pinned include each) rejected every listed code of an include pinned to a version other than the local one
+ * (SNOMED US 20220301, LOINC 2.72, ICD-10-CM 2022 / 2023, RxNorm 09062022 / 05022022, CVX 20220817:
+ * UNKNOWN_CODESYSTEM_VERSION or Terminology_TX_NoValid_1_CC), so such an include is undecided here. UCUM ('1.5' accepted)
+ * and the systems without any pinned include in the installed value sets (ISO 3166, BCP-13 / 47) stay.
+ */
+const EMULATED_SERVER_SYSTEMS = new Set(["http://unitsofmeasure.org", "urn:iso:std:iso:3166", "urn:ietf:bcp:13", "urn:ietf:bcp:47"]);
 
 const STANDARDS_STATUS_EXT = "http://hl7.org/fhir/StructureDefinition/structuredefinition-standards-status";
 
@@ -505,9 +501,9 @@ async function systemPartContains(
     // the same with no copy held here at all (THO's not-present stub only, no external tables): the server judges the
     // pinned version, and which versions it has is not known here — the jar's UNKNOWN_CODESYSTEM_VERSION ("Valid versions:
     // 2019-covid-expanded" for icd-10 '2020' in PHIN VADS 7933) cannot be reproduced, so undecided, never a face-value pass
-    // (the terminologies this host answers in the server's stead — SNOMED CT, LOINC, ICD-10-CM / -PCS, RxNorm, UCUM,
-    // CVX, ISO 3166, BCP-13 / 47 — keep their own answers, as before)
-    if (listed && !cs && typeof part.version === "string" && part.version && terminologyServerKnows(system) && !EMULATED_SERVER_SYSTEMS.has(system) && !(await deps.externalSystemHeld(system))) return undefined;
+    // (also for SNOMED CT / LOINC, answered from external tables here; UCUM, ISO 3166 and BCP-13 / 47 keep their answers,
+    // see EMULATED_SERVER_SYSTEMS)
+    if (listed && !cs && typeof part.version === "string" && part.version && terminologyServerKnows(system) && !EMULATED_SERVER_SYSTEMS.has(system)) return undefined;
     return listed;
   }
   const filters: ComposeFilter[] = part.filter || [];
@@ -597,7 +593,18 @@ export async function composeContains(
       }
     };
     visit(expansion.contains);
-    return flat.some((c) => c.code === code && (system === null || c.system === system));
+    const hit = flat.some((c) => c.code === code && (system === null || c.system === system));
+    // ValueSetValidator.validateCode (standalone 7.0.1:797-805): the code system is resolved at the version the value
+    // set's include pins (getCodeSystemVersionFromValueSet) before the expansion is consulted; a pinned version held
+    // nowhere here goes to the terminology server, which evaluates the compose (the shipped expansion is dropped,
+    // BaseWorkerContext.addServerValidationParameters r5 2003-2005) — the jar probes rejected those listed codes
+    if (hit && system !== null && terminologyServerKnows(system) && !EMULATED_SERVER_SYSTEMS.has(system)) {
+      for (const inc of includes) {
+        if (!inc || typeof inc !== "object" || inc.system !== system || typeof inc.version !== "string" || !inc.version) continue;
+        if (!(await deps.loadCodeSystem(`${system}|${inc.version}`))) return undefined;
+      }
+    }
+    return hit;
   }
   let anyUnknown = false;
   let member = false;
