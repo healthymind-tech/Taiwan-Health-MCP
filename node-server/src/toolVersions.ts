@@ -298,7 +298,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.137.0 (parity v3 wave 3 sdc, branch 1.136.0): a UN M49 code that is not three digits is Unknown_Code; the BCP-13 document URL of a max binding is the mimetypes value set; a QuestionnaireResponse answer is judged on the Questionnaire's contained enumerated ValueSet; LOINC LA / LP displays are named '(en-US)'.
   // 1.138.0 (parity v3 waves 6-7): a Bundle validated as a reference target / conformsTo() focus resolves references in its own entries (BaseValidator.getFromBundle); an include pinned to a CodeSystem version not held leaves an enumerated code undecided; SNOMED CT displays listed in tx order (preferred term, then description id).
   // 1.139.0 (parity v3 ext wave 6, branch 1.135.0): canonical resolution by version and by the validator's loaded resource types, contentReference invariants, value-less primitive invariants, empty shadow extension arrays, version-pinned includes undecided, bcp13.txt max ValueSet.
-  fhir_validate_bundle: "1.139.0",
+  // 1.140.0 (parity v3 wave 7): a defining canonical url is never an Example URL error; additional bindings with usage contexts are applied when the resource's content puts them in scope (isInScope), else skipped.
+  fhir_validate_bundle: "1.140.0",
   // 1.132.0 (parity v3, branch 1.130.0): a bound CodeableConcept (not example, ValueSet found): a server-side system's display the ValueSet lists for the code is valid.
   // 1.128.0 / 1.129.0 (parity v3 ext waves 1-2, branch 1.126.0): a value discriminator on a type-sliced value[x] reads its type slice; a code-less versioned Coding of a system the server does not publish is a warning on .system, of a SERVER_SIDE_LIST system the server's warning; checkSearchSet reads a resourceType that is no resource name as an untyped Resource.
   // 1.114.0 (parity v3 scored extras): sub-extension urls below a sub-extension, a number Extension.url, meta.profile of an unknown version read as the current definition, memberOf slicing on a systemless Coding, a coding object for fixed / pattern.
@@ -428,7 +429,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.134.0: validation as fhir_validate_bundle 1.137.0.
   // 1.135.0: validation as fhir_validate_bundle 1.138.0.
   // 1.136.0: validation as fhir_validate_bundle 1.139.0.
-  fhir_validate_resource: "1.136.0",
+  // 1.137.0: validation as fhir_validate_bundle 1.140.0.
+  fhir_validate_resource: "1.137.0",
   // 1.111.0: validation as fhir_validate_bundle 1.114.0.
   // 1.112.0: validation as fhir_validate_bundle 1.115.0.
   // 1.102.0: validation as fhir_validate_bundle 1.105.0.
