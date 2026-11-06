@@ -302,7 +302,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.141.0 (parity v3 ext wave 7): a bound value set lifts the unknown-code verdict only when it names the edition, and then the code is unchecked.
   // 1.142.0 (parity v3, branch 1.141.0): REFERENCE_REF_WRONGTARGET names a profile's targetProfile list as written (the core definitions' pinned to 4.0.1), one message per pass.
   // 1.143.0 (parity v3 wave 8): an enumerated include pinned to a version of a server-side code system held nowhere here is undecided (the server's versions are not known locally).
-  fhir_validate_bundle: "1.143.0",
+  // 1.144.0 (parity v3): SNOMED CT / LOINC / ICD-10-CM / RxNorm / CVX includes pinned to a version not held here are undecided too (jar probes), also when the value set's shipped expansion lists the code.
+  fhir_validate_bundle: "1.144.0",
   // 1.132.0 (parity v3, branch 1.130.0): a bound CodeableConcept (not example, ValueSet found): a server-side system's display the ValueSet lists for the code is valid.
   // 1.128.0 / 1.129.0 (parity v3 ext waves 1-2, branch 1.126.0): a value discriminator on a type-sliced value[x] reads its type slice; a code-less versioned Coding of a system the server does not publish is a warning on .system, of a SERVER_SIDE_LIST system the server's warning; checkSearchSet reads a resourceType that is no resource name as an untyped Resource.
   // 1.114.0 (parity v3 scored extras): sub-extension urls below a sub-extension, a number Extension.url, meta.profile of an unknown version read as the current definition, memberOf slicing on a systemless Coding, a coding object for fixed / pattern.
@@ -436,7 +437,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.138.0: validation as fhir_validate_bundle 1.141.0.
   // 1.139.0: validation as fhir_validate_bundle 1.142.0.
   // 1.140.0: validation as fhir_validate_bundle 1.143.0.
-  fhir_validate_resource: "1.140.0",
+  // 1.141.0: validation as fhir_validate_bundle 1.144.0.
+  fhir_validate_resource: "1.141.0",
   // 1.111.0: validation as fhir_validate_bundle 1.114.0.
   // 1.112.0: validation as fhir_validate_bundle 1.115.0.
   // 1.102.0: validation as fhir_validate_bundle 1.105.0.
