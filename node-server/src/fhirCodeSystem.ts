@@ -6,6 +6,20 @@
  */
 import { specialSystemMember, terminologyServerKnows } from "./fhirSpecialSystems.js";
 
+/** Server-side terminologies this host answers from its own tables / bundled data (the validator's tx in its stead). */
+const EMULATED_SERVER_SYSTEMS = new Set([
+  "http://snomed.info/sct",
+  "http://loinc.org",
+  "http://hl7.org/fhir/sid/icd-10-cm",
+  "http://www.cms.gov/Medicare/Coding/ICD10",
+  "http://www.nlm.nih.gov/research/umls/rxnorm",
+  "http://unitsofmeasure.org",
+  "http://hl7.org/fhir/sid/cvx",
+  "urn:iso:std:iso:3166",
+  "urn:ietf:bcp:13",
+  "urn:ietf:bcp:47",
+]);
+
 const STANDARDS_STATUS_EXT = "http://hl7.org/fhir/StructureDefinition/structuredefinition-standards-status";
 
 export const SNOMED_SYSTEM = "http://snomed.info/sct";
@@ -488,6 +502,12 @@ async function systemPartContains(
     // is taken at face value (CODESYSTEM_UNSUPPORTED, l. 2131-2142). Held at another version → undecided, never a pass
     // (jar: v2-0532#Y in an include pinned to version 'HL7 v2.5' → not in the value set)
     if (listed && !cs && typeof part.version === "string" && part.version && terminologyServerKnows(system) && (await deps.loadCodeSystem(system))) return undefined;
+    // the same with no copy held here at all (THO's not-present stub only, no external tables): the server judges the
+    // pinned version, and which versions it has is not known here — the jar's UNKNOWN_CODESYSTEM_VERSION ("Valid versions:
+    // 2019-covid-expanded" for icd-10 '2020' in PHIN VADS 7933) cannot be reproduced, so undecided, never a face-value pass
+    // (the terminologies this host answers in the server's stead — SNOMED CT, LOINC, ICD-10-CM / -PCS, RxNorm, UCUM,
+    // CVX, ISO 3166, BCP-13 / 47 — keep their own answers, as before)
+    if (listed && !cs && typeof part.version === "string" && part.version && terminologyServerKnows(system) && !EMULATED_SERVER_SYSTEMS.has(system) && !(await deps.externalSystemHeld(system))) return undefined;
     return listed;
   }
   const filters: ComposeFilter[] = part.filter || [];

@@ -108,4 +108,11 @@ test("an enumerated include pinned to a version not held: membership undecided f
   assert.equal(await composeContains(inc(SYS, "HL7 v2.5"), SYS, "Q", deps), false);
   assert.equal(await composeContains(inc(SYS), SYS, "Y", deps), true);
   assert.equal(await composeContains(inc("http://other.org/cs", "9"), "http://other.org/cs", "Y", deps), true);
+  // no copy held at all (THO's not-present stub only): the server judges the pinned version, its versions unknown here
+  // (BFDR: PHIN VADS 7933 pins icd-10 '2020', the jar answers UNKNOWN_CODESYSTEM_VERSION, valid 2019-covid-expanded)
+  const ICD10 = "http://hl7.org/fhir/sid/icd-10";
+  assert.equal(await composeContains(inc(ICD10, "2020"), ICD10, "Y", deps), undefined);
+  assert.equal(await composeContains(inc(ICD10), ICD10, "Y", deps), true);
+  // a terminology this host answers in the server's stead keeps its answer
+  assert.equal(await composeContains(inc("http://unitsofmeasure.org", "2.1"), "http://unitsofmeasure.org", "Y", deps), true);
 });
