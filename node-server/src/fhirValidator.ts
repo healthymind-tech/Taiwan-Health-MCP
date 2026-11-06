@@ -6847,6 +6847,14 @@ export class InstanceValidator {
       if (part("usage").length) {
         const scope = this.additionalBindingScope(part("usage").map((u: any) => u?.valueUsageContext).filter(isObject), sourceSd, rctx);
         if (scope === null) continue;
+        // a coding without a system under an applying additional binding: the jar's general CodeableConcept check
+        // (checkTerminologyCodeableConcept l. 1505-1523, !checked.ok()) reports it as an error at the coding, which is not
+        // ported — not decided here (sdoh NHANES / PRAPARE answers)
+        const codings: any[] = typeCode === "CodeableConcept" && isObject(v) && Array.isArray(v.coding) ? v.coding : typeCode === "Coding" ? [v] : [];
+        if (codings.some((c) => isObject(c) && c.system === undefined && c.code !== undefined)) {
+          issues.push({ severity: "information", path: item.path, code: "rule-unchecked", message: `The additional binding to ${valueSet} applies here and a coding has no system; the validator's general CodeableConcept check is not ported; not a conformance failure`, unchecked: { kind: "rule", canonical: "InstanceValidator.checkTerminologyCodeableConcept" } });
+          continue;
+        }
         // BINDING_ADDITIONAL_IN_SCOPE (hint): describeReference of the binding's own canonical
         issues.push({ severity: "information", path: item.path, code: "informational", message: `The additional binding to ${valueSet} applies to this element, because ${scope}` });
         usageNote = scope;
