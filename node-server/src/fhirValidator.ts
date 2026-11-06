@@ -6897,7 +6897,15 @@ export class InstanceValidator {
     // the code itself: a code the ValueSet lists (its expansion, an include concept) is answered by the server in the
     // ValueSet's own edition, not as unknown in ours (US Core CareTeam role: a SNOMED US-edition code in the VSAC
     // expansion; validator_cli reports nothing)
-    if (rctx.vsMembers) for (const c of coded) if (serverPrefers(c.system) === true && valueSetLists(vs, c.system, c.code)) rctx.vsMembers.add(this.sourceOf(c));
+    // — only when the value set names that edition: an include of the system with a version (here or in a value set it
+    // includes). Without one the server takes its default edition (International for SNOMED CT), as without a binding
+    // (official SDOH: a US-extension code listed by a VSAC value set whose include has no version is Unknown_Code_in_Version
+    // in the International edition; MCC CareTeam: the VSAC include names the US edition, nothing is reported)
+    if (rctx.vsMembers) {
+      for (const c of coded) {
+        if (serverPrefers(c.system) === true && valueSetLists(vs, c.system, c.code) && (await this.valueSetNamesEdition(vs, c.system, 0))) rctx.vsMembers.add(this.sourceOf(c));
+      }
+    }
     const codings = coded.filter((c: any) => typeof c.display === "string" && c.display);
     if (!codings.length || !isObject(vs.compose)) return;
     const okLang = (l: unknown): boolean => typeof l !== "string" || l === "" || /^en(-|$)/iu.test(l);
@@ -6918,6 +6926,20 @@ export class InstanceValidator {
       );
       if (listed) rctx.vsDisplays.add(this.sourceOf(c));
     }
+  }
+
+  /** The value set (or one it includes) has an include of `system` naming a version (the edition the server then uses). */
+  private async valueSetNamesEdition(vs: Record<string, any>, system: string, depth: number): Promise<boolean> {
+    if (depth > 5 || !isObject(vs.compose)) return false;
+    for (const part of [...(Array.isArray(vs.compose.include) ? vs.compose.include : []), ...(Array.isArray(vs.compose.exclude) ? vs.compose.exclude : [])]) {
+      if (!isObject(part)) continue;
+      if (part.system === system && typeof part.version === "string" && part.version) return true;
+      for (const u of Array.isArray(part.valueSet) ? part.valueSet : []) {
+        const inner = await this.vsHeader(String(u));
+        if (inner && (await this.valueSetNamesEdition(inner, system, depth + 1))) return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -7707,6 +7729,8 @@ export class InstanceValidator {
       });
     } else if (r.status === "invalid-code") {
       if (!rctx?.vsMembers?.has(this.sourceOf(v))) issues.push(this.invalidCodeIssue(r, `${item.path}.${r.at ?? "code"}`, system));
+      // the value set's edition is not held here: the server's answer cannot be known — not checked, never a pass
+      else issues.push({ severity: "information", path: `${item.path}.code`, code: "informational", message: `Code '${code}' not checked: the edition of ${system} the value set names is not held locally`, unchecked: { kind: "code", canonical: system } });
     } else if (r.status === "invalid-display") {
       if (!rctx?.vsDisplays?.has(this.sourceOf(v))) issues.push({ severity: r.severity, path: `${item.path}.display`, code: "code-invalid", message: r.message });
     } else if (r.status === "display-unchecked") {
