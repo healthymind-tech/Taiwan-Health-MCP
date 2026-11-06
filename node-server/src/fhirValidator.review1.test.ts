@@ -993,3 +993,16 @@ test("a Bundle reached as a reference target resolves its entries' references in
   const got = errs(await run(outer)).map(([p, m]) => `${p}: ${m}`);
   assert.ok(!got.some((m) => m.includes("whose entry is missing a fullUrl") || m.includes("Unable to find a profile match")), JSON.stringify(got));
 });
+
+// REFERENCE_REF_WRONGTARGET (checkReference, validation tag 7.0.1:5322-5345): one message per pass — the core package's
+// definition lists its targets pinned to 4.0.1, a profile's own list is printed as written
+test("Reference.type not among the targets: the profile pass names its targetProfile list as written", async () => {
+  const P = "http://example.org/fhir/StructureDefinition/pat-org";
+  EXTRA[P] = sd(P, "Patient", "resource", [
+    ...SDS[CORE + "Patient"].snapshot.element.filter((e: Json) => e.path !== "Patient.managingOrganization"),
+    el("Patient.managingOrganization", 0, "1", [], { type: [{ code: "Reference", targetProfile: [CORE + "Organization"] }] }),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint", version: "1.0.0" });
+  const m = errs(await run({ resourceType: "Patient", managingOrganization: { reference: "Practitioner/1", type: "Practitioner" } }, [P])).map(([, x]) => x);
+  assert.ok(m.includes(`The type 'Practitioner' is not a valid Target for this element (must be one of [CanonicalType[${CORE}Organization]])`), JSON.stringify(m));
+  delete EXTRA[P];
+});

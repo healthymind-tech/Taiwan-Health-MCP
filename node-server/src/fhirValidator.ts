@@ -8033,7 +8033,11 @@ export class InstanceValidator {
           }
         }
         if (!matching) {
-          const listed = tps.map((tp) => `CanonicalType[${tp.startsWith(CORE) && !tp.includes("|") ? `${tp}|4.0.1` : tp}]`).join(", ");
+          // the core package's definitions are loaded with their core references pinned to 4.0.1; a profile's own
+          // targetProfile list is printed as written (jar: one REFERENCE_REF_WRONGTARGET per pass, '…/Patient|4.0.1' from
+          // the core Observation, '…/Patient' from the genomics variant profile)
+          const corePass = sdx.url.startsWith(CORE) && sdx.sd?.version === "4.0.1";
+          const listed = tps.map((tp) => `CanonicalType[${corePass && tp.startsWith(CORE) && !tp.includes("|") ? `${tp}|4.0.1` : tp}]`).join(", ");
           issues.push({ severity: "error", path: item.path, code: "structure", message: `The type '${v.type}' is not a valid Target for this element (must be one of [${listed}])` });
         }
       }
