@@ -3864,7 +3864,7 @@ export class InstanceValidator {
       }
       this.checkFixedPattern(el, v, item, sdx, issues, true);
       const beforeBinding = issues.filter((i) => i.severity === "error").length;
-      await this.checkBinding(el, v, typeCode, item, issues, sdx);
+      await this.checkBinding(el, v, typeCode, item, issues, sdx, rctx);
       if (item.afterBinding && issues.filter((i) => i.severity === "error").length === beforeBinding) issues.push({ severity: "error", path: item.path, code: "invalid", message: item.afterBinding });
       await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
       return;
@@ -4047,7 +4047,7 @@ export class InstanceValidator {
       // a value the parser accepted as its own (base) type, validated as the profile's type: no JSON shape error here, and
       // to that type it has no content (jar alone: No code provided on a valueInteger bound as a CodeableConcept)
       if (item.profileType) {
-        await this.checkBinding(el, {}, typeCode, item, issues, sdx);
+        await this.checkBinding(el, {}, typeCode, item, issues, sdx, rctx);
         return;
       }
       issues.push({
@@ -4286,7 +4286,7 @@ export class InstanceValidator {
     }
 
     if (!isResourceRoot) this.checkFixedPattern(el, v, item, sdx, issues);
-    await this.checkBinding(el, v, typeCode, item, issues, sdx);
+    await this.checkBinding(el, v, typeCode, item, issues, sdx, rctx);
     await this.checkLanguageDisplay(el, v, typeCode, item, rctx, issues);
     if (typeCode === "Coding") await this.checkCoding(v, item, issues, el, rctx);
     if (QUANTITY_TYPES.includes(typeCode)) await this.checkQuantity(v, item, issues, el, sdx);
@@ -6799,7 +6799,42 @@ export class InstanceValidator {
    * tested (isTestableBinding); the value set is then checked like the element's own, and described as
    * BINDING_ADDITIONAL_D.
    */
-  private async checkBinding(el: Record<string, any>, v: any, typeCode: string, item: Item, issues: Issue[], sourceSd: SdIndex | null): Promise<void> {
+  /**
+   * InstanceValidator.isInScope (validation tag 7.0.1:1541-1597): an additional binding with usage contexts applies only
+   * when every usage is in scope — declared by the caller (-usage; none here, isKnownUsage), or a usage whose code system
+   * is the profile's url and whose code is a path of the resource holding a value that matches it (findDataValue l. 1679-
+   * 1727 over the resource Element: its path is the resource type only for the validated resource itself, so an entry or
+   * contained resource never matches; matchesUsage l. 1599-1677: a CodeableConcept value, first coding by system / code /
+   * version). The scope text is BINDING_ADDITIONAL_USAGE "{code} = {value}" joined with ", "; null = not in scope.
+   */
+  private additionalBindingScope(usages: Array<Record<string, any>>, sdx: SdIndex | null, rctx: ResourceCtx | null): string | null {
+    if (!sdx || !rctx || rctx.resource !== rctx.root || rctx.container) return null;
+    const resource = rctx.resource;
+    const profileUrls = [sdx.url, this.versionedUrl(sdx)];
+    const parts: string[] = [];
+    for (const u of usages) {
+      const code = isObject(u.code) ? u.code : null;
+      const value = isObject(u.valueCodeableConcept) ? u.valueCodeableConcept : null;
+      if (!code || typeof code.system !== "string" || !profileUrls.includes(code.system) || typeof code.code !== "string" || !value) return null;
+      const segs = code.code.split(".");
+      if (segs[0] !== resource.resourceType) return null;
+      let items: any[] = [resource];
+      for (const s of segs.slice(1)) {
+        const name = s.replace(/\[.*$/u, "");
+        items = items.flatMap((x) => (isObject(x) ? (Array.isArray(x[name]) ? x[name] : x[name] === undefined ? [] : [x[name]]) : []));
+      }
+      const first = Array.isArray(value.coding) ? value.coding.find(isObject) : undefined;
+      const codingMatches = (c: any): boolean =>
+        isObject(c) && !!first && c.system === first.system && c.code === first.code && (typeof first.version !== "string" || c.version === first.version);
+      const hit = !!first && items.some((x) => isObject(x) && (Array.isArray(x.coding) ? x.coding.some(codingMatches) : typeof x.system === "string" && codingMatches(x)));
+      if (!hit) return null;
+      const shown = (Array.isArray(value.coding) ? value.coding : []).map((c: any) => (isObject(c) ? c.code : undefined)).find((c: unknown) => typeof c === "string") ?? value.text;
+      parts.push(`${code.code} = ${shown}`);
+    }
+    return parts.join(", ");
+  }
+
+  private async checkBinding(el: Record<string, any>, v: any, typeCode: string, item: Item, issues: Issue[], sourceSd: SdIndex | null, rctx: ResourceCtx | null = null): Promise<void> {
     await this.checkOneBinding(el, v, typeCode, item, issues, sourceSd);
     const list = Array.isArray(el.binding?.extension) ? el.binding.extension.filter((x: any) => x?.url === ADDITIONAL_BINDING_EXT || x?.url === ADDITIONAL_BINDING_EXT_R5) : [];
     for (const x of list) {
@@ -6808,10 +6843,13 @@ export class InstanceValidator {
       const valueSet = part("valueSet")[0]?.valueCanonical;
       const strength = ADDITIONAL_PURPOSE_STRENGTH[String(purpose)];
       if (!strength || typeof valueSet !== "string" || !valueSet) continue;
+      let usageNote: string | null = null;
       if (part("usage").length) {
-        // isInScope (l. 1541-1590): the scope comes from -usage or from the resource's content, which is not ported
-        issues.push({ severity: "information", path: item.path, code: "rule-unchecked", message: `The additional binding to ${valueSet} has a usage scope, which is not evaluated; not a conformance failure`, unchecked: { kind: "rule", canonical: "InstanceValidator.isInScope" } });
-        continue;
+        const scope = this.additionalBindingScope(part("usage").map((u: any) => u?.valueUsageContext).filter(isObject), sourceSd, rctx);
+        if (scope === null) continue;
+        // BINDING_ADDITIONAL_IN_SCOPE (hint): describeReference of the binding's own canonical
+        issues.push({ severity: "information", path: item.path, code: "informational", message: `The additional binding to ${valueSet} applies to this element, because ${scope}` });
+        usageNote = scope;
       }
       const known = this.boundValueSets.has(stripVersion(valueSet));
       const found: Issue[] = [];
@@ -6821,7 +6859,9 @@ export class InstanceValidator {
       const names = vs ? [`'${vs.title || vs.name || valueSet}' (${vs.url}${vs.version ? `|${vs.version}` : ""})`, `'${vs.title || vs.name || valueSet}' (${valueSet})`] : [`'${valueSet}'`];
       for (const i of found) {
         const name = names.find((n) => i.message.includes(n));
-        issues.push(name ? { ...i, message: i.message.split(name).join(`${name} specified in an additional binding`) } : i);
+        // BINDING_ADDITIONAL_D / BINDING_ADDITIONAL_UC (with the usage note)
+        const tail = usageNote === null ? "specified in an additional binding" : `specified in an additional binding which applies because ${usageNote}`;
+        issues.push(name ? { ...i, message: i.message.split(name).join(`${name} ${tail}`) } : i);
       }
     }
   }
@@ -7504,7 +7544,12 @@ export class InstanceValidator {
     // checkPrimitive l. 3417: Bundle.entry.fullUrl never reaches validateReference (validator_cli: no message on an example.org fullUrl)
     // only an absolute URL: validator_cli 7.0.1 reports no example URL for `www.example.org` or ' http://example.org/x'
     // (evaluator corpus: all 5649 official URL_EXAMPLE errors are absolute URLs)
-    if (typeCode !== "oid" && typeCode !== "uuid" && !v.startsWith("#") && el.path !== "Bundle.entry.fullUrl" && isAbsoluteUrlJava(v) && isExampleUrl(v) && !this.inExampleExemptContext(item.path)) {
+    // checkPrimitive l. 3412-3418 (validation tag 7.0.1): a defining canonical url (isCanonicalURLElement, l. 4260-4293:
+    // base path `<CanonicalResource>.url`) is only checked to be absolute — never validateReference, so never URL_EXAMPLE
+    // (a Library, which the validator does not load into its context, at http://example.org/… is no error either)
+    const defBase = String(isObject(el.base) && typeof el.base.path === "string" ? el.base.path : el.path || "").split(".");
+    const definingUrl = defBase.length === 2 && defBase[1] === "url" && CANONICAL_RESOURCES.has(defBase[0]);
+    if (!definingUrl && typeCode !== "oid" && typeCode !== "uuid" && !v.startsWith("#") && el.path !== "Bundle.entry.fullUrl" && isAbsoluteUrlJava(v) && isExampleUrl(v) && !this.inExampleExemptContext(item.path)) {
       const u = v.includes("|") ? v.slice(0, v.lastIndexOf("|")) : v;
       // resolveUrl l. 4065: tel: / mailto: / llp: (isCommunicationsUrl) resolve; validator_cli: a urn (urn:oid:2.999…, the
       // example arcs) never reaches URL_EXAMPLE either (jar probes, identifier.system / Coding.system / uri / url / meta.source)

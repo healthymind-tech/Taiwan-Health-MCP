@@ -119,3 +119,20 @@ test("a display the resolver cannot judge in the working language is rules_unche
   const issues = (await new InstanceValidator(new Lang()).validate(r, { profiles: [] })) as unknown as Array<Record<string, any>>;
   assert.deepEqual(completenessOf(issues).rules_unchecked, ["tx: http://loinc.org display in de-CH"]);
 });
+
+// InstanceValidator.isInScope (validation tag 7.0.1:1541-1597): a usage on the profile's own url is in scope when the
+// resource holds a matching value at the usage's path; every usage must be; an entry / contained resource never is
+test("additional binding usage scope (isInScope): matched against the validated resource's content", () => {
+  const P = "http://x/StructureDefinition/cond";
+  const v = new InstanceValidator(new FakeResolver()) as any;
+  const sdx = { url: P, sd: { version: "1.0.0" } };
+  const usage = (code: string) => ({ code: { system: P, code: "Condition.category" }, valueCodeableConcept: { coding: [{ system: "http://x/cs", code }] } });
+  const cond = { resourceType: "Condition", category: [{ coding: [{ system: "http://x/cs", code: "food" }] }] };
+  const root = { resource: cond, container: null, root: cond, bundle: null, entry: null };
+  assert.equal(v.additionalBindingScope([usage("food")], sdx, root), "Condition.category = food");
+  assert.equal(v.additionalBindingScope([usage("housing")], sdx, root), null);
+  assert.equal(v.additionalBindingScope([usage("food"), usage("housing")], sdx, root), null);
+  assert.equal(v.additionalBindingScope([{ ...usage("food"), code: { system: "http://other", code: "Condition.category" } }], sdx, root), null);
+  const bundle = { resourceType: "Bundle", entry: [{ resource: cond }] };
+  assert.equal(v.additionalBindingScope([usage("food")], sdx, { resource: cond, container: null, root: bundle, bundle: null, entry: null }), null);
+});
