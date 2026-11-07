@@ -48,3 +48,34 @@ test("ToolGate: queue timeout and overflow answer BUSY with retry_after_s; a fai
   const off = new ToolGate({ limit: 0, queueTimeoutMs: 10, maxQueue: 0 });
   assert.equal(await off.acquire(), true, "limit 0 = no cap");
 });
+
+test("memory guard: a heavy call does not start while the heap stays above the ratio (BUSY reason memory); a pause that frees it lets it run", async () => {
+  const gate = new ToolGate({ limit: 2, queueTimeoutMs: 1000, maxQueue: 4, heapRatio: 0.85 });
+  let ran = 0;
+  const handler = async (): Promise<string> => {
+    ran++;
+    return "done";
+  };
+  const pauses: number[] = [];
+  // stays high → BUSY, handler never runs, slot released
+  const high = withConcurrencyLimit("fhir_validate_bundle", handler, () => gate, undefined, { ratio: () => 0.9, pause: async (ms) => void pauses.push(ms) });
+  const r = (await high()) as unknown as { isError: boolean; content: Array<{ text: string }> };
+  assert.equal(r.isError, true);
+  const body = JSON.parse(r.content[0].text);
+  assert.equal(body.error.code, BUSY_CODE);
+  assert.equal(body.error.reason, "memory");
+  assert.equal(body.error.retry_after_s, 15);
+  assert.equal(ran, 0);
+  assert.deepEqual(pauses, [1000]);
+  assert.equal(gate.stats().running, 0);
+  // high, then collected after the pause → runs
+  let n = 0;
+  const recovers = withConcurrencyLimit("fhir_validate_bundle", handler, () => gate, undefined, { ratio: () => (n++ === 0 ? 0.9 : 0.5), pause: async () => {} });
+  assert.equal(await recovers(), "done");
+  // light tools are never checked
+  const light = withConcurrencyLimit("search_loinc", handler, () => gate, undefined, { ratio: () => 0.99, pause: async () => {} });
+  assert.equal(await light(), "done");
+  // ratio 0 = guard off
+  const off = new ToolGate({ limit: 2, queueTimeoutMs: 1000, maxQueue: 4, heapRatio: 0 });
+  assert.equal(await withConcurrencyLimit("fhir_validate_bundle", handler, () => off, undefined, { ratio: () => 0.99, pause: async () => {} })(), "done");
+});

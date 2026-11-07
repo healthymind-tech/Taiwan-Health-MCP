@@ -8,7 +8,15 @@
  * gets an isError result with `error.code = "BUSY"` and `retry_after_s` instead of piling up.
  * Light tools never wait. Settings: MCP_HEAVY_TOOL_CONCURRENCY (default 4; 0 = no cap),
  * MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS (default 60000), MCP_HEAVY_TOOL_MAX_QUEUE (default 32).
+ *
+ * Memory guard: a heavy call that holds a slot still does not start while the V8 heap is above
+ * MCP_HEAVY_TOOL_HEAP_RATIO of its limit (default 0.85; 0 = off) — checked again after a short pause
+ * (the old space is only collected under pressure) — and answers BUSY (`reason: "memory"`) instead, so a
+ * burst of large Bundles is turned away call by call rather than taking the whole process down with
+ * "JavaScript heap out of memory" (staging, 2026-11-07: 11 restarts → 502s at the front door).
  */
+
+import v8 from "node:v8";
 
 export const BUSY_CODE = "BUSY";
 
@@ -31,6 +39,14 @@ export interface GateOptions {
   limit: number;
   queueTimeoutMs: number;
   maxQueue: number;
+  /** used / limit of the V8 heap above which a heavy call does not start; 0 = no memory guard */
+  heapRatio?: number;
+}
+
+/** used / limit of this process's V8 heap. */
+export function heapUsedRatio(): number {
+  const h = v8.getHeapStatistics();
+  return h.heap_size_limit > 0 ? h.used_heap_size / h.heap_size_limit : 0;
 }
 
 function envInt(name: string, fallback: number): number {
@@ -38,11 +54,17 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(v) && v >= 0 ? v : fallback;
 }
 
+function envRatio(name: string, fallback: number): number {
+  const v = Number.parseFloat(process.env[name] ?? "");
+  return Number.isFinite(v) && v >= 0 && v < 1 ? v : fallback;
+}
+
 export function gateOptionsFromEnv(): GateOptions {
   return {
     limit: envInt("MCP_HEAVY_TOOL_CONCURRENCY", 4),
     queueTimeoutMs: envInt("MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS", 60_000),
     maxQueue: envInt("MCP_HEAVY_TOOL_MAX_QUEUE", 32),
+    heapRatio: envRatio("MCP_HEAVY_TOOL_HEAP_RATIO", 0.85),
   };
 }
 
@@ -94,6 +116,27 @@ export class ToolGate {
   }
 }
 
+/** The isError result of a heavy call refused because the heap is near its limit. */
+export function memoryBusyToolResult(tool: string, ratio: number): { content: Array<{ type: "text"; text: string }>; isError: true } {
+  const retryAfter = 15;
+  const pct = Math.round(ratio * 100);
+  const body = {
+    ok: false,
+    data: null,
+    warnings: [],
+    error: {
+      code: BUSY_CODE,
+      tool,
+      reason: "memory",
+      retryable: true,
+      retry_after_s: retryAfter,
+      message: `The server's memory is near its limit (${pct}% of the heap in use), so ${tool} did not start. Retry after ${retryAfter} s; nothing was processed.`,
+      message_zh: `伺服器記憶體接近上限（已使用 ${pct}% heap），${tool} 未開始執行。請 ${retryAfter} 秒後重試；本次沒有處理任何內容。`,
+    },
+  };
+  return { content: [{ type: "text", text: JSON.stringify(body) }], isError: true };
+}
+
 /** The isError result of a call that could not start (same envelope as the other tool errors). */
 export function busyToolResult(tool: string, gate: ToolGate): { content: Array<{ type: "text"; text: string }>; isError: true } {
   const { limit } = gate.stats();
@@ -127,12 +170,19 @@ export function withConcurrencyLimit<A extends unknown[], R>(
   handler: (...args: A) => Promise<R> | R,
   gate: () => ToolGate = heavyToolGate,
   heavy: ReadonlySet<string> = HEAVY_TOOLS,
+  heap: { ratio: () => number; pause: (ms: number) => Promise<void> } = { ratio: heapUsedRatio, pause: (ms) => new Promise((r) => setTimeout(r, ms)) },
 ): (...args: A) => Promise<R> {
   if (!heavy.has(name)) return async (...args: A): Promise<R> => handler(...args);
   return async (...args: A): Promise<R> => {
     const g = gate();
     if (!(await g.acquire())) return busyToolResult(name, g) as unknown as R;
     try {
+      const limit = g.opts.heapRatio ?? 0;
+      if (limit > 0 && heap.ratio() > limit) {
+        await heap.pause(1000);
+        const r = heap.ratio();
+        if (r > limit) return memoryBusyToolResult(name, r) as unknown as R;
+      }
       return await handler(...args);
     } finally {
       g.release();
