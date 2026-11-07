@@ -209,6 +209,9 @@ services:
       hl7-validator-empd:
         condition: service_healthy
         required: false
+      hl7-validator-ngs:
+        condition: service_healthy
+        required: false
     restart: unless-stopped
 
   minio-init:
@@ -374,6 +377,14 @@ services:
     container_name: taiwanHealthMcp_hl7_validator_empd
     environment:
       - VALIDATOR_IG=tw.gov.mohw.nhi.empd#0.2.1
+      - VALIDATOR_TX=${VALIDATOR_TX:-https://tx.fhir.org}
+      - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2400m}
+
+  hl7-validator-ngs:
+    <<: *hl7validator
+    container_name: taiwanHealthMcp_hl7_validator_ngs
+    environment:
+      - VALIDATOR_IG=tw.gov.mohw.nhi.ngs#1.0.0
       - VALIDATOR_TX=${VALIDATOR_TX:-https://tx.fhir.org}
       - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2400m}
 
