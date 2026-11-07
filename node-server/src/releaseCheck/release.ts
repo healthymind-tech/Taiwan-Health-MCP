@@ -218,7 +218,12 @@ export async function releaseCheck(input: ReleaseInput, deps: ReleaseDeps): Prom
       officially_verified: official,
     };
     reasons.push(...issueReasons(vErr, "validation-error", "validation"));
-    if (!official) {
+    const prov: Json | null = env && isObj(env.provenance) ? env.provenance : null;
+    const served = prov && prov.packageId ? `${prov.packageId}#${prov.version ?? ""}` : input.package_id ? `${input.package_id}${input.version ? `#${input.version}` : ""}` : "this package";
+    if (data.official_verdict === "none") {
+      // acceptance: the built-in validator's verdict is for fixing only — never released, whatever require_official says
+      reasons.push({ code: "not-officially-verified", message: `Not released: no official validator serves ${served}. The built-in validator's result is for fixing only, not an official verdict.`, count: 1, check: "validation" });
+    } else if (!official) {
       const why = data.fallback_reason
         ? `the MCP fallback validated it (${String(data.fallback_reason).slice(0, 120)})`
         : data.official_verdict === undefined

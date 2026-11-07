@@ -134,6 +134,35 @@ export const IG_ERROR_HINTS: Readonly<Record<string, string>> = {
   INVALID_ARGUMENT: "Check the arguments against this tool's description and input schema, then call again.",
 };
 
+/**
+ * The engine / verdict fields of a validation result. With an official validator serving the package: "hl7-official"
+ * (official_verdict true, or false with checked_fully false when terminology was unverified) or "mcp-fallback"
+ * (official_verdict false, checked_fully false, fallback_reason) — as release v1. Without one: engine "builtin",
+ * official_verdict "none" (acceptance: the built-in result is for fixing only; fhir_release_check never releases it).
+ */
+export function officialVerdictFields(
+  served: boolean,
+  judgedOfficially: boolean,
+  fallbackReason: string | null,
+  unverified: number,
+): { engine: "hl7-official" | "mcp-fallback" | "builtin"; fields: Record<string, any> } {
+  if (!served) return { engine: "builtin", fields: { official_verdict: "none" } };
+  const engine = judgedOfficially ? "hl7-official" : "mcp-fallback";
+  // release v1: a fallback or an unverified code is never a complete official check
+  if (!judgedOfficially || fallbackReason || unverified) {
+    return { engine, fields: { checked_fully: false, official_verdict: judgedOfficially && !fallbackReason, ...(fallbackReason ? { fallback_reason: fallbackReason } : {}) } };
+  }
+  return { engine, fields: { official_verdict: true } };
+}
+
+/** The warning a built-in-only result carries (acceptance: no official validator serves the package). */
+export function noOfficialValidatorIssue(packageId: string, version: string): Record<string, any> {
+  return {
+    ...validator.issue("warning", "", "informational", `No official validator serves ${packageId}#${version}: this result is for fixing only, not an official verdict; fhir_release_check will not release it.`),
+    message_zh: "此 IG 沒有官方 validator，結果僅供修正參考，release_check 會擋下",
+  };
+}
+
 export class FHIRIGService {
   private embeddingSvc: EmbeddingService | null;
   /** ISSUES_v17.3: mark validation issues that are IG known defects (off for the self-check itself). */
@@ -2074,7 +2103,8 @@ export class FHIRIGService {
     let fallbackReason: string | null = null;
     let unverified: Record<string, any>[] = [];
     const official = officialValidator();
-    const officialBase = official.endpointFor(pkg.package_id, pkg.version);
+    // a validator configured for this package, or one whose IG's closure holds it (officialValidator.routeFor)
+    const officialBase = (await official.routeFor(pkg.package_id, pkg.version, fhirIg.packageClosureDeclaredOrder))?.url ?? null;
     if (officialBase) {
       try {
         const r = await official.validate(officialBase, resource, profiles[0] ?? null);
@@ -2097,6 +2127,8 @@ export class FHIRIGService {
     }
     if (!judged) {
       const tracked = await trackQueryFailures(() => engine.validate(resource, { profiles }));
+      // acceptance: no official validator serves this package — said on the result, never read as an official verdict
+      if (!officialBase) issues.push(noOfficialValidatorIssue(pkg.package_id, pkg.version));
       // parity v3: the built-in validator reports BundleValidator's official paths (quirks included) — same relocation
       relocateBundleIssues(resource, tracked.result as Record<string, any>[]);
       pushAll(issues, tracked.result as Record<string, any>[]);
@@ -2143,23 +2175,18 @@ export class FHIRIGService {
         phases,
       });
     }
+    const verdict = officialVerdictFields(!!officialBase, engineSource !== validator.SOURCE, fallbackReason, unverified.length);
     return {
       // null: no verdict (a definition could not be loaded); neither a pass nor a finding
       valid: validator.hasNoVerdict(issues) ? null : validator.isValid(issues),
       profile: profileId,
       source: engineSource,
-      // only when an official validator serves the package: "hl7-official" or "mcp-fallback"
-      ...(officialBase ? { engine: engineSource === validator.SOURCE ? "mcp-fallback" : "hl7-official" } : {}),
+      engine: verdict.engine,
       issues,
       // checked_fully / profiles_unchecked / valuesets_unchecked: `valid` keeps HL7
       // semantics (an unresolvable profile is only a warning), so incompleteness is explicit.
       ...validator.completenessOf(issues, (pkg._depsMissing as unknown[] | undefined) || []),
-      // release v1: a fallback or an unverified code is never a complete official check
-      ...(officialBase && (engineSource === validator.SOURCE || fallbackReason || unverified.length)
-        ? { checked_fully: false, official_verdict: engineSource !== validator.SOURCE && !fallbackReason, ...(fallbackReason ? { fallback_reason: fallbackReason } : {}) }
-        : officialBase
-          ? { official_verdict: true }
-          : {}),
+      ...verdict.fields,
       ...(unverified.length ? { unverified } : {}),
     };
   }

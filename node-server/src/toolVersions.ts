@@ -303,7 +303,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.142.0 (parity v3, branch 1.141.0): REFERENCE_REF_WRONGTARGET names a profile's targetProfile list as written (the core definitions' pinned to 4.0.1), one message per pass.
   // 1.143.0 (parity v3 wave 8): an enumerated include pinned to a version of a server-side code system held nowhere here is undecided (the server's versions are not known locally).
   // 1.144.0 (parity v3): SNOMED CT / LOINC / ICD-10-CM / RxNorm / CVX includes pinned to a version not held here are undecided too (jar probes), also when the value set's shipped expansion lists the code.
-  fhir_validate_bundle: "1.144.0",
+  // 1.145.0: acceptance: an official validator is chosen by exact package#version, else the first configured one whose IG closure holds that package#version; without one the result says engine "builtin", official_verdict "none" and carries a warning (message / message_zh) that it is for fixing only.
+  fhir_validate_bundle: "1.145.0",
   // 1.132.0 (parity v3, branch 1.130.0): a bound CodeableConcept (not example, ValueSet found): a server-side system's display the ValueSet lists for the code is valid.
   // 1.128.0 / 1.129.0 (parity v3 ext waves 1-2, branch 1.126.0): a value discriminator on a type-sliced value[x] reads its type slice; a code-less versioned Coding of a system the server does not publish is a warning on .system, of a SERVER_SIDE_LIST system the server's warning; checkSearchSet reads a resourceType that is no resource name as an untyped Resource.
   // 1.114.0 (parity v3 scored extras): sub-extension urls below a sub-extension, a number Extension.url, meta.profile of an unknown version read as the current definition, memberOf slicing on a systemless Coding, a coding object for fixed / pattern.
@@ -438,7 +439,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.139.0: validation as fhir_validate_bundle 1.142.0.
   // 1.140.0: validation as fhir_validate_bundle 1.143.0.
   // 1.141.0: validation as fhir_validate_bundle 1.144.0.
-  fhir_validate_resource: "1.141.0",
+  // 1.142.0: as fhir_validate_bundle 1.145.0 (official routing by IG closure; engine "builtin" / official_verdict "none" + warning without an official validator).
+  fhir_validate_resource: "1.142.0",
   // 1.111.0: validation as fhir_validate_bundle 1.114.0.
   // 1.112.0: validation as fhir_validate_bundle 1.115.0.
   // 1.102.0: validation as fhir_validate_bundle 1.105.0.
@@ -598,7 +600,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.24.0 (ISSUES_v20, with source_text): the record checks of fhir_validate_resource 1.28.0 (as fhir_finalize_bundle 1.19.0).
   // 1.25.0 (ISSUES_v20.1, with source_text only): record_issues / validation carry `gate`; the record checks of fhir_validate_bundle 1.33.0. Output without source_text unchanged.
   // 1.26.0 (parity v3 ROUND 9): an unresolvable meta.profile that maps to exactly one profile is repaired (profile_changes); validation carries extended_findings.
-  fhir_finalize_resource: "1.26.0",
+  // 1.27.0: its validation as fhir_validate_resource 1.142.0.
+  fhir_finalize_resource: "1.27.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -719,7 +722,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   neither targets nor facts → reason incomplete-input (completeness cannot be judged), never released.
   // 1.2.0 (v20.2, evaluator decision): only decidable conditions stop a release (official 0 errors, targets, blocking G-UNGROUNDED on structured values); fact coverage and suspected-empty-bundle → `advisories`; no targets → incomplete-input.
   // 1.3.0 (parity v3 ROUND 9): release = parity 0 errors, checked_fully=true, extended 0 errors (extended-error, extended-incomplete, not-fully-checked even with require_official=false); validation.extended.
-  fhir_release_check: "1.3.0",
+  // 1.4.0: official_verdict "none" (no official validator serves the package) is never released, also with require_official=false; the reason names the package#version.
+  fhir_release_check: "1.4.0",
   // 1.1.0 (evaluation feedback): (1) a model display the validator's terminology rule rejects for a resolvable code is
   //   replaced by the code's display (provenance lookup; the model wording moves to CodeableConcept.text when empty;
   //   case-only differences are valid, whitespace-only ones take the valid spelling); (2) a single object / scalar where
@@ -779,7 +783,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.19.0 (ISSUES_v17.4, with source_text): validation as fhir_validate_resource 1.26.0 (narrowed IG-defined exemption).
   // 1.20.0 (ISSUES_v20, with source_text): the content checks of its validation follow fhir_validate_resource 1.28.0 (abbreviations, ROC range ends, identifier-truncated, allergy; code-meaning-mismatch only where normalize candidates are fetched).
   // 1.21.0 (ISSUES_v20.1, with source_text only): the content checks of fhir_validate_bundle 1.33.0 in its validation (gate field, coded unconfirmed-as-confirmed, false-positive fixes). Output without source_text unchanged.
-  fhir_author_resources: "1.21.0",
+  // 1.22.0: its validation as fhir_validate_resource 1.142.0.
+  fhir_author_resources: "1.22.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -824,7 +829,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.19.0 (ISSUES_v17.4, with source_text): grounding / validation as fhir_validate_bundle 1.29.0 (narrowed IG-defined exemption).
   // 1.20.0 (ISSUES_v20, with source_text): the content checks follow fhir_validate_bundle 1.31.0 (as fhir_author_resources 1.20.0).
   // 1.21.0 (ISSUES_v20.1, with source_text only): the content checks of fhir_validate_bundle 1.33.0 in its validation (gate field, coded unconfirmed-as-confirmed, false-positive fixes). Output without source_text unchanged.
-  fhir_assemble_bundle: "1.21.0",
+  // 1.22.0: its validation as fhir_validate_bundle 1.145.0.
+  fhir_assemble_bundle: "1.22.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -904,7 +910,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.19.0 (ISSUES_v20, with source_text): the record checks of fhir_validate_bundle 1.31.0 in data.record_issues (identifier-truncated, ROC range ends, no allergy resolution from 停藥; code-meaning-mismatch needs normalize candidates, which finalize does not fetch). Output without source_text unchanged.
   // 1.20.0 (ISSUES_v20.1, with source_text only): record_issues carry `gate`; the record checks of fhir_validate_bundle 1.33.0. Output without source_text unchanged.
   // 1.21.0 (parity v3 ROUND 9): rule meta-profile (a unique mapping of an unresolvable meta.profile; errors it exposes were hidden, the guard keeps it); data.extended_findings.
-  fhir_finalize_bundle: "1.21.0",
+  // 1.22.0: its validation as fhir_validate_bundle 1.145.0.
+  fhir_finalize_bundle: "1.22.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

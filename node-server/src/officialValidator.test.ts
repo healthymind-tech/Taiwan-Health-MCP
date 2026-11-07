@@ -173,3 +173,44 @@ test("BundleValidator's fullUrl rules (all reported at Bundle.entry[0]) are loca
   relocateBundleIssues(b, issues);
   assert.deepEqual(issues.map((i) => i.location_path ?? null), ["Bundle.entry[1]", "Bundle.entry[2]", "Bundle.entry[0]"]);
 });
+
+test("routing: an exact package#version first; else the first configured validator whose IG closure holds that package#version (never by id alone)", async () => {
+  const c = parseOfficialConfig({
+    OFFICIAL_VALIDATOR_URLS: "tw.gov.mohw.twcore#1.0.0=http://v-twcore:18080,tw.gov.mohw.nhi.pas#1.2.7=http://v-pas:18081,tw.gov.mohw.emr.empd#1.0.0=http://v-empd:18083",
+  });
+  const closures: Record<string, Array<[string, string]>> = {
+    "tw.gov.mohw.twcore#1.0.0": [["tw.gov.mohw.twcore", "1.0.0"], ["hl7.fhir.r4.core", "4.0.1"]],
+    "tw.gov.mohw.nhi.pas#1.2.7": [["tw.gov.mohw.nhi.pas", "1.2.7"], ["tw.gov.mohw.twcore", "0.3.2"], ["hl7.fhir.r4.core", "4.0.1"]],
+    "tw.gov.mohw.emr.empd#1.0.0": [["tw.gov.mohw.emr.empd", "1.0.0"], ["tw.gov.mohw.twcore", "0.3.2"], ["hl7.fhir.r4.core", "4.0.1"]],
+  };
+  const asked: string[] = [];
+  const closureOf = async (id: string, v: string): Promise<Array<[string, string]>> => {
+    asked.push(`${id}#${v}`);
+    return closures[`${id}#${v}`] ?? [];
+  };
+  const v = new OfficialValidator(c);
+  // exact match: no closure lookup
+  assert.deepEqual(await v.routeFor("tw.gov.mohw.twcore", "1.0.0", closureOf), { url: "http://v-twcore:18080", via: null });
+  assert.deepEqual(asked, []);
+  // twcore 0.3.2 has no validator of its own: PAS (first in configuration order whose closure holds it), not twcore 1.0.0
+  assert.deepEqual(await v.routeFor("tw.gov.mohw.twcore", "0.3.2", closureOf), { url: "http://v-pas:18081", via: "tw.gov.mohw.nhi.pas#1.2.7" });
+  // a version no closure holds: none (the id alone does not route)
+  assert.equal(await v.routeFor("tw.gov.mohw.twcore", "0.2.0", closureOf), null);
+  assert.equal(await v.routeFor("hl7.fhir.uv.ips", "1.1.0", closureOf), null);
+  // closures are computed once per validator
+  assert.equal(asked.filter((x) => x === "tw.gov.mohw.nhi.pas#1.2.7").length, 1, JSON.stringify(asked));
+  // reproducible: the same answer again
+  assert.deepEqual(await v.routeFor("tw.gov.mohw.twcore", "0.3.2", closureOf), { url: "http://v-pas:18081", via: "tw.gov.mohw.nhi.pas#1.2.7" });
+  // a failed closure lookup is skipped and not cached
+  let fail = true;
+  const flaky = new OfficialValidator(c);
+  const flakyOf = async (id: string, ver: string): Promise<Array<[string, string]>> => {
+    if (id === "tw.gov.mohw.nhi.pas" && fail) throw new Error("db down");
+    return closures[`${id}#${ver}`] ?? [];
+  };
+  assert.deepEqual(await flaky.routeFor("tw.gov.mohw.twcore", "0.3.2", flakyOf), { url: "http://v-empd:18083", via: "tw.gov.mohw.emr.empd#1.0.0" });
+  fail = false;
+  assert.deepEqual(await flaky.routeFor("tw.gov.mohw.twcore", "0.3.2", flakyOf), { url: "http://v-pas:18081", via: "tw.gov.mohw.nhi.pas#1.2.7" });
+  // mode off: never routed
+  assert.equal(await new OfficialValidator({ ...c, mode: "off" }).routeFor("tw.gov.mohw.twcore", "1.0.0", closureOf), null);
+});

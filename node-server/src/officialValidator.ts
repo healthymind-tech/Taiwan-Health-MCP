@@ -136,11 +136,45 @@ export class OfficialValidator {
     return this.config.mode;
   }
 
-  /** The validator for a package (exact version first, then any version of the id), or null. */
+  /** The validator configured for a package: the exact package#version first, then an entry for the id without a version. */
   endpointFor(packageId: string, version: string): string | null {
     if (this.config.mode === "off") return null;
     const e = this.config.endpoints.find((x) => x.packageId === packageId && x.version === version) ?? this.config.endpoints.find((x) => x.packageId === packageId && x.version === null);
     return e ? e.url : null;
+  }
+
+  private closures = new Map<string, Promise<Array<[string, string]>>>();
+
+  /**
+   * The validator that serves `packageId#version`: a configured one (endpointFor), else the first configured
+   * validator, in configuration order, whose IG's dependency closure (declared order, recursive) holds exactly that
+   * package#version — validator_cli loads the whole closure of its IG, so it has those definitions (TW Core 0.3.2 →
+   * the TW PAS 1.2.7 validator). Never by package id alone. `via` names the IG of a validator reached through its
+   * closure. Closures are computed once per process (a failed lookup is not cached).
+   */
+  async routeFor(packageId: string, version: string, closureOf: (packageId: string, version: string) => Promise<Array<[string, string]>>): Promise<{ url: string; via: string | null } | null> {
+    if (this.config.mode === "off") return null;
+    const direct = this.endpointFor(packageId, version);
+    if (direct) return { url: direct, via: null };
+    for (const e of this.config.endpoints) {
+      if (e.version === null) continue; // a closure needs the validator's own version
+      const key = `${e.packageId}#${e.version}`;
+      let p = this.closures.get(key);
+      if (!p) {
+        p = closureOf(e.packageId, e.version);
+        this.closures.set(key, p);
+        p.catch(() => this.closures.delete(key));
+      }
+      let closure: Array<[string, string]>;
+      try {
+        closure = await p;
+      } catch (err) {
+        logError("official validator: dependency closure lookup failed", { endpoint: key, error: String((err as Error).message) });
+        continue;
+      }
+      if (closure.some(([id, v]) => id === packageId && v === version)) return { url: e.url, via: key };
+    }
+    return null;
   }
 
   async validate(base: string, resource: unknown, profile: string | null): Promise<OfficialResult> {

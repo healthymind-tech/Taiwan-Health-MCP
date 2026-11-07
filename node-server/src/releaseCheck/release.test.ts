@@ -316,3 +316,17 @@ test("ROUND 9: extended errors stop a release, unverifiable does not; checked_fu
   const optOut = await releaseCheck(base(FULL, { require_official: false }), deps({ valid: true, source: "builtin", issues: [], checked_fully: false }));
   assert.ok(optOut.reasons.some((x) => x.code === "not-fully-checked"));
 });
+
+test("no official validator (official_verdict \"none\") → not released, also with require_official=false; the reason names the package", async () => {
+  const builtin = { valid: true, source: "builtin", engine: "builtin", official_verdict: "none", issues: [], entries: [] };
+  const withProv = (data: Data): ReleaseDeps => ({
+    validate: async () => JSON.stringify({ ok: true, data, warnings: [], provenance: { packageId: "tw.gov.mohw.twcore", version: "0.2.0" } }),
+  });
+  for (const extra of [{}, { require_official: false }] as Array<Partial<ReleaseInput>>) {
+    const r = await releaseCheck(base(FULL, { ...extra, targets: [{ resourceType: "Patient" }] }), withProv(builtin));
+    assert.equal(r.release, false, JSON.stringify(extra));
+    const why = r.reasons.find((x) => x.code === "not-officially-verified");
+    assert.ok(why && why.message.includes("no official validator serves tw.gov.mohw.twcore#0.2.0"), JSON.stringify(r.reasons));
+    assert.equal(r.validation.official_verdict, "none");
+  }
+});
