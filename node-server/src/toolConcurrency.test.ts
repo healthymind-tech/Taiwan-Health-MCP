@@ -49,16 +49,14 @@ test("ToolGate: queue timeout and overflow answer BUSY with retry_after_s; a fai
   assert.equal(await off.acquire(), true, "limit 0 = no cap");
 });
 
-test("memory guard: a heavy call does not start while the heap stays above the ratio (BUSY reason memory); a pause that frees it lets it run", async () => {
-  const gate = new ToolGate({ limit: 2, queueTimeoutMs: 1000, maxQueue: 4, heapRatio: 0.85 });
+test("memory guard: a heavy call does not start while the live heap is above the ratio (BUSY reason memory); light tools and ratio 0 are never checked", async () => {
+  const gate = new ToolGate({ limit: 2, queueTimeoutMs: 1000, maxQueue: 4, heapRatio: 0.8 });
   let ran = 0;
   const handler = async (): Promise<string> => {
     ran++;
     return "done";
   };
-  const pauses: number[] = [];
-  // stays high → BUSY, handler never runs, slot released
-  const high = withConcurrencyLimit("fhir_validate_bundle", handler, () => gate, undefined, { ratio: () => 0.9, pause: async (ms) => void pauses.push(ms) });
+  const high = withConcurrencyLimit("fhir_validate_bundle", handler, () => gate, undefined, { ratio: () => 0.9 });
   const r = (await high()) as unknown as { isError: boolean; content: Array<{ text: string }> };
   assert.equal(r.isError, true);
   const body = JSON.parse(r.content[0].text);
@@ -66,16 +64,24 @@ test("memory guard: a heavy call does not start while the heap stays above the r
   assert.equal(body.error.reason, "memory");
   assert.equal(body.error.retry_after_s, 15);
   assert.equal(ran, 0);
-  assert.deepEqual(pauses, [1000]);
-  assert.equal(gate.stats().running, 0);
-  // high, then collected after the pause → runs
-  let n = 0;
-  const recovers = withConcurrencyLimit("fhir_validate_bundle", handler, () => gate, undefined, { ratio: () => (n++ === 0 ? 0.9 : 0.5), pause: async () => {} });
-  assert.equal(await recovers(), "done");
-  // light tools are never checked
-  const light = withConcurrencyLimit("search_loinc", handler, () => gate, undefined, { ratio: () => 0.99, pause: async () => {} });
-  assert.equal(await light(), "done");
-  // ratio 0 = guard off
+  assert.equal(gate.stats().running, 0, "the slot is released");
+  assert.equal(await withConcurrencyLimit("fhir_validate_bundle", handler, () => gate, undefined, { ratio: () => 0.5 })(), "done");
+  assert.equal(await withConcurrencyLimit("search_loinc", handler, () => gate, undefined, { ratio: () => 0.99 })(), "done");
   const off = new ToolGate({ limit: 2, queueTimeoutMs: 1000, maxQueue: 4, heapRatio: 0 });
-  assert.equal(await withConcurrencyLimit("fhir_validate_bundle", handler, () => off, undefined, { ratio: () => 0.99, pause: async () => {} })(), "done");
+  assert.equal(await withConcurrencyLimit("fhir_validate_bundle", handler, () => off, undefined, { ratio: () => 0.99 })(), "done");
+});
+
+test("heapUsedRatio reads the live heap after a major GC, not the garbage-filled used size", async () => {
+  const { heapUsedRatio } = await import("./toolConcurrency.js");
+  heapUsedRatio(); // starts the observer
+  const before = heapUsedRatio();
+  let junk: unknown[] = [];
+  for (let i = 0; i < 2_000_000; i++) junk.push({ i, s: "x".repeat(8) });
+  junk = [];
+  const gc = (globalThis as { gc?: () => void }).gc;
+  if (gc) gc();
+  await new Promise((r) => setTimeout(r, 50)); // the observer callback runs on the next tick
+  const after = heapUsedRatio();
+  assert.ok(after >= 0 && after < 1, String(after));
+  if (gc) assert.ok(after > 0 && after !== before, `a major GC was observed (${before} → ${after})`);
 });

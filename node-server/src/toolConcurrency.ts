@@ -9,13 +9,16 @@
  * Light tools never wait. Settings: MCP_HEAVY_TOOL_CONCURRENCY (default 4; 0 = no cap),
  * MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS (default 60000), MCP_HEAVY_TOOL_MAX_QUEUE (default 32).
  *
- * Memory guard: a heavy call that holds a slot still does not start while the V8 heap is above
- * MCP_HEAVY_TOOL_HEAP_RATIO of its limit (default 0.85; 0 = off) — checked again after a short pause
- * (the old space is only collected under pressure) — and answers BUSY (`reason: "memory"`) instead, so a
- * burst of large Bundles is turned away call by call rather than taking the whole process down with
- * "JavaScript heap out of memory" (staging, 2026-11-07: 11 restarts → 502s at the front door).
+ * Memory guard: a heavy call that holds a slot still does not start while the LIVE heap — the V8 heap as the
+ * last major (mark-compact) collection left it — is above MCP_HEAVY_TOOL_HEAP_RATIO of the heap limit (default
+ * 0.8; 0 = off), and answers BUSY (`reason: "memory"`) instead, so a burst of large Bundles is turned away call by
+ * call rather than taking the whole process down with "JavaScript heap out of memory" (staging, 2026-11-07: 11
+ * restarts → 502s at the front door). The plain used size is not a measure: V8 collects the old space only under
+ * pressure, so a big heap fills with garbage long before it is full (staging 2026-11-08: 91 % "used" at idle with
+ * ~2 GB live), and a forced GC would stop every request for seconds.
  */
 
+import { PerformanceObserver, constants as perfConstants } from "node:perf_hooks";
 import v8 from "node:v8";
 
 export const BUSY_CODE = "BUSY";
@@ -43,10 +46,23 @@ export interface GateOptions {
   heapRatio?: number;
 }
 
-/** used / limit of this process's V8 heap. */
+let liveAfterMajorGc = 0;
+let gcObserver: PerformanceObserver | null = null;
+
+/** live / limit of this process's V8 heap: the used size right after the last major GC (0 before the first one). */
 export function heapUsedRatio(): number {
-  const h = v8.getHeapStatistics();
-  return h.heap_size_limit > 0 ? h.used_heap_size / h.heap_size_limit : 0;
+  if (!gcObserver) {
+    gcObserver = new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) {
+        if ((e as unknown as { detail?: { kind?: number } }).detail?.kind === perfConstants.NODE_PERFORMANCE_GC_MAJOR) {
+          liveAfterMajorGc = v8.getHeapStatistics().used_heap_size;
+        }
+      }
+    });
+    gcObserver.observe({ entryTypes: ["gc"] });
+  }
+  const limit = v8.getHeapStatistics().heap_size_limit;
+  return limit > 0 ? liveAfterMajorGc / limit : 0;
 }
 
 function envInt(name: string, fallback: number): number {
@@ -64,7 +80,7 @@ export function gateOptionsFromEnv(): GateOptions {
     limit: envInt("MCP_HEAVY_TOOL_CONCURRENCY", 4),
     queueTimeoutMs: envInt("MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS", 60_000),
     maxQueue: envInt("MCP_HEAVY_TOOL_MAX_QUEUE", 32),
-    heapRatio: envRatio("MCP_HEAVY_TOOL_HEAP_RATIO", 0.85),
+    heapRatio: envRatio("MCP_HEAVY_TOOL_HEAP_RATIO", 0.8),
   };
 }
 
@@ -130,8 +146,8 @@ export function memoryBusyToolResult(tool: string, ratio: number): { content: Ar
       reason: "memory",
       retryable: true,
       retry_after_s: retryAfter,
-      message: `The server's memory is near its limit (${pct}% of the heap in use), so ${tool} did not start. Retry after ${retryAfter} s; nothing was processed.`,
-      message_zh: `伺服器記憶體接近上限（已使用 ${pct}% heap），${tool} 未開始執行。請 ${retryAfter} 秒後重試；本次沒有處理任何內容。`,
+      message: `The server's memory is near its limit (${pct}% of the heap still live after the last collection), so ${tool} did not start. Retry after ${retryAfter} s; nothing was processed.`,
+      message_zh: `伺服器記憶體接近上限（上次回收後仍有 ${pct}% heap 在使用），${tool} 未開始執行。請 ${retryAfter} 秒後重試；本次沒有處理任何內容。`,
     },
   };
   return { content: [{ type: "text", text: JSON.stringify(body) }], isError: true };
@@ -170,7 +186,7 @@ export function withConcurrencyLimit<A extends unknown[], R>(
   handler: (...args: A) => Promise<R> | R,
   gate: () => ToolGate = heavyToolGate,
   heavy: ReadonlySet<string> = HEAVY_TOOLS,
-  heap: { ratio: () => number; pause: (ms: number) => Promise<void> } = { ratio: heapUsedRatio, pause: (ms) => new Promise((r) => setTimeout(r, ms)) },
+  heap: { ratio: () => number } = { ratio: heapUsedRatio },
 ): (...args: A) => Promise<R> {
   if (!heavy.has(name)) return async (...args: A): Promise<R> => handler(...args);
   return async (...args: A): Promise<R> => {
@@ -178,8 +194,7 @@ export function withConcurrencyLimit<A extends unknown[], R>(
     if (!(await g.acquire())) return busyToolResult(name, g) as unknown as R;
     try {
       const limit = g.opts.heapRatio ?? 0;
-      if (limit > 0 && heap.ratio() > limit) {
-        await heap.pause(1000);
+      if (limit > 0) {
         const r = heap.ratio();
         if (r > limit) return memoryBusyToolResult(name, r) as unknown as R;
       }
