@@ -92,6 +92,36 @@ test("canonical_url is the package index's url (raw_json keeps the file's own); 
   assert.ok(urlOf(build(1), "x").includes("http://acme.test/ValueSet/x"));
 });
 
+test("a resource present twice keeps the indexed package/ copy whatever the tar order (us.nlm.vsac 0.24.0 $root stub)", () => {
+  const complete = { resourceType: "CodeSystem", id: "CDCREC", url: "urn:oid:2.16.840.1.113883.6.238", version: "1.2", content: "complete", concept: [{ code: "1002-5", display: "American Indian or Alaska Native" }] };
+  const stub = { resourceType: "CodeSystem", id: "CDCREC", url: "urn:oid:2.16.840.1.113883.6.238", content: "example", concept: [{ code: "X", display: "stub" }] };
+  const files = {
+    "package/package.json": JSON.stringify({ name: "acme.dup", version: "1.0.0", fhirVersions: ["4.0.1"] }),
+    "package/$root/CodeSystem-CDCREC.json": JSON.stringify(stub),
+    "package/CodeSystem-CDCREC.json": JSON.stringify(complete),
+    "package/.index.json": JSON.stringify({ "index-version": 2, files: [{ filename: "CodeSystem-CDCREC.json", resourceType: "CodeSystem", id: "CDCREC", url: complete.url, version: "1.2" }] }),
+  };
+  const build = (order: string[]): ReturnType<typeof buildIgPackagePayload> => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ig-dup-"));
+    const file = path.join(dir, "p.tgz");
+    fs.writeFileSync(file, gzipSync(tar(Object.fromEntries(order.map((k) => [k, files[k as keyof typeof files]])))));
+    try {
+      return buildIgPackagePayload(file);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const keys = Object.keys(files);
+  for (const order of [keys, [...keys].reverse()]) {
+    const p = build(order);
+    const cs = p.artifacts.filter((a) => a[2] === "CodeSystem/CDCREC");
+    assert.equal(cs.length, 1);
+    assert.equal(cs[0][15], "package/CodeSystem-CDCREC.json");
+    assert.equal(JSON.parse(String(cs[0][cs[0].length - 1])).content, "complete");
+    assert.deepEqual(p.concepts.map((c) => c[3]), ["1002-5"]);
+  }
+});
+
 test("pushAll / minOf handle arrays far beyond the argument-spread limit", () => {
   const big = Array.from({ length: 500_000 }, (_, i) => i + 1);
   assert.throws(() => [].push(...(big as never[])), RangeError);

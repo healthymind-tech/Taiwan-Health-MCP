@@ -690,7 +690,37 @@ export function readIgPackageIdentity(tgzPath: string): Identity {
   return parseIdentity(readTgz(tgzPath), tgzPath);
 }
 
-function buildPackagePayload(entries: TarEntry[], tgzPath: string): PackagePayload {
+/**
+ * Package files in the order duplicates are resolved (the first copy of a CodeSystem / concept / artifact wins):
+ * files listed in their folder's `.index.json` (what NpmPackage loads) before unlisted ones, files directly in `package/`
+ * before subfolders (`$root`, `other`, `example`, …), then by path. Tar order is not stable between copies of the same
+ * package (a repacked cache folder vs the published tgz), and some packages carry a second, different copy of a resource
+ * under a subfolder — e.g. us.nlm.vsac 0.24.0's package/$root/CodeSystem-CDCREC.json is a content=example stub of the
+ * complete package/CodeSystem-CDCREC.json the index lists.
+ */
+export function orderByPrecedence(entries: TarEntry[]): TarEntry[] {
+  const listed = new Set<string>();
+  for (const e of entries) {
+    if (!e.name.startsWith("package/") || !e.name.endsWith("/.index.json")) continue;
+    const folder = e.name.slice(0, -".index.json".length);
+    try {
+      const index = JSON.parse(entryText(e));
+      for (const f of Array.isArray(index?.files) ? index.files : []) {
+        if (typeof f?.filename === "string") listed.add(folder + f.filename);
+      }
+    } catch {
+      // an unreadable index lists nothing
+    }
+  }
+  const rank = (name: string): number => (listed.has(name) ? 0 : 2) + (/^package\/[^/]+$/.test(name) ? 0 : 1);
+  return entries
+    .map((e, i) => ({ e, i, r: rank(e.name) }))
+    .sort((a, b) => a.r - b.r || (a.e.name < b.e.name ? -1 : a.e.name > b.e.name ? 1 : a.i - b.i))
+    .map((x) => x.e);
+}
+
+function buildPackagePayload(rawEntries: TarEntry[], tgzPath: string): PackagePayload {
+  const entries = orderByPrecedence(rawEntries);
   const identity = parseIdentity(entries, tgzPath);
   const pid = identity.package_id;
   const pver = identity.version;
