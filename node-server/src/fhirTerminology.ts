@@ -8,6 +8,7 @@
  * membership `undefined`) — never fabricate a display or a verdict.
  */
 
+import { createHash } from "node:crypto";
 import { envBudgetBytes, estimateBytes } from "./memSize.js";
 import { txDisplays } from "./txCodeTables.js";
 import { query } from "./db.js";
@@ -146,6 +147,26 @@ export class TtlCache<V> {
 // CodeSystem indexes, bounded by their estimated size (CS_CACHE_MB, default 512 MB); ValueSets likewise (VS_CACHE_MB, 128 MB)
 const csCache = new TtlCache<CodeSystemIndex | null>(envBudgetBytes("CS_CACHE_MB", 512));
 const csLoading = new Map<string, Promise<CodeSystemIndex | null>>();
+
+/**
+ * One index per CodeSystem content. csCache is keyed by the lookup (closure + canonical + exact / version), so the same
+ * CodeSystem resolved from several IG closures, exactly and by id, or for the THO current edition was indexed once per
+ * key — each copy ~80-160 MB for the TW Core ICD-10 / FDA code systems, and every request pinning its own. A CodeSystem
+ * of identical JSON now gets the same (immutable) index object while any holder still has it.
+ */
+const sharedIndexes = new Map<string, WeakRef<CodeSystemIndex>>();
+const sharedGone = new FinalizationRegistry<string>((h) => {
+  if (!sharedIndexes.get(h)?.deref()) sharedIndexes.delete(h);
+});
+function sharedCodeSystemIndex(cs: Record<string, any>): CodeSystemIndex {
+  const h = createHash("sha1").update(JSON.stringify(cs)).digest("hex");
+  const hit = sharedIndexes.get(h)?.deref();
+  if (hit) return hit;
+  const idx = indexCodeSystem(cs);
+  sharedIndexes.set(h, new WeakRef(idx));
+  sharedGone.register(idx, h);
+  return idx;
+}
 const vsCache = new TtlCache<Record<string, any> | null>(envBudgetBytes("VS_CACHE_MB", 128));
 const heldCache = new TtlCache<boolean>();
 
@@ -433,7 +454,7 @@ async function loadCodeSystemIndexUncached(url: string, pkg: PackageRow, exact: 
   // version of the CodeSystem — never the closure's other copy
   const cs = version ? await loadCodeSystemVersion(url.slice(0, bar), version, pkg) : await loadByCanonical("CodeSystem", url, pkg, exact);
   // `not-present` stubs (e.g. SNOMED / LOINC in core) carry no concepts: treat as not held.
-  const idx = cs && cs.content !== "supplement" && cs.content !== "not-present" ? indexCodeSystem(cs) : null;
+  const idx = cs && cs.content !== "supplement" && cs.content !== "not-present" ? sharedCodeSystemIndex(cs) : null;
   csCache.set(key, idx, 64 + (idx ? estimateBytes(idx) : 0));
   return idx;
 }
@@ -485,7 +506,7 @@ export async function loadThoCurrentIndex(canonical: string): Promise<CodeSystem
   const cands = rows.map((r, i) => ({ ...r, packageId: r.package_id, packageVersion: r.package_version, fhirVersion: r.fhir_version, ord: i }));
   const best = rankCandidates(canonical, cands)[0];
   const cs = best ? jsonOf(best.raw_json) : null;
-  const idx = cs && cs.content === "complete" ? indexCodeSystem(cs) : null;
+  const idx = cs && cs.content === "complete" ? sharedCodeSystemIndex(cs) : null;
   csCache.set(key, idx, 64 + (idx ? estimateBytes(idx) : 0));
   return idx;
 }

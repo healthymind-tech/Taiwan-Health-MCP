@@ -25,7 +25,16 @@
  * (POST /stop; the container's restart policy brings it back) at most once per 10 minutes, and calls wait for it.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { logError, logWarning } from "./logger.js";
+
+/**
+ * Runs a function in the async context of this module's load — no request's AsyncLocalStorage stores. A keep-alive
+ * socket of the HTTP agent keeps the context it was opened in for as long as it stays pooled, i.e. the stores of the
+ * request that happened to open it (its validation snapshot, its raw body): the official validator's connections must
+ * not carry one (staging 2026-11-08: finished requests' snapshots held by pooled sockets).
+ */
+const outsideRequest = AsyncLocalStorage.snapshot();
 
 export const OFFICIAL_SOURCE = "hl7-validator_cli-7.0.1";
 
@@ -186,12 +195,15 @@ export class OfficialValidator {
     const timer = setTimeout(() => ctl.abort(), this.config.timeoutMs);
     try {
       const q = `?validationTimeout=${this.config.validationTimeoutMs}${profile ? `&profile=${encodeURIComponent(profile)}` : ""}`;
-      const res = await this.fetchImpl(`${base}/validateResource${q}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/fhir+json", Accept: "application/fhir+json" },
-        body: JSON.stringify(resource),
-        signal: ctl.signal,
-      });
+      const body = JSON.stringify(resource);
+      const res = await outsideRequest(() =>
+        this.fetchImpl(`${base}/validateResource${q}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/fhir+json", Accept: "application/fhir+json" },
+          body,
+          signal: ctl.signal,
+        }),
+      );
       if (!res.ok) throw new OfficialUnavailable(`official validator ${base} answered HTTP ${res.status}`);
       const all = issuesFromOutcome(await res.json());
       const unverified = all.filter(isTransientTxIssue);
@@ -223,7 +235,7 @@ export class OfficialValidator {
     logWarning("official validator: terminology failure cached in the validator; restarting it", { endpoint: base });
     const p = (async (): Promise<void> => {
       try {
-        await this.fetchImpl(`${base}/stop`, { method: "POST", headers: {}, body: "", signal: AbortSignal.timeout(10_000) });
+        await outsideRequest(() => this.fetchImpl(`${base}/stop`, { method: "POST", headers: {}, body: "", signal: AbortSignal.timeout(10_000) }));
       } catch {
         // already gone
       }
@@ -232,7 +244,7 @@ export class OfficialValidator {
       while (this.now() < until) {
         try {
           // any HTTP answer (405 for GET) means the server is back
-          await this.fetchImpl(`${base}/version`, { method: "GET", headers: {}, body: undefined as unknown as string, signal: AbortSignal.timeout(3_000) });
+          await outsideRequest(() => this.fetchImpl(`${base}/version`, { method: "GET", headers: {}, body: undefined as unknown as string, signal: AbortSignal.timeout(3_000) }));
           return;
         } catch {
           await this.sleep(3_000);
