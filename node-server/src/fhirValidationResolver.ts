@@ -20,6 +20,7 @@
  * "display not checked", never an error.
  */
 
+import { envBudgetBytes, estimateBytes } from "./memSize.js";
 import { packageClosure, packageClosureDeclaredOrder, type PackageRow } from "./fhirIg.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "./fhirValidator.js";
 import { variantsOf, type HeldVerdict } from "./extendedFindings/index.js";
@@ -57,7 +58,8 @@ import { enumeratedCodes, installedEnumeratedDisplay } from "./codeAcceptance.js
 
 const SD_TTL_MS = 30 * 60 * 1000;
 const SD_CACHE_MAX = 1500;
-const sdCache = new terminology.TtlCache<Record<string, any> | null>(Infinity, SD_CACHE_MAX);
+// StructureDefinitions with their (generated) snapshots: bounded by estimated size too (SD_CACHE_MB, default 2048 estimated MB — the estimate counts every string at two bytes a character and scales by 1.5, about three times an ASCII definition's real size: 768 made snapshots regenerate on every pas call)
+const sdCache = new terminology.TtlCache<Record<string, any> | null>(envBudgetBytes("SD_CACHE_MB", 2048), SD_CACHE_MAX);
 const defCache = new terminology.TtlCache<boolean>(Infinity, SD_CACHE_MAX);
 
 /**
@@ -502,7 +504,7 @@ interface VersionedRow {
  * version in a package closure is immutable, and the same versioned bindings
  * (identifier-type|4.0.1 …) recur on every validation.
  */
-const versionedMemo = new TtlMemo<Record<string, any> | null>(SD_TTL_MS, SD_CACHE_MAX);
+const versionedMemo = new TtlMemo<Record<string, any> | null>(SD_TTL_MS, SD_CACHE_MAX, envBudgetBytes("VERSIONED_CACHE_MB", 512));
 
 /**
  * Code checks and ValueSet membership, process-wide (keyed by closure): a verdict is a
@@ -675,7 +677,7 @@ export class DbValidatorResolver implements ValidatorResolver {
       }
       sd = result;
     }
-    sdCache.set(key, sd);
+    sdCache.set(key, sd, 64 + (sd ? estimateBytes(sd) : 0));
     return sd;
   }
 

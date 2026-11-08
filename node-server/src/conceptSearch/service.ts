@@ -9,6 +9,8 @@
  * the provider is down or the CodeSystem has no vectors yet (searchQuality signal).
  */
 
+import { envBudgetBytes, estimateBytes } from "../memSize.js";
+import { currentSnapshot } from "../fhirValidationSnapshot.js";
 import { query } from "../db.js";
 import { logWarning } from "../logger.js";
 import type { EmbeddingService } from "../embeddingService.js";
@@ -65,7 +67,11 @@ export interface ConceptSearchResult {
   clauses?: Array<{ clause: string; code: string; display: string | null }>;
 }
 
-const CACHE_TERM_BUDGET = 800_000;
+/**
+ * In-memory ConceptIndexes, bounded by their estimated size (CONCEPT_INDEX_CACHE_MB, default 1536 MB), least recently
+ * used out. A count of terms did not bound memory: 800k terms held ~1.1 GB on staging (heap profile 2026-11-08).
+ */
+const CACHE_BYTE_BUDGET = envBudgetBytes("CONCEPT_INDEX_CACHE_MB", 1536);
 /** fullerCopy: how much larger another installed copy of a CodeSystem must be to be preferred. */
 const FULLER_COPY_FACTOR = 10;
 const FULLER_COPY_MIN_EXTRA = 1000;
@@ -95,6 +101,8 @@ interface CacheEntry {
   signature: string;
   checkedAt: number;
   usedAt: number;
+  /** estimated size of the index when built (memSize.estimateBytes) */
+  bytes: number;
 }
 
 function cmpVersionDesc(a: string, b: string): number {
@@ -300,6 +308,16 @@ export class IgConceptSearch {
   /** The cached in-memory index for a CodeSystem; `indexed` false = assembled from the raw resource. */
   async index(loc: CsLocation): Promise<{ index: ConceptIndex; indexed: boolean }> {
     const key = `${loc.packageId}#${loc.packageVersion}|${loc.url}`;
+    // inside a request's validation snapshot the index it built or found first is kept for the rest of the request,
+    // whatever the shared (byte-bounded) cache evicts meanwhile: a large index is not rebuilt for each lookup
+    const snap = currentSnapshot();
+    if (snap?.has(this.cache, key)) return snap.get(this.cache, key) as { index: ConceptIndex; indexed: boolean };
+    const out = await this.indexShared(key, loc);
+    snap?.pin(this.cache, key, out);
+    return out;
+  }
+
+  private async indexShared(key: string, loc: CsLocation): Promise<{ index: ConceptIndex; indexed: boolean }> {
     const now = Date.now();
     const hit = this.cache.get(key);
     if (hit && now - hit.checkedAt < RECHECK_MS) {
@@ -314,20 +332,22 @@ export class IgConceptSearch {
     }
     const concepts = sig === "raw" ? await this.rawConcepts(loc) : await this.indexedConcepts(loc);
     const index = new ConceptIndex(concepts);
-    this.cache.set(key, { index, signature: sig, checkedAt: now, usedAt: now });
+    this.cache.set(key, { index, signature: sig, checkedAt: now, usedAt: now, bytes: estimateBytes(index) });
     this.evict();
     return { index, indexed: sig !== "raw" };
   }
 
   private evict(): void {
     let total = 0;
-    for (const e of this.cache.values()) total += e.index.termCount;
-    if (total <= CACHE_TERM_BUDGET) return;
+    for (const e of this.cache.values()) total += e.bytes;
+    if (total <= CACHE_BYTE_BUDGET) return;
     const lru = [...this.cache.entries()].sort((a, b) => a[1].usedAt - b[1].usedAt);
     for (const [k, e] of lru) {
-      if (total <= CACHE_TERM_BUDGET || this.cache.size <= 1) break;
+      // the index just used stays even when it alone exceeds the budget (the TW Core ICD-10-CM index is ~620 MB):
+      // evicting it would rebuild it on every call
+      if (total <= CACHE_BYTE_BUDGET || this.cache.size <= 1) break;
       this.cache.delete(k);
-      total -= e.index.termCount;
+      total -= e.bytes;
     }
   }
 

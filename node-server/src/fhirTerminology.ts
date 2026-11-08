@@ -8,6 +8,7 @@
  * membership `undefined`) — never fabricate a display or a verdict.
  */
 
+import { envBudgetBytes, estimateBytes } from "./memSize.js";
 import { txDisplays } from "./txCodeTables.js";
 import { query } from "./db.js";
 import { pickCanonicalVersion } from "./fhirValidator.js";
@@ -87,9 +88,10 @@ export class TtlCache<V> {
   private map = new Map<string, { at: number; value: V; weight: number }>();
   private total = 0;
   /**
-   * `maxWeight` bounds the summed weight of the held values (e.g. the concepts of the CodeSystem indexes): a few
-   * large CodeSystems (tens of thousands of codes, hundreds of MB once indexed) must not pin the heap — release v1,
-   * the staging OOM of 2026-11-01. Eviction is FIFO, by count (CACHE_MAX) and by weight.
+   * `maxWeight` bounds the summed weight of the held values — for the CodeSystem indexes and ValueSets their estimated
+   * size in bytes (memSize.estimateBytes): a few large CodeSystems (tens of thousands of codes, hundreds of MB once
+   * indexed) must not pin the heap (release v1, the staging OOM of 2026-11-01; the 2026-11-08 heap profile: ~1 GB of
+   * CodeSystem indexes under a 150k-concept bound). Eviction is least-recently-used, by count (CACHE_MAX) and by weight.
    * Inside a validation snapshot (fhirValidationSnapshot.ts) reads and writes are pinned: the request keeps the value it
    * saw first, also one evicted or too heavy to be held here. Expiry and eviction only affect the next request.
    */
@@ -106,6 +108,9 @@ export class TtlCache<V> {
       this.drop(key);
       return undefined;
     }
+    // least recently used first out: a hit moves to the end of the insertion order
+    this.map.delete(key);
+    this.map.set(key, hit);
     snap?.pin(this, key, hit.value);
     return hit.value;
   }
@@ -138,10 +143,10 @@ export class TtlCache<V> {
   }
 }
 
-// CodeSystem indexes, bounded by their summed concept count (CS_CACHE_CONCEPTS, default 150k)
-const csCache = new TtlCache<CodeSystemIndex | null>(Number(process.env.CS_CACHE_CONCEPTS) > 0 ? Number(process.env.CS_CACHE_CONCEPTS) : 150_000);
+// CodeSystem indexes, bounded by their estimated size (CS_CACHE_MB, default 512 MB); ValueSets likewise (VS_CACHE_MB, 128 MB)
+const csCache = new TtlCache<CodeSystemIndex | null>(envBudgetBytes("CS_CACHE_MB", 512));
 const csLoading = new Map<string, Promise<CodeSystemIndex | null>>();
-const vsCache = new TtlCache<Record<string, any> | null>();
+const vsCache = new TtlCache<Record<string, any> | null>(envBudgetBytes("VS_CACHE_MB", 128));
 const heldCache = new TtlCache<boolean>();
 
 export function closureKey(pkg: PackageRow): string {
@@ -429,7 +434,7 @@ async function loadCodeSystemIndexUncached(url: string, pkg: PackageRow, exact: 
   const cs = version ? await loadCodeSystemVersion(url.slice(0, bar), version, pkg) : await loadByCanonical("CodeSystem", url, pkg, exact);
   // `not-present` stubs (e.g. SNOMED / LOINC in core) carry no concepts: treat as not held.
   const idx = cs && cs.content !== "supplement" && cs.content !== "not-present" ? indexCodeSystem(cs) : null;
-  csCache.set(key, idx, 1 + (idx ? idx.concepts.size : 0));
+  csCache.set(key, idx, 64 + (idx ? estimateBytes(idx) : 0));
   return idx;
 }
 
@@ -481,7 +486,7 @@ export async function loadThoCurrentIndex(canonical: string): Promise<CodeSystem
   const best = rankCandidates(canonical, cands)[0];
   const cs = best ? jsonOf(best.raw_json) : null;
   const idx = cs && cs.content === "complete" ? indexCodeSystem(cs) : null;
-  csCache.set(key, idx, 1 + (idx ? idx.concepts.size : 0));
+  csCache.set(key, idx, 64 + (idx ? estimateBytes(idx) : 0));
   return idx;
 }
 
@@ -504,7 +509,7 @@ export async function loadValueSet(url: string, pkg: PackageRow): Promise<Record
   const cached = vsCache.get(key);
   if (cached !== undefined) return cached;
   const vs = (await loadByCanonical("ValueSet", url, pkg)) ?? (await implicitLoincAnswerList(url.split("|")[0]));
-  vsCache.set(key, vs);
+  vsCache.set(key, vs, 64 + (vs ? estimateBytes(vs) : 0));
   return vs;
 }
 

@@ -440,7 +440,9 @@ export function parseXhtml(source: string): XhtmlParse {
     if (!(e instanceof XhtmlFormatError)) throw e;
     r = { div: null, error: e.message, issues: [] };
   }
-  if (parseCache.size > 500) parseCache.clear();
+  // a parsed tree is ~10x its source: only narratives up to 32k characters are kept, at most 200 of them
+  if (source.length > 32768) return r;
+  if (parseCache.size >= 200) parseCache.clear();
   parseCache.set(source, r);
   return r;
 }

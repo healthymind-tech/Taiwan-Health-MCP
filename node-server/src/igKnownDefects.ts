@@ -13,6 +13,7 @@
  * issues get `ig_known_defect` + a message note naming the optional entry and where the information goes).
  */
 
+import { envBudgetBytes } from "./memSize.js";
 import { query, withTransaction } from "./db.js";
 import { TtlMemo } from "./ttlMemo.js";
 
@@ -173,7 +174,7 @@ export async function packagesWithoutSelfcheck(): Promise<Array<{ package_id: st
   return r.rows;
 }
 
-const memo = new TtlMemo<KnownDefect[]>(5 * 60_000, 64);
+const memo = new TtlMemo<KnownDefect[]>(5 * 60_000, 64, envBudgetBytes("KNOWN_DEFECTS_CACHE_MB", 32));
 
 /** Hold a computed result for packages without storing it (tests, read-only scripts). */
 export function primeKnownDefects(packages: ReadonlyArray<{ package_id: string; version: string }>, defects: KnownDefect[]): void {

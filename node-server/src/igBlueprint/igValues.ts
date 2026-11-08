@@ -9,6 +9,7 @@
  * a record fact here too. IG-agnostic; fail-open per profile.
  */
 
+import { envBudgetBytes } from "../memSize.js";
 import { allLeaves, normIgValue, type IgDefinedValues } from "../grounding/igDefined.js";
 import { TtlMemo } from "../ttlMemo.js";
 import { isObject, stripVersion, type BlueprintDeps } from "./common.js";
@@ -21,7 +22,7 @@ interface ProfileValues {
   literals: string[];
 }
 
-const memo = new TtlMemo<ProfileValues>(30 * 60_000, 400);
+const memo = new TtlMemo<ProfileValues>(30 * 60_000, 400, envBudgetBytes("IG_VALUES_CACHE_MB", 64));
 
 /** Invariants of the FHIR core (dom-*, ele-1 …) are not the IG's. */
 const CORE_SD = "http://hl7.org/fhir/StructureDefinition/";

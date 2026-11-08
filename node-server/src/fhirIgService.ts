@@ -9,6 +9,7 @@
  * service for semantic normalize_code.
  */
 
+import { envBudgetBytes } from "./memSize.js";
 import { completeDocument, repairNarratives, repairSystemVersions } from "./fhirRepair/document.js";
 import { annotateChanges, autoFixBundle, buildAmbiguous, countByCategory, EntryMap, guardNoNewErrors, noneDisabled, type Disabled, type ExposedErrorsMode, type PipelineResult } from "./fhirRepair/autoFix.js";
 import { annotateKnownDefects, boundAlternatives, knownDefects, type KnownDefect } from "./igKnownDefects.js";
@@ -74,9 +75,9 @@ const DERIVED_CODES_CAP = 20;
 /** FHIR_VALIDATE_PROFILE=1 logs per-phase timings + DB round-trips of every validation (stderr). */
 const VALIDATE_PROFILE = process.env.FHIR_VALIDATE_PROFILE === "1";
 /** loadArtifact memo: (closure, identifier) → artifact row; package content is immutable per version. */
-const artifactMemo = new TtlMemo<Record<string, any> | null>(10 * 60_000, 400);
+const artifactMemo = new TtlMemo<Record<string, any> | null>(10 * 60_000, 400, envBudgetBytes("ARTIFACT_CACHE_MB", 64));
 /** The parsed ConceptMaps of a closure (fhir_normalize_code reads every one of them per call). */
-const conceptMapsMemo = new TtlMemo<Array<Record<string, any>>>(10 * 60_000, 8);
+const conceptMapsMemo = new TtlMemo<Array<Record<string, any>>>(10 * 60_000, 8, envBudgetBytes("CONCEPTMAP_CACHE_MB", 64));
 
 const SKELETON_SKIP = new Set(["id", "meta", "text", "implicitRules", "language", "contained"]);
 

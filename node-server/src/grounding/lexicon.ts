@@ -96,6 +96,8 @@ function keep(ch: string): boolean {
   return isAlnum(ch) || KEEP.has(ch);
 }
 
+/** Longest text the per-text memo caches below keep (chars). */
+const MEMO_TEXT_MAX = 4096;
 const NORM_CACHE = new Map<string, [string, number[]]>();
 
 /**
@@ -119,7 +121,8 @@ export function normWithMap(text: string): [string, number[]] {
     i += c.length;
   }
   const r: [string, number[]] = [out, idx];
-  if (text.length <= 20000) {
+  // memoised for short texts only (the caches below hold at most 5000 of them): a whole record is not kept
+  if (text.length <= MEMO_TEXT_MAX) {
     if (NORM_CACHE.size > 5000) NORM_CACHE.clear();
     NORM_CACHE.set(text, r);
   }
@@ -457,6 +460,7 @@ export function parseDates(text: string): ParsedDate[] {
   const hit = DATES_CACHE.get(text);
   if (hit) return hit;
   const found = parseDatesPos(text).map((x) => x.date);
+  if (text.length > MEMO_TEXT_MAX) return found;
   if (DATES_CACHE.size > 5000) DATES_CACHE.clear();
   DATES_CACHE.set(text, found);
   return found;
@@ -551,6 +555,7 @@ export function parseDatesPos(text: string): PositionedDate[] {
       }
     }
   }
+  if (text.length > MEMO_TEXT_MAX) return found;
   if (DATES_POS_CACHE.size > 5000) DATES_POS_CACHE.clear();
   DATES_POS_CACHE.set(text, found);
   return found;
@@ -680,6 +685,7 @@ export function numbersWithUnits(text: string): NumberWithUnit[] {
     }
     out.push([cmp, num, unit, m[0]]);
   }
+  if (text.length > MEMO_TEXT_MAX) return out;
   if (NUMS_CACHE.size > 5000) NUMS_CACHE.clear();
   NUMS_CACHE.set(text, out);
   return out;

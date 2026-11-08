@@ -3,6 +3,7 @@
  * (workstream A). The spec is registered by `index.ts`; nothing here touches mcp.ts.
  */
 
+import { envBudgetBytes } from "../memSize.js";
 import { invalidDefectsOf, knownDefectNote, knownDefects } from "../igKnownDefects.js";
 import { z } from "zod";
 import { query } from "../db.js";
@@ -18,7 +19,7 @@ import type { AuthoringToolSpec } from "./types.js";
 export const FIELDS_TOOL_NAME = "fhir_get_authoring_fields";
 
 /** Example resources per (package version, resource type); package content is immutable per version. */
-const examplesMemo = new TtlMemo<Array<Record<string, unknown>>>(10 * 60_000, 64);
+const examplesMemo = new TtlMemo<Array<Record<string, unknown>>>(10 * 60_000, 64, envBudgetBytes("AUTHORING_EXAMPLES_CACHE_MB", 64));
 const EXAMPLES_CAP = 400;
 
 function jsonValue(raw: unknown): Record<string, any> {

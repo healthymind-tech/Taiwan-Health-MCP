@@ -5,6 +5,7 @@
  * StructureDefinitions and example sets are memoised per closure / package.
  */
 
+import { envBudgetBytes } from "../memSize.js";
 import { z } from "zod";
 import { query } from "../db.js";
 import * as fhirIg from "../fhirIg.js";
@@ -28,9 +29,9 @@ export const BLUEPRINT_TOOL_NAME = "fhir_get_bundle_blueprint";
 export const SKELETON_TOOL_NAME = "fhir_get_minimal_skeleton";
 export const FORM_TOOL_NAME = "fhir_get_bundle_form";
 
-const sdMemo = new TtlMemo<Record<string, any> | null>(10 * 60_000, 600);
-const examplesMemo = new TtlMemo<ExampleInstance[]>(10 * 60_000, 16);
-const profilesMemo = new TtlMemo<Record<string, any>[]>(10 * 60_000, 16);
+const sdMemo = new TtlMemo<Record<string, any> | null>(10 * 60_000, 600, envBudgetBytes("BLUEPRINT_SD_CACHE_MB", 128));
+const examplesMemo = new TtlMemo<ExampleInstance[]>(10 * 60_000, 16, envBudgetBytes("BLUEPRINT_EXAMPLES_CACHE_MB", 64));
+const profilesMemo = new TtlMemo<Record<string, any>[]>(10 * 60_000, 16, envBudgetBytes("BLUEPRINT_PROFILES_CACHE_MB", 64));
 const EXAMPLES_CAP = 400;
 
 function jsonValue(raw: unknown): Record<string, any> {
