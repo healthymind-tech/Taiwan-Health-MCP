@@ -29,9 +29,28 @@ interface RawRequestStore {
 
 const als = new AsyncLocalStorage<RawRequestStore>();
 
-/** Run `fn` with the raw request body available to `losslessToolArgument`. */
-export function runWithRawRequest<T>(kind: RawBodyKind, raw: Buffer | string | null | undefined, fn: () => T): T {
-  return als.run({ kind, raw }, fn);
+/** Something that says when the request is over (an HTTP response: `close` fires once it is sent or aborted). */
+export interface RequestEnd {
+  once(event: "close", listener: () => void): unknown;
+}
+
+/**
+ * Run `fn` with the raw request body available to `losslessToolArgument`. With `end`, the body (raw bytes and the
+ * lossless tree) is released when the response closes: on Node 20 every promise created inside the request keeps
+ * this store reachable (AsyncLocalStorage over async_hooks stores it on the promise), so a lookup promise held by a
+ * cross-request cache (TtlMemo) kept the whole request body alive until that cache entry was evicted — the slow
+ * heap growth of staging 2026-11-09 / 11-11. The released store answers `undefined` like a body that cannot be read.
+ */
+export function runWithRawRequest<T>(kind: RawBodyKind, raw: Buffer | string | null | undefined, fn: () => T, end?: RequestEnd): T {
+  const store: RawRequestStore = { kind, raw };
+  end?.once("close", () => releaseRawRequest(store));
+  return als.run(store, fn);
+}
+
+function releaseRawRequest(store: RawRequestStore): void {
+  store.raw = null;
+  store.parsed = undefined;
+  store.parseFailed = true;
 }
 
 function isObj(v: unknown): v is Record<string, unknown> {

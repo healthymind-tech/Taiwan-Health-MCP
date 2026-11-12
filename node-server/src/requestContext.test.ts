@@ -74,3 +74,33 @@ test("the context does not leak between concurrent requests", async () => {
   );
   assert.deepEqual(results, ["1.0", "2.0", "3.0"]);
 });
+
+test("the body is released when the response closes: a continuation the request left behind no longer reaches it", async () => {
+  const { EventEmitter } = await import("node:events");
+  const res = new EventEmitter();
+  let release: () => void = () => {};
+  let late: Promise<unknown> = Promise.resolve();
+  await runWithRawRequest(
+    "tools",
+    Buffer.from(`{"bundle":${BUNDLE}}`, "utf8"),
+    async () => {
+      assert.equal(valueText(losslessToolArgument("fhir_finalize_bundle", "bundle")), "10.0");
+      // registered inside the request (so it runs with the request's store), run only after the response closed
+      late = new Promise<void>((r) => (release = r)).then(() => losslessToolArgument("fhir_finalize_bundle", "bundle"));
+    },
+    res,
+  );
+  res.emit("close");
+  release();
+  assert.equal(await late, undefined, "a released body reads as no body (the ordinary-value fallback), never an error");
+});
+
+test("without an end the body stays readable for the whole run", async () => {
+  let release: () => void = () => {};
+  let late: Promise<unknown> = Promise.resolve();
+  await runWithRawRequest("tools", Buffer.from(`{"bundle":${BUNDLE}}`, "utf8"), async () => {
+    late = new Promise<void>((r) => (release = r)).then(() => valueText(losslessToolArgument("fhir_finalize_bundle", "bundle")));
+  });
+  release();
+  assert.equal(await late, "10.0");
+});
