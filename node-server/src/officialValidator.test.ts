@@ -92,6 +92,8 @@ test("terminology-server failures are returned apart as unverified, and the vali
   assert.ok(isTransientTxIssue({ message: "Error from https://tx.fhir.org/r4: java.net.SocketTimeoutException: Read timed out" }));
   assert.ok(isTransientTxIssue({ message: "Validation process exceeded maximum allowed time of 90000ms, set by http-query. Returned validation messages may be incomplete or inaccurate." }));
   assert.ok(!isTransientTxIssue({ message: "Unknown code 'ZZZ-9' in the CodeSystem 'http://loinc.org' version '2.81'" }));
+  // tx.fhir.org forgot the validator's cache session (server restart): transient, and the validator must restart
+  assert.ok(isTransientTxIssue({ message: "Error from https://tx.fhir.org/r4: The cache was never issued by this server" }));
   const seen: string[] = [];
   const oo = { resourceType: "OperationOutcome", issue: [...OO.issue, { severity: "error", code: "exception", details: { text: "java.net.SocketTimeoutException: Connect timed out" }, expression: ["Bundle.entry[1].resource.code"] }] };
   let t = 0;
