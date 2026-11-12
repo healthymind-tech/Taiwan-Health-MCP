@@ -18,6 +18,7 @@
  * interchangeable by construction.
  */
 
+import { singleFlight } from "./singleFlight.js";
 import { query } from "./db.js";
 import { getAdapter } from "./providers/registry.js";
 import { logInfo, logWarning } from "./logger.js";
@@ -322,7 +323,9 @@ export async function loadEmbeddingSettings(): Promise<EmbeddingSettings> {
 let _svc: EmbeddingService | null = null;
 
 /** Process-wide embedding service singleton (settings + profiles loaded once). */
-export async function getEmbeddingService(): Promise<EmbeddingService> {
+// one in-flight initialisation for concurrent callers (singleFlight.ts)
+export const getEmbeddingService: () => Promise<EmbeddingService> = singleFlight(initEmbeddingService);
+async function initEmbeddingService(): Promise<EmbeddingService> {
   if (_svc) return _svc;
   const settings = await loadEmbeddingSettings();
   let profiles: LlmProfile[] = [];

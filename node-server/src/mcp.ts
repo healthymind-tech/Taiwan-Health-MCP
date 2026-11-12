@@ -11,6 +11,7 @@
 
 import { registerLosslessLiterals } from "./fhirJsonLiterals.js";
 import { withConcurrencyLimit } from "./toolConcurrency.js";
+import { singleFlight } from "./singleFlight.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -573,7 +574,9 @@ function rawResult(text: string) {
 
 // Lazily-initialized ICD service singleton (mirrors the Python lifespan service).
 let _icd: IcdService | null = null;
-async function getIcdService(): Promise<IcdService | null> {
+// one in-flight initialisation for concurrent callers (singleFlight.ts)
+const getIcdService = singleFlight(initIcdService);
+async function initIcdService(): Promise<IcdService | null> {
   if (_icd) return _icd;
   try {
     const svc = new IcdService(await getEmbeddingService());
@@ -701,14 +704,18 @@ function registerIcdTools(server: McpServer, svc: IcdService): void {
 
 // Lazily-initialized LOINC lab service singleton.
 let _lab: LabService | null = null;
-async function getLabService(): Promise<LabService> {
+// one in-flight initialisation for concurrent callers (singleFlight.ts)
+const getLabService = singleFlight(initLabService);
+async function initLabService(): Promise<LabService> {
   if (!_lab) _lab = new LabService(await getEmbeddingService());
   return _lab;
 }
 
 // Lazily-initialized SNOMED service singleton.
 let _snomed: SnomedService | null = null;
-async function getSnomedService(): Promise<SnomedService | null> {
+// one in-flight initialisation for concurrent callers (singleFlight.ts)
+const getSnomedService = singleFlight(initSnomedService);
+async function initSnomedService(): Promise<SnomedService | null> {
   if (_snomed) return _snomed;
   try {
     const svc = new SnomedService(await getEmbeddingService());
@@ -723,7 +730,9 @@ async function getSnomedService(): Promise<SnomedService | null> {
 
 // Lazily-initialized Food Nutrition service singleton.
 let _food: FoodNutritionService | null = null;
-async function getFoodService(): Promise<FoodNutritionService | null> {
+// one in-flight initialisation for concurrent callers (singleFlight.ts)
+const getFoodService = singleFlight(initFoodService);
+async function initFoodService(): Promise<FoodNutritionService | null> {
   if (_food) return _food;
   try {
     const svc = new FoodNutritionService(await getEmbeddingService());
@@ -805,7 +814,9 @@ function registerFoodTools(server: McpServer, svc: FoodNutritionService): void {
 
 // Lazily-initialized Health Supplements service singleton.
 let _supplements: HealthSupplementsService | null = null;
-async function getSupplementsService(): Promise<HealthSupplementsService | null> {
+// one in-flight initialisation for concurrent callers (singleFlight.ts)
+const getSupplementsService = singleFlight(initSupplementsService);
+async function initSupplementsService(): Promise<HealthSupplementsService | null> {
   if (_supplements) return _supplements;
   try {
     const svc = new HealthSupplementsService(await getEmbeddingService());
@@ -1044,7 +1055,9 @@ function registerDrugTools(server: McpServer, svc: DrugService): void {
 
 // Lazily-initialized FHIR IG service singleton.
 let _fhirIg: FHIRIGService | null = null;
-async function getFhirIgService(): Promise<FHIRIGService | null> {
+// one in-flight initialisation for concurrent callers (singleFlight.ts)
+const getFhirIgService = singleFlight(initFhirIgService);
+async function initFhirIgService(): Promise<FHIRIGService | null> {
   if (_fhirIg) return _fhirIg;
   try {
     const svc = new FHIRIGService(await getEmbeddingService());
@@ -1746,7 +1759,9 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
 
 // Lazily-initialized FHIR Condition service singleton.
 let _fhirCondition: FHIRConditionService | null = null;
-async function getFhirConditionService(): Promise<FHIRConditionService | null> {
+// one in-flight initialisation for concurrent callers (singleFlight.ts)
+const getFhirConditionService = singleFlight(initFhirConditionService);
+async function initFhirConditionService(): Promise<FHIRConditionService | null> {
   if (_fhirCondition) return _fhirCondition;
   try {
     const svc = new FHIRConditionService();
@@ -1761,7 +1776,9 @@ async function getFhirConditionService(): Promise<FHIRConditionService | null> {
 
 // Lazily-initialized FHIR Medication service singleton.
 let _fhirMedication: FHIRMedicationService | null = null;
-async function getFhirMedicationService(): Promise<FHIRMedicationService | null> {
+// one in-flight initialisation for concurrent callers (singleFlight.ts)
+const getFhirMedicationService = singleFlight(initFhirMedicationService);
+async function initFhirMedicationService(): Promise<FHIRMedicationService | null> {
   if (_fhirMedication) return _fhirMedication;
   try {
     const svc = new FHIRMedicationService();
@@ -1940,7 +1957,9 @@ function registerFhirMedicationTools(server: McpServer, svc: FHIRMedicationServi
 
 // Lazily-initialized FHIR Server (registry) service singleton — always-on group.
 let _fhirServer: FHIRServerService | null = null;
-async function getFhirServerService(): Promise<FHIRServerService | null> {
+// one in-flight initialisation for concurrent callers (singleFlight.ts)
+const getFhirServerService = singleFlight(initFhirServerService);
+async function initFhirServerService(): Promise<FHIRServerService | null> {
   if (_fhirServer) return _fhirServer;
   try {
     const svc = new FHIRServerService();
