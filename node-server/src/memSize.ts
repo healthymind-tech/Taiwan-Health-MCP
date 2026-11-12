@@ -84,22 +84,57 @@ export interface CacheStats {
   bytes: number;
 }
 
-const tracked: Array<{ name: string; ref: WeakRef<object>; stats: (o: object) => CacheStats }> = [];
+interface Tracked {
+  name: string;
+  ref: WeakRef<object>;
+  stats: (o: object) => CacheStats;
+  shed?: (o: object, fraction: number) => void;
+}
+
+const tracked: Tracked[] = [];
 
 /** `file.js:line` of the code that constructed the cache (above creationSite, trackCache and the constructor), for metric labels. */
 function creationSite(): string {
   const frames = String(new Error().stack ?? "").split("\n").slice(1);
-  const frame = frames[3] ?? frames[frames.length - 1] ?? "";
+  const frame = frames[3] ?? frames[frames.length - 1] ?? ""; // creationSite < trackCache < constructor < caller
   const m = /([^/\\(\s]+\.[cm]?[jt]s):(\d+):\d+\)?\s*$/.exec(frame);
   return m ? `${m[1]}:${m[2]}` : "unknown";
 }
 
+export interface TrackOptions<T> {
+  /** its current entry count and estimated size */
+  stats: (c: T) => CacheStats;
+  /** drop about `fraction` of its entries, least recently used first (memory pressure, shedTrackedCaches) */
+  shed?: (c: T, fraction: number) => void;
+  /** metric label; default the construction site */
+  name?: string;
+}
+
 /**
- * Register a cross-request cache for the mcp_cache_* gauges (metrics.ts). Call it from the cache's constructor; the
- * cache is held weakly, `stats` reads its current entry count and estimated size.
+ * Register a cross-request cache for the mcp_cache_* gauges (metrics.ts) and for shedding under memory pressure.
+ * Call it from the cache's constructor; the cache is held weakly.
  */
-export function trackCache<T extends object>(cache: T, stats: (c: T) => CacheStats, name: string = creationSite()): void {
-  tracked.push({ name, ref: new WeakRef(cache), stats: stats as (o: object) => CacheStats });
+export function trackCache<T extends object>(cache: T, opts: TrackOptions<T>): void {
+  const name = opts.name ?? creationSite();
+  tracked.push({ name, ref: new WeakRef(cache), stats: opts.stats as (o: object) => CacheStats, shed: opts.shed as Tracked["shed"] });
+}
+
+/**
+ * Every tracked cache drops about `fraction` of its entries, least recently used first. The byte budgets of the
+ * caches are set one by one, and together they exceed what the heap can hold beside the requests (production defaults
+ * ≈ 5.3 GB estimated against a 6 GB heap whose memory guard refuses work at 80 %): when the live heap nears the guard,
+ * cached values give way before requests are turned away. Returns the estimated bytes released.
+ */
+export function shedTrackedCaches(fraction: number): number {
+  let released = 0;
+  for (const t of tracked) {
+    const c = t.ref.deref();
+    if (!c || !t.shed) continue;
+    const before = t.stats(c).bytes;
+    t.shed(c, fraction);
+    released += Math.max(0, before - t.stats(c).bytes);
+  }
+  return released;
 }
 
 /** Every live tracked cache, summed per name (two caches built at the same line share a label). */

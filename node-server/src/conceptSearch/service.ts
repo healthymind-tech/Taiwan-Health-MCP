@@ -147,7 +147,11 @@ export class IgConceptSearch {
   private thesaurus: { at: number; value: Thesaurus } | null = null;
 
   constructor(private readonly embeddingSvc: EmbeddingService | null) {
-    trackCache(this, (c) => ({ entries: c.cache.size, bytes: [...c.cache.values()].reduce((n, e) => n + e.bytes, 0) }), "conceptSearch.indexes");
+    trackCache(this, {
+      name: "conceptSearch.indexes",
+      stats: (c) => ({ entries: c.cache.size, bytes: [...c.cache.values()].reduce((n, e) => n + e.bytes, 0) }),
+      shed: (c, f) => c.shed(f),
+    });
   }
 
   // ------------------------------------------------------------------ resolution
@@ -337,6 +341,12 @@ export class IgConceptSearch {
     this.cache.set(key, { index, signature: sig, checkedAt: now, usedAt: now, bytes: estimateBytes(index) });
     this.evict();
     return { index, indexed: sig !== "raw" };
+  }
+
+  /** Drop about `fraction` of the indexes, least recently used first (memory pressure; a request keeps what it pinned). */
+  shed(fraction: number): void {
+    const lru = [...this.cache.entries()].sort((a, b) => a[1].usedAt - b[1].usedAt);
+    for (const [k] of lru.slice(0, Math.ceil(lru.length * fraction))) this.cache.delete(k);
   }
 
   private evict(): void {

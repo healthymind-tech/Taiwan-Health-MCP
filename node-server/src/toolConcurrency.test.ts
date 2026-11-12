@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BUSY_CODE, ToolGate, gateOptionsFromEnv, withConcurrencyLimit } from "./toolConcurrency.js";
+import { BUSY_CODE, ToolGate, gateOptionsFromEnv, maybeShedCaches, withConcurrencyLimit } from "./toolConcurrency.js";
 
 const heavy = new Set(["heavy"]);
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -120,4 +120,19 @@ test("heapUsedRatio reads the live heap after a major GC, not the garbage-filled
   const after = heapUsedRatio();
   assert.ok(after >= 0 && after < 1, String(after));
   if (gc) assert.ok(after > 0 && after !== before, `a major GC was observed (${before} → ${after})`);
+});
+
+test("cache shedding: above the shed ratio after a major GC the caches shed half, at most once a minute; 0 = off", () => {
+  const calls: number[] = [];
+  const shed = (f: number): number => {
+    calls.push(f);
+    return 0;
+  };
+  const t0 = 10_000_000;
+  assert.equal(maybeShedCaches(0.6, t0, 0.7, shed), false, "below the ratio: nothing");
+  assert.equal(maybeShedCaches(0.75, t0, 0.7, shed), true);
+  assert.equal(maybeShedCaches(0.9, t0 + 30_000, 0.7, shed), false, "within a minute of the last shed");
+  assert.equal(maybeShedCaches(0.9, t0 + 61_000, 0.7, shed), true);
+  assert.equal(maybeShedCaches(0.99, t0 + 200_000, 0, shed), false, "ratio 0 = off");
+  assert.deepEqual(calls, [0.5, 0.5]);
 });

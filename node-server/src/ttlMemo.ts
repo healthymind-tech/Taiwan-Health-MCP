@@ -32,7 +32,7 @@ export class TtlMemo<V> {
     private readonly max: number,
     private readonly maxBytes = Infinity,
   ) {
-    trackCache(this, (m) => ({ entries: m.map.size, bytes: m.bytes }));
+    trackCache(this, { stats: (m) => ({ entries: m.map.size, bytes: m.bytes }), shed: (m, f) => m.shed(f) });
   }
 
   private get ttl(): number {
@@ -138,6 +138,15 @@ export class TtlMemo<V> {
 
   get size(): number {
     return this.map.size;
+  }
+
+  /** Drop about `fraction` of the entries, least recently used first (memory pressure; a request keeps what it pinned). */
+  shed(fraction: number): void {
+    let n = Math.ceil(this.map.size * fraction);
+    for (const key of [...this.map.keys()]) {
+      if (n-- <= 0) break;
+      this.drop(key);
+    }
   }
 
   /** Estimated size of the settled values (0 without a byte budget). */

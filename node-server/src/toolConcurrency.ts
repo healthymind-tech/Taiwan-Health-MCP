@@ -19,10 +19,18 @@
  * MCP_TOOL_HEAP_RATIO (default 0.9; 0 = off): a light call allocates little, so it keeps working a little longer,
  * but no call starts on a heap that is about to run out (staging 2026-11-09: the fatal allocation was a JSON.parse
  * outside any heavy tool).
+ *
+ * Cache shedding: after a major GC that leaves the live heap above MCP_CACHE_SHED_RATIO of the limit (default 0.7, below
+ * the guards; 0 = off), every tracked cross-request cache drops its least recently used half (memSize.shedTrackedCaches),
+ * at most once a minute. The caches' byte budgets are set one by one and together exceed the heap beside the requests
+ * (local soak 2026-11-12 with the production budgets: the live heap rose with the caches filling, not with a leak), so
+ * cached values give way before the guards turn calls away.
  */
 
 import { PerformanceObserver, constants as perfConstants } from "node:perf_hooks";
 import v8 from "node:v8";
+import { logWarning } from "./logger.js";
+import { shedTrackedCaches } from "./memSize.js";
 
 export const BUSY_CODE = "BUSY";
 
@@ -53,6 +61,21 @@ export interface GateOptions {
 
 let liveAfterMajorGc = 0;
 let gcObserver: PerformanceObserver | null = null;
+let lastShedAt = 0;
+const SHED_INTERVAL_MS = 60_000;
+
+/** After a major GC: shed the caches when the live heap is above the shed ratio (at most once per interval). */
+export function maybeShedCaches(liveRatio: number, now: number = Date.now(), shedRatio: number = envRatio("MCP_CACHE_SHED_RATIO", 0.7), shed: (f: number) => number = shedTrackedCaches): boolean {
+  if (shedRatio <= 0 || liveRatio <= shedRatio || now - lastShedAt < SHED_INTERVAL_MS) return false;
+  lastShedAt = now;
+  const released = shed(0.5);
+  logWarning("live heap above the cache shed ratio: caches dropped their least recently used half", {
+    live_ratio: Math.round(liveRatio * 1000) / 1000,
+    shed_ratio: shedRatio,
+    released_estimated_mb: Math.round(released / 1048576),
+  });
+  return true;
+}
 
 /** live / limit of this process's V8 heap: the used size right after the last major GC (0 before the first one). */
 export function heapUsedRatio(): number {
@@ -60,7 +83,9 @@ export function heapUsedRatio(): number {
     gcObserver = new PerformanceObserver((list) => {
       for (const e of list.getEntries()) {
         if ((e as unknown as { detail?: { kind?: number } }).detail?.kind === perfConstants.NODE_PERFORMANCE_GC_MAJOR) {
-          liveAfterMajorGc = v8.getHeapStatistics().used_heap_size;
+          const stats = v8.getHeapStatistics();
+          liveAfterMajorGc = stats.used_heap_size;
+          if (stats.heap_size_limit > 0) maybeShedCaches(liveAfterMajorGc / stats.heap_size_limit);
         }
       }
     });

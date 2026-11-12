@@ -23,3 +23,21 @@ test("TtlMemo and TtlCache register themselves under their construction site and
   assert.deepEqual(stats.get(site(11)), { name: site(11), entries: 1, bytes: 500 });
   assert.deepEqual(stats.get(site(12)), { name: site(12), entries: 1, bytes: 0 }, "a count-bounded cache reports no bytes");
 });
+
+test("shedTrackedCaches: every tracked cache drops its least recently used half and reports the bytes released", async () => {
+  const { shedTrackedCaches } = await import("./memSize.js");
+  const memo = new TtlMemo<string>(60_000, 100, 1 << 30);
+  for (let i = 0; i < 10; i++) await memo.get(`k${i}`, async () => "v".repeat(1000));
+  await new Promise((r) => setTimeout(r, 0));
+  await memo.get("k0", async () => "unused"); // k0 becomes the most recently used
+  const cache = new TtlCache<string>(1 << 30);
+  for (let i = 0; i < 4; i++) cache.set(`c${i}`, "v", 1000);
+  const before = memo.weight;
+  const released = shedTrackedCaches(0.5);
+  assert.equal(memo.size, 5);
+  assert.ok(memo.has("k0"), "the most recently used entry stays");
+  assert.ok(!memo.has("k1"), "the least recently used go first");
+  assert.equal(cache.size, 2);
+  assert.ok(cache.get("c3") !== undefined && cache.get("c0") === undefined);
+  assert.ok(released >= before - memo.weight + 2000, `released ${released}`);
+});

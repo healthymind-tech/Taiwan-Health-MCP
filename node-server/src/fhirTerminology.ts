@@ -101,7 +101,7 @@ export class TtlCache<V> {
     private readonly maxEntries = CACHE_MAX,
   ) {
     // weight is estimated bytes for a byte-bounded cache, 1 per entry otherwise
-    trackCache(this, (c) => ({ entries: c.map.size, bytes: c.maxWeight === Infinity ? 0 : c.total }));
+    trackCache(this, { stats: (c) => ({ entries: c.map.size, bytes: c.maxWeight === Infinity ? 0 : c.total }), shed: (c, f) => c.shed(f) });
   }
   get(key: string): V | undefined {
     const snap = currentSnapshot();
@@ -138,6 +138,14 @@ export class TtlCache<V> {
   }
   get weight(): number {
     return this.total;
+  }
+  /** Drop about `fraction` of the entries, least recently used first (memory pressure; a request keeps what it pinned). */
+  shed(fraction: number): void {
+    let n = Math.ceil(this.map.size * fraction);
+    for (const key of [...this.map.keys()]) {
+      if (n-- <= 0) break;
+      this.drop(key);
+    }
   }
   private drop(key: string): void {
     const hit = this.map.get(key);
