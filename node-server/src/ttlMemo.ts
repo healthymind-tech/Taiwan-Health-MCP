@@ -14,7 +14,7 @@
  * the value it saw first, whatever the shared memo evicts. A rejected lookup is unpinned too.
  */
 import { cacheLimits, currentSnapshot } from "./fhirValidationSnapshot.js";
-import { estimateBytes } from "./memSize.js";
+import { estimateBytes, trackCache } from "./memSize.js";
 
 interface Entry<V> {
   at: number;
@@ -31,7 +31,9 @@ export class TtlMemo<V> {
     private readonly ttlMs: number,
     private readonly max: number,
     private readonly maxBytes = Infinity,
-  ) {}
+  ) {
+    trackCache(this, (m) => ({ entries: m.map.size, bytes: m.bytes }));
+  }
 
   private get ttl(): number {
     return cacheLimits().ttlMs ?? this.ttlMs;

@@ -9,7 +9,7 @@
  * the provider is down or the CodeSystem has no vectors yet (searchQuality signal).
  */
 
-import { envBudgetBytes, estimateBytes } from "../memSize.js";
+import { envBudgetBytes, estimateBytes, trackCache } from "../memSize.js";
 import { currentSnapshot } from "../fhirValidationSnapshot.js";
 import { query } from "../db.js";
 import { logWarning } from "../logger.js";
@@ -146,7 +146,9 @@ export class IgConceptSearch {
   private cache = new Map<string, CacheEntry>();
   private thesaurus: { at: number; value: Thesaurus } | null = null;
 
-  constructor(private readonly embeddingSvc: EmbeddingService | null) {}
+  constructor(private readonly embeddingSvc: EmbeddingService | null) {
+    trackCache(this, (c) => ({ entries: c.cache.size, bytes: [...c.cache.values()].reduce((n, e) => n + e.bytes, 0) }), "conceptSearch.indexes");
+  }
 
   // ------------------------------------------------------------------ resolution
 

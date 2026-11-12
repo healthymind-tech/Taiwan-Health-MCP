@@ -9,7 +9,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { envBudgetBytes, estimateBytes } from "./memSize.js";
+import { envBudgetBytes, estimateBytes, trackCache } from "./memSize.js";
 import { txDisplays } from "./txCodeTables.js";
 import { query } from "./db.js";
 import { pickCanonicalVersion } from "./fhirValidator.js";
@@ -99,7 +99,10 @@ export class TtlCache<V> {
   constructor(
     private readonly maxWeight = Infinity,
     private readonly maxEntries = CACHE_MAX,
-  ) {}
+  ) {
+    // weight is estimated bytes for a byte-bounded cache, 1 per entry otherwise
+    trackCache(this, (c) => ({ entries: c.map.size, bytes: c.maxWeight === Infinity ? 0 : c.total }));
+  }
   get(key: string): V | undefined {
     const snap = currentSnapshot();
     if (snap?.has(this, key)) return snap.get(this, key) as V;

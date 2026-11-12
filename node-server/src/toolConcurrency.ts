@@ -15,7 +15,10 @@
  * call rather than taking the whole process down with "JavaScript heap out of memory" (staging, 2026-11-07: 11
  * restarts → 502s at the front door). The plain used size is not a measure: V8 collects the old space only under
  * pressure, so a big heap fills with garbage long before it is full (staging 2026-11-08: 91 % "used" at idle with
- * ~2 GB live), and a forced GC would stop every request for seconds.
+ * ~2 GB live), and a forced GC would stop every request for seconds. Every other tool is guarded the same way at
+ * MCP_TOOL_HEAP_RATIO (default 0.9; 0 = off): a light call allocates little, so it keeps working a little longer,
+ * but no call starts on a heap that is about to run out (staging 2026-11-09: the fatal allocation was a JSON.parse
+ * outside any heavy tool).
  */
 
 import { PerformanceObserver, constants as perfConstants } from "node:perf_hooks";
@@ -44,6 +47,8 @@ export interface GateOptions {
   maxQueue: number;
   /** used / limit of the V8 heap above which a heavy call does not start; 0 = no memory guard */
   heapRatio?: number;
+  /** the same for every other tool; 0 / absent = no memory guard */
+  lightHeapRatio?: number;
 }
 
 let liveAfterMajorGc = 0;
@@ -81,6 +86,7 @@ export function gateOptionsFromEnv(): GateOptions {
     queueTimeoutMs: envInt("MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS", 60_000),
     maxQueue: envInt("MCP_HEAVY_TOOL_MAX_QUEUE", 32),
     heapRatio: envRatio("MCP_HEAVY_TOOL_HEAP_RATIO", 0.8),
+    lightHeapRatio: envRatio("MCP_TOOL_HEAP_RATIO", 0.9),
   };
 }
 
@@ -180,7 +186,7 @@ export function heavyToolGate(): ToolGate {
   return (shared ??= new ToolGate(gateOptionsFromEnv()));
 }
 
-/** Wrap a handler: heavy tools wait for a slot (or answer BUSY); other tools pass straight through. */
+/** Wrap a handler: heavy tools wait for a slot (or answer BUSY); other tools only pass the memory guard. */
 export function withConcurrencyLimit<A extends unknown[], R>(
   name: string,
   handler: (...args: A) => Promise<R> | R,
@@ -188,7 +194,16 @@ export function withConcurrencyLimit<A extends unknown[], R>(
   heavy: ReadonlySet<string> = HEAVY_TOOLS,
   heap: { ratio: () => number } = { ratio: heapUsedRatio },
 ): (...args: A) => Promise<R> {
-  if (!heavy.has(name)) return async (...args: A): Promise<R> => handler(...args);
+  if (!heavy.has(name)) {
+    return async (...args: A): Promise<R> => {
+      const limit = gate().opts.lightHeapRatio ?? 0;
+      if (limit > 0) {
+        const r = heap.ratio();
+        if (r > limit) return memoryBusyToolResult(name, r) as unknown as R;
+      }
+      return handler(...args);
+    };
+  }
   return async (...args: A): Promise<R> => {
     const g = gate();
     if (!(await g.acquire())) return busyToolResult(name, g) as unknown as R;

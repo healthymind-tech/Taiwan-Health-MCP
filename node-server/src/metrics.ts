@@ -16,7 +16,8 @@ import http from "node:http";
 import { collectDefaultMetrics, Counter, Gauge, Histogram, register } from "prom-client";
 import { config } from "./config.js";
 import { logError, logInfo } from "./logger.js";
-import { heavyToolGate } from "./toolConcurrency.js";
+import { heapUsedRatio, heavyToolGate } from "./toolConcurrency.js";
+import { trackedCacheStats } from "./memSize.js";
 
 // ops-v1 O6: process memory / CPU / event-loop lag / GC (nodejs_heap_size_used_bytes, process_resident_memory_bytes, …)
 collectDefaultMetrics();
@@ -49,6 +50,48 @@ export const heavyToolsQueued = new Gauge({
   help: "Heavy tool calls waiting for a concurrency slot",
   collect() {
     this.set(heavyToolGate().stats().queued);
+  },
+});
+
+let openSessions: () => number = () => 0;
+/** server.ts registers how to count its open MCP sessions. */
+export function countOpenSessionsWith(fn: () => number): void {
+  openSessions = fn;
+}
+
+export const mcpSessionsOpen = new Gauge({
+  name: "mcp_sessions_open",
+  help: "Open MCP streamable-http sessions (each holds a server instance until DELETE or idle close)",
+  collect() {
+    this.set(openSessions());
+  },
+});
+
+export const heapLiveRatio = new Gauge({
+  name: "mcp_heap_live_ratio",
+  help: "V8 heap still live after the last major GC, as a fraction of the heap limit (what the memory guard reads)",
+  collect() {
+    this.set(heapUsedRatio());
+  },
+});
+
+export const cacheEstimatedBytes = new Gauge({
+  name: "mcp_cache_estimated_bytes",
+  help: "Estimated bytes held by each cross-request cache (memSize.estimateBytes; 0 = bounded by count only), by construction site",
+  labelNames: ["cache"],
+  collect() {
+    this.reset();
+    for (const c of trackedCacheStats()) this.set({ cache: c.name }, c.bytes);
+  },
+});
+
+export const cacheEntries = new Gauge({
+  name: "mcp_cache_entries",
+  help: "Entries held by each cross-request cache, by construction site",
+  labelNames: ["cache"],
+  collect() {
+    this.reset();
+    for (const c of trackedCacheStats()) this.set({ cache: c.name }, c.entries);
   },
 });
 

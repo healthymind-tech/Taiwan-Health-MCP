@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BUSY_CODE, ToolGate, withConcurrencyLimit } from "./toolConcurrency.js";
+import { BUSY_CODE, ToolGate, gateOptionsFromEnv, withConcurrencyLimit } from "./toolConcurrency.js";
 
 const heavy = new Set(["heavy"]);
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -69,6 +69,42 @@ test("memory guard: a heavy call does not start while the live heap is above the
   assert.equal(await withConcurrencyLimit("search_loinc", handler, () => gate, undefined, { ratio: () => 0.99 })(), "done");
   const off = new ToolGate({ limit: 2, queueTimeoutMs: 1000, maxQueue: 4, heapRatio: 0 });
   assert.equal(await withConcurrencyLimit("fhir_validate_bundle", handler, () => off, undefined, { ratio: () => 0.99 })(), "done");
+});
+
+test("memory guard covers every tool: a light tool does not start above its own ratio, starts below it, never waits for a slot", async () => {
+  const gate = new ToolGate({ limit: 1, queueTimeoutMs: 1000, maxQueue: 4, heapRatio: 0.8, lightHeapRatio: 0.9 });
+  let ran = 0;
+  const handler = async (): Promise<string> => {
+    ran++;
+    return "done";
+  };
+  const r = (await withConcurrencyLimit("search_loinc", handler, () => gate, undefined, { ratio: () => 0.95 })()) as unknown as { isError: boolean; content: Array<{ text: string }> };
+  assert.equal(r.isError, true);
+  const body = JSON.parse(r.content[0].text);
+  assert.equal(body.error.code, BUSY_CODE);
+  assert.equal(body.error.reason, "memory");
+  assert.equal(body.error.tool, "search_loinc");
+  assert.equal(ran, 0);
+  // between the two ratios: heavy tools are refused, light tools still run
+  assert.equal(((await withConcurrencyLimit("fhir_validate_bundle", handler, () => gate, undefined, { ratio: () => 0.85 })()) as unknown as { isError: boolean }).isError, true);
+  assert.equal(await withConcurrencyLimit("search_loinc", handler, () => gate, undefined, { ratio: () => 0.85 })(), "done");
+  // light tools hold no slot: one runs while the only heavy slot is taken
+  assert.equal(await gate.acquire(), true);
+  assert.equal(await withConcurrencyLimit("search_loinc", handler, () => gate, undefined, { ratio: () => 0.1 })(), "done");
+  gate.release();
+});
+
+test("gateOptionsFromEnv: light-tool memory ratio defaults to 0.9, MCP_TOOL_HEAP_RATIO overrides it", () => {
+  const saved = process.env.MCP_TOOL_HEAP_RATIO;
+  try {
+    delete process.env.MCP_TOOL_HEAP_RATIO;
+    assert.equal(gateOptionsFromEnv().lightHeapRatio, 0.9);
+    process.env.MCP_TOOL_HEAP_RATIO = "0";
+    assert.equal(gateOptionsFromEnv().lightHeapRatio, 0);
+  } finally {
+    if (saved === undefined) delete process.env.MCP_TOOL_HEAP_RATIO;
+    else process.env.MCP_TOOL_HEAP_RATIO = saved;
+  }
 });
 
 test("heapUsedRatio reads the live heap after a major GC, not the garbage-filled used size", async () => {
