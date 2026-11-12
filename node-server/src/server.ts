@@ -24,7 +24,7 @@ import { initBroadcast, startWsRelay, handleAdminWsConnection } from "./admin/ad
 import { initPool, getPool, closePool } from "./db.js";
 import { monitor as dbHealthMonitor } from "./dbHealth.js";
 import { initClient, closeClient } from "./cache.js";
-import { startDbStatsCollector, startMetricsServer } from "./metrics.js";
+import { countOpenSessionsWith, startDbStatsCollector, startMetricsServer } from "./metrics.js";
 import { buildMcpServer, buildOpenApiSpec, invokeRegisteredTool, toolRegistryReady } from "./mcp.js";
 import { toolErrorFields } from "./toolErrors.js";
 import { seedIfEmpty } from "./admin/adminSettings.js";
@@ -39,6 +39,7 @@ import { completeAuthorization, OAuthError } from "./admin/fhirOauthService.js";
 import * as minioService from "./minioService.js";
 import { allowedCorsOrigin, bearerTokenMatches, publicOrigin } from "./publicToolsSecurity.js";
 import { runWithRawRequest } from "./requestContext.js";
+import { SessionRegistry, sessionLimitsFromEnv } from "./mcpSessions.js";
 
 /** express.json keeps the raw body bytes here (`verify`), so a tool can re-read an argument losslessly (requestContext.ts). */
 type RawBodyRequest = Request & { rawBody?: Buffer };
@@ -309,8 +310,11 @@ function buildApp(): express.Express {
         return;
       }
       try {
-        const text = await runWithRawRequest("tools", (req as RawBodyRequest).rawBody, () =>
-          invokeRegisteredTool(req.params.name, (args ?? {}) as Record<string, unknown>),
+        const text = await runWithRawRequest(
+          "tools",
+          (req as RawBodyRequest).rawBody,
+          () => invokeRegisteredTool(req.params.name, (args ?? {}) as Record<string, unknown>),
+          res,
         );
         // The tool's JSON text is sent verbatim (not re-serialised), so number spellings the tool
         // preserved (10.0, 1e3 — losslessJson.ts) reach the client as the tool wrote them.
@@ -383,11 +387,16 @@ function buildApp(): express.Express {
 
   // Admin console gate + REST (mirrors the inline /admin dispatcher in server.py).
   app.use((req, res, next) => {
-    void runWithRawRequest("admin", (req as RawBodyRequest).rawBody, () => adminHandler(req, res, next));
+    void runWithRawRequest("admin", (req as RawBodyRequest).rawBody, () => adminHandler(req, res, next), res);
   });
 
-  // B2: MCP streamable-http with per-session transports.
-  const transports = new Map<string, StreamableHTTPServerTransport>();
+  // B2: MCP streamable-http with per-session transports, closed when idle (mcpSessions.ts).
+  const transports = new SessionRegistry<StreamableHTTPServerTransport>(sessionLimitsFromEnv());
+  countOpenSessionsWith(() => transports.size);
+  setInterval(() => {
+    const closed = transports.sweep();
+    if (closed) logInfo("MCP sessions closed after idling", { closed, open: transports.size });
+  }, 60_000).unref();
   const mcpPath = cfg.path;
 
   app.post(mcpPath, async (req: Request, res: Response) => {
@@ -398,7 +407,7 @@ function buildApp(): express.Express {
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (sid: string) => {
-          transports.set(sid, transport as StreamableHTTPServerTransport);
+          transports.add(sid, transport as StreamableHTTPServerTransport);
         },
       });
       transport.onclose = () => {
@@ -409,23 +418,24 @@ function buildApp(): express.Express {
     }
 
     if (!transport) {
-      res.status(400).json({
+      // an unknown / closed session id is 404, so the client starts a new session (MCP streamable-http)
+      res.status(sessionId ? 404 : 400).json({
         jsonrpc: "2.0",
-        error: { code: -32000, message: "Bad Request: no valid session" },
+        error: { code: sessionId ? -32001 : -32000, message: sessionId ? "Session not found: initialize a new session" : "Bad Request: no valid session" },
         id: null,
       });
       return;
     }
 
     const t = transport;
-    await runWithRawRequest("mcp", (req as RawBodyRequest).rawBody, () => t.handleRequest(req, res, req.body));
+    await runWithRawRequest("mcp", (req as RawBodyRequest).rawBody, () => t.handleRequest(req, res, req.body), res);
   });
 
   const handleSessionRequest = async (req: Request, res: Response) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
     const transport = sessionId ? transports.get(sessionId) : undefined;
     if (!transport) {
-      res.status(400).send("Invalid or missing session ID");
+      res.status(sessionId ? 404 : 400).send(sessionId ? "Session not found" : "Invalid or missing session ID");
       return;
     }
     await transport.handleRequest(req, res);
