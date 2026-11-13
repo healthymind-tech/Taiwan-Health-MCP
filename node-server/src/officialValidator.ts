@@ -107,12 +107,14 @@ export function issuesFromOutcome(oo: unknown): OfficialIssue[] {
 
 /**
  * An issue that reports terminology-server trouble (timeout, unreachable, 5xx), not a property of the instance. Also
- * tx.fhir.org's "The cache was never issued by this server": the validator's terminology cache session (its cache-id)
- * is unknown to the server (the server restarted) — every later lookup of that validator fails the same way until it
- * restarts with a new session, which the restart below does.
+ * every failure of the validator's terminology cache session on the server: "Error from <tx>: Error: The cache … was
+ * never issued by this server" / "… was lost" / "… expired" (staging 2026-11-12, recurring 1–7 h after a validator
+ * restart). Once the server forgot the session (its cache-id) every later lookup of that validator fails the same way
+ * until it restarts with a new one, which the restart below does — so any "Error from <server> …cache…", and the bare
+ * "The cache … never issued / lost / expired", is transient, never a finding.
  */
 const TX_TRANSIENT =
-  /cache was never issued by this server|SocketTimeoutException|SocketException|ConnectException|UnknownHostException|SSLException|NoRouteToHostException|timed out|Read timeout|Connection (?:refused|reset)|Error contacting|Unable to connect|could not connect|Too Many Requests|HTTP(?: status)?[: ]+(?:5\d\d|429)\b|terminology server[^.]{0,80}(?:unavailable|not available|error|could not be reached|did not respond)/iu;
+  /Error from \S+[^\n]*?\bcache\b|\bThe cache\b[^\n]{0,200}?\b(?:was never issued|was lost|(?:has )?expired)\b|SocketTimeoutException|SocketException|ConnectException|UnknownHostException|SSLException|NoRouteToHostException|timed out|Read timeout|Connection (?:refused|reset)|Error contacting|Unable to connect|could not connect|Too Many Requests|HTTP(?: status)?[: ]+(?:5\d\d|429)\b|terminology server[^.]{0,80}(?:unavailable|not available|error|could not be reached|did not respond)/iu;
 
 // v20.2: validator_cli's own per-request time limit (`validationTimeout`): the result is incomplete, not a finding
 const VALIDATION_TIMED_OUT = /^Validation process exceeded maximum allowed time of \d+ms/u;

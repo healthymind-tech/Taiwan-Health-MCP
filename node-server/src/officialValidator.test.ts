@@ -92,8 +92,6 @@ test("terminology-server failures are returned apart as unverified, and the vali
   assert.ok(isTransientTxIssue({ message: "Error from https://tx.fhir.org/r4: java.net.SocketTimeoutException: Read timed out" }));
   assert.ok(isTransientTxIssue({ message: "Validation process exceeded maximum allowed time of 90000ms, set by http-query. Returned validation messages may be incomplete or inaccurate." }));
   assert.ok(!isTransientTxIssue({ message: "Unknown code 'ZZZ-9' in the CodeSystem 'http://loinc.org' version '2.81'" }));
-  // tx.fhir.org forgot the validator's cache session (server restart): transient, and the validator must restart
-  assert.ok(isTransientTxIssue({ message: "Error from https://tx.fhir.org/r4: The cache was never issued by this server" }));
   const seen: string[] = [];
   const oo = { resourceType: "OperationOutcome", issue: [...OO.issue, { severity: "error", code: "exception", details: { text: "java.net.SocketTimeoutException: Connect timed out" }, expression: ["Bundle.entry[1].resource.code"] }] };
   let t = 0;
@@ -215,4 +213,49 @@ test("routing: an exact package#version first; else the first configured validat
   assert.deepEqual(await flaky.routeFor("tw.gov.mohw.twcore", "0.3.2", flakyOf), { url: "http://v-pas:18081", via: "tw.gov.mohw.nhi.pas#1.2.7" });
   // mode off: never routed
   assert.equal(await new OfficialValidator({ ...c, mode: "off" }).routeFor("tw.gov.mohw.twcore", "1.0.0", closureOf), null);
+});
+
+test("tx cache-session failures (never issued / lost / expired, any wording under 'Error from <server>') are transient, never findings", () => {
+  for (const message of [
+    "Error from https://tx.fhir.org/r4: Error: The cache 5f0c2a1e-77b3-4c0e-9d1a-0b4c2e6f9a10 was never issued by this server",
+    "Error from https://tx.fhir.org/r4: Error: The cache 5f0c2a1e-77b3-4c0e-9d1a-0b4c2e6f9a10 was lost",
+    "Error from https://tx.fhir.org/r4: Error: The cache 5f0c2a1e-77b3-4c0e-9d1a-0b4c2e6f9a10 expired",
+    "Error from https://tx.fhir.org/r4: Error: The cache 5f0c2a1e has expired",
+    "Error from http://tx.example.org/fhir: cache session unknown",
+    "The cache was never issued by this server",
+    "The cache abc was lost",
+  ]) {
+    assert.ok(isTransientTxIssue({ message }), message);
+  }
+  // instance findings stay findings, also when they come from the terminology server or mention a cache
+  for (const message of [
+    "Unknown code 'ZZZ-9' in the CodeSystem 'http://loinc.org' version '2.81'",
+    "Error from https://tx.fhir.org/r4: Unknown code 'X' in the CodeSystem 'http://snomed.info/sct'",
+    "The value provided ('cache') was not found in the value set 'Reason'",
+  ]) {
+    assert.ok(!isTransientTxIssue({ message }), message);
+  }
+});
+
+test("a tx cache-session failure: the issue goes to unverified (not issues) and the validator is restarted to get a new session", async () => {
+  const seen: string[] = [];
+  const cacheFailure = { severity: "error", code: "exception", details: { text: "Error from https://tx.fhir.org/r4: Error: The cache 9a1b was lost" }, expression: ["Bundle.entry[0].resource.code.coding[0]"] };
+  const oo = { resourceType: "OperationOutcome", issue: [...OO.issue, cacheFailure] };
+  let t = 0;
+  const v = new OfficialValidator(
+    parseOfficialConfig({ OFFICIAL_VALIDATOR_URLS: "p=http://v:1" }),
+    async (url) => {
+      seen.push(url.replace("http://v:1", ""));
+      return { ok: true, status: 200, json: async () => oo };
+    },
+    () => t,
+    async (ms) => {
+      t += ms;
+    },
+  );
+  const r = await v.validate("http://v:1", {}, null);
+  assert.ok(!r.issues.some((i) => /cache/i.test(i.message)), "never an instance issue the model is asked to fix");
+  assert.deepEqual(r.unverified.map((i) => i.path), ["Bundle.entry[0].resource.code.coding[0]"]);
+  await v.validate("http://v:1", {}, null);
+  assert.equal(seen.filter((u) => u === "/stop").length, 1, "restarted once");
 });
