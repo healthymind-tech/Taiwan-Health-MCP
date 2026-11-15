@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { clinicalCore, cnToInt, groupKey, normalizeText, tokenize } from "./text.js";
+import { clinicalCore, cnToInt, compact, groupKey, normalizeText, tokenize } from "./text.js";
 import { buildEntries, mineLoincAcronyms, mineSnomedAcronyms, plausibleAbbreviation, Thesaurus } from "./thesaurus.js";
 import { abbreviationWords, ConceptIndex, editDistance, fuse, nearCodes, prepareQuery, queryWords, rankSenses } from "./engine.js";
 import { abbreviationKey, applicableExpansions, parseLrabrLine, plausibleSense } from "./abbreviations.js";
@@ -351,4 +351,28 @@ test("shorthand joined by & or / is one query word; its parts stay words", () =>
   assert.deepEqual(queryWords("na/k f"), ["na/k", "na", "k", "f"]);
   assert.ok(abbreviationWords("U/A").has("u/a"));
   assert.ok(!abbreviationWords("C/S").has("c"));
+});
+
+test("ConceptIndex.build: the same index as the constructor, built while the event loop keeps running", async () => {
+  const rnd = (() => {
+    let x = 7;
+    return (): number => (x = (x * 48271) % 2147483647) / 2147483647;
+  })();
+  const words = ["blood", "pressure", "glucose", "renal", "acute", "chronic", "腎", "糖尿病", "高血壓", "infection", "fracture", "tablet", "injection", "mg", "test"];
+  const concepts = Array.from({ length: 6000 }, (_, i) => {
+    const text = Array.from({ length: 2 + Math.floor(rnd() * 5) }, () => words[Math.floor(rnd() * words.length)]).join(" ");
+    return { code: `C${i}`, display: text, terms: [{ text, lang: null, kind: "display" as const }, { text: `${text} ${i % 7}`, lang: "en", kind: "designation" as const }] };
+  });
+  let ticks = 0;
+  const timer = setInterval(() => ticks++, 0);
+  const built = await ConceptIndex.build(concepts, 200);
+  clearInterval(timer);
+  assert.ok(ticks > 5, `other work ran during the build (${ticks} timer ticks)`);
+  const sync = new ConceptIndex(concepts);
+  assert.equal(built.termCount, sync.termCount);
+  assert.equal(built.size, sync.size);
+  for (const q of ["acute renal", "blood pressure test", "糖尿病 tablet", "fracture 3"]) {
+    const variants = [{ label: "q", weight: 1, toks: tokenize(normalizeText(q)), compact: compact(normalizeText(q)), text: q }];
+    assert.deepEqual(built.search(variants as never, 20), sync.search(variants as never, 20), q);
+  }
 });

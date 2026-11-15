@@ -9,7 +9,7 @@
  * the provider is down or the CodeSystem has no vectors yet (searchQuality signal).
  */
 
-import { envBudgetBytes, estimateBytes, trackCache } from "../memSize.js";
+import { envBudgetBytes, estimateBytesAsync, trackCache } from "../memSize.js";
 import { currentSnapshot } from "../fhirValidationSnapshot.js";
 import { query } from "../db.js";
 import { logWarning } from "../logger.js";
@@ -361,9 +361,11 @@ export class IgConceptSearch {
       if (meta) admitMemory(meta.entries * BUILD_BYTES_PER_ENTRY, what);
       const concepts = sig === "raw" ? await this.rawConcepts(loc) : await this.indexedConcepts(loc);
       if (!meta) admitMemory(concepts.reduce((n, c) => n + 1 + c.terms.length, 0) * BUILD_BYTES_PER_ENTRY, what);
-      const index = new ConceptIndex(concepts);
+      // built and measured in slices: a large index is 10–20 s of CPU that must not stop every other request
+      const index = await ConceptIndex.build(concepts);
+      const bytes = await estimateBytesAsync(index);
       const at = Date.now();
-      this.cache.set(key, { index, signature: sig, checkedAt: at, usedAt: at, bytes: estimateBytes(index) });
+      this.cache.set(key, { index, signature: sig, checkedAt: at, usedAt: at, bytes });
       this.evict();
       return { index, indexed: sig !== "raw" };
     }).finally(() => this.building.delete(key));

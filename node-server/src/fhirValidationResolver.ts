@@ -58,8 +58,8 @@ import { enumeratedCodes, installedEnumeratedDisplay } from "./codeAcceptance.js
 
 const SD_TTL_MS = 30 * 60 * 1000;
 const SD_CACHE_MAX = 1500;
-// StructureDefinitions with their (generated) snapshots: bounded by estimated size too (SD_CACHE_MB, default 2048 estimated MB — the estimate counts every string at two bytes a character and scales by 1.5, about three times an ASCII definition's real size: 768 made snapshots regenerate on every pas call)
-const sdCache = new terminology.TtlCache<Record<string, any> | null>(envBudgetBytes("SD_CACHE_MB", 2048), SD_CACHE_MAX);
+// StructureDefinitions with their (generated) snapshots: bounded by estimated size too (SD_CACHE_MB, default 1024 estimated MB (v22: 2048 → 1024; a 16-IG staging soak held 297 MB, the CodeSystem cache got the room) — the estimate counts every string at two bytes a character and scales by 1.5, about three times an ASCII definition's real size: 768 made snapshots regenerate on every pas call)
+const sdCache = new terminology.TtlCache<Record<string, any> | null>(envBudgetBytes("SD_CACHE_MB", 1024), SD_CACHE_MAX);
 const defCache = new terminology.TtlCache<boolean>(Infinity, SD_CACHE_MAX);
 
 /**

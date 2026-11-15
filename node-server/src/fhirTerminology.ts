@@ -9,7 +9,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { envBudgetBytes, estimateBytes, trackCache } from "./memSize.js";
+import { envBudgetBytes, estimateBytes, estimateBytesAsync, trackCache } from "./memSize.js";
 import { txDisplays } from "./txCodeTables.js";
 import { query } from "./db.js";
 import { pickCanonicalVersion } from "./fhirValidator.js";
@@ -85,9 +85,14 @@ function isDigits(s: any): boolean {
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const CACHE_MAX = 400;
 
+/** Weight charged for a key whose value another key already pays for (TtlCache `shared`). */
+const SHARED_ENTRY_WEIGHT = 64;
+
 export class TtlCache<V> {
-  private map = new Map<string, { at: number; value: V; weight: number }>();
+  private map = new Map<string, { at: number; value: V; weight: number; full: number; share: object | null }>();
   private total = 0;
+  /** per shared object: how many keys hold it */
+  private holders = new Map<object, number>();
   /**
    * `maxWeight` bounds the summed weight of the held values — for the CodeSystem indexes and ValueSets their estimated
    * size in bytes (memSize.estimateBytes): a few large CodeSystems (tens of thousands of codes, hundreds of MB once
@@ -95,10 +100,17 @@ export class TtlCache<V> {
    * CodeSystem indexes under a 150k-concept bound). Eviction is least-recently-used, by count (CACHE_MAX) and by weight.
    * Inside a validation snapshot (fhirValidationSnapshot.ts) reads and writes are pinned: the request keeps the value it
    * saw first, also one evicted or too heavy to be held here. Expiry and eviction only affect the next request.
+   *
+   * `shared` names the object a value shares with other keys (the CodeSystem index of identical content, reached through
+   * several IG closures): it is weighed once — the first key holding it pays its full weight, the others a nominal 64
+   * bytes, and when the paying key goes another holder takes the weight over. Weighed per key, five closures holding
+   * one 185 MB ICD-10-CM index counted 925 MB, the budget filled with copies of the same index and the evictions
+   * reloaded CodeSystems (2–3.5 s of CPU each) all day (staging 2026-11-15: event-loop lag up to 14 s).
    */
   constructor(
     private readonly maxWeight = Infinity,
     private readonly maxEntries = CACHE_MAX,
+    private readonly shared: ((value: V) => object | null) | null = null,
   ) {
     // weight is estimated bytes for a byte-bounded cache, 1 per entry otherwise
     trackCache(this, { stats: (c) => ({ entries: c.map.size, bytes: c.maxWeight === Infinity ? 0 : c.total }), shed: (c, f) => c.shed(f) });
@@ -125,13 +137,18 @@ export class TtlCache<V> {
     const maxWeight = limit.maxWeight ?? this.maxWeight;
     const maxEntries = limit.maxEntries ?? this.maxEntries;
     if (weight > maxWeight || maxEntries <= 0) return; // larger than the whole budget: not held
-    while (this.map.size && (this.map.size >= maxEntries || this.total + weight > maxWeight)) {
+    const share = this.shared && value !== null && value !== undefined ? this.shared(value) : null;
+    const charged = share && (this.holders.get(share) ?? 0) > 0 ? Math.min(weight, SHARED_ENTRY_WEIGHT) : weight;
+    while (this.map.size && (this.map.size >= maxEntries || this.total + charged > maxWeight)) {
       const first = this.map.keys().next().value;
       if (first === undefined) break;
       this.drop(first);
     }
-    this.map.set(key, { at: Date.now(), value, weight });
-    this.total += weight;
+    // the eviction may have dropped the payer of `share`: then this key pays
+    const weightNow = share && (this.holders.get(share) ?? 0) > 0 ? Math.min(weight, SHARED_ENTRY_WEIGHT) : weight;
+    this.map.set(key, { at: Date.now(), value, weight: weightNow, full: weight, share });
+    this.total += weightNow;
+    if (share) this.holders.set(share, (this.holders.get(share) ?? 0) + 1);
   }
   get size(): number {
     return this.map.size;
@@ -152,11 +169,31 @@ export class TtlCache<V> {
     if (!hit) return;
     this.total -= hit.weight;
     this.map.delete(key);
+    if (!hit.share) return;
+    const left = (this.holders.get(hit.share) ?? 1) - 1;
+    if (left <= 0) {
+      this.holders.delete(hit.share);
+      return;
+    }
+    this.holders.set(hit.share, left);
+    if (hit.weight === hit.full) {
+      // the payer went: another holder of the same object takes the full weight over
+      for (const e of this.map.values()) {
+        if (e.share === hit.share) {
+          this.total += e.full - e.weight;
+          e.weight = e.full;
+          break;
+        }
+      }
+    }
   }
 }
 
-// CodeSystem indexes, bounded by their estimated size (CS_CACHE_MB, default 512 MB); ValueSets likewise (VS_CACHE_MB, 128 MB)
-const csCache = new TtlCache<CodeSystemIndex | null>(envBudgetBytes("CS_CACHE_MB", 512));
+// CodeSystem indexes, bounded by their estimated size (CS_CACHE_MB, default 1280 MB); ValueSets likewise (VS_CACHE_MB, 128 MB)
+// v22 G6: 1280 MB (was 512): with PAS (TW Core 0.3.2) and 15 other IGs the working set alone — ICD-10-CM 2023 185 MB,
+// ICD-10-PCS 151, FDA devices 109, … ≈ 740 MB estimated — outgrew 512, every eviction reloaded a CodeSystem (2–3.5 s
+// of CPU each) and the event loop lagged up to 14 s
+const csCache = new TtlCache<CodeSystemIndex | null>(envBudgetBytes("CS_CACHE_MB", 1280), CACHE_MAX, (idx) => idx);
 const csLoading = new Map<string, Promise<CodeSystemIndex | null>>();
 
 /**
@@ -460,14 +497,89 @@ export async function loadCodeSystemIndex(url: string, pkg: PackageRow, exact = 
   return idx;
 }
 
+/**
+ * CodeSystem indexes by the artifact they were built from (package#version|canonical), held weakly: the same artifact
+ * reached through another IG's closure reuses the index without fetching and parsing its JSON again (a 30 MB
+ * ICD-10-CM JSON: ~1.4 s parse + 0.5 s hash on the event loop, once per closure before; staging 2026-11-15).
+ */
+const indexByArtifact = new Map<string, WeakRef<CodeSystemIndex>>();
+const indexByArtifactGone = new FinalizationRegistry<string>((k) => {
+  if (!indexByArtifact.get(k)?.deref()) indexByArtifact.delete(k);
+});
+
+/**
+ * The closure's CodeSystem by exact canonical, as loadArtifactByCanonical picks it (rankCandidates reads only package
+ * metadata), with the artifact it came from — but only the chosen copy's JSON is fetched, and only when no index of
+ * that artifact is alive. undefined = no copy in the closure (the caller falls back as before).
+ */
+async function closureCodeSystem(url: string, pkg: PackageRow): Promise<{ artifact: string; index: CodeSystemIndex | null; cs: Record<string, any> | null } | undefined> {
+  const [pids, pvers] = closureArrays(pkg);
+  const canonical = url.split("|")[0];
+  const rows = (
+    await query<{ ord: number; package_id: string; package_version: string; fhir_version: string | null }>(
+      "SELECT dep.ord, a.package_id, a.package_version, p.fhir_version FROM fhir.artifacts a " +
+        "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) " +
+        "  ON a.package_id = dep.pid AND a.package_version = dep.pver " +
+        "JOIN fhir.ig_packages p ON p.package_id = a.package_id AND p.version = a.package_version " +
+        "WHERE a.resource_type = 'CodeSystem' AND a.canonical_url = $3",
+      [pids, pvers, canonical],
+    )
+  ).rows;
+  const ranked = rankCandidates(
+    canonical,
+    rows.map((r) => ({ ...r, packageId: r.package_id, packageVersion: r.package_version, fhirVersion: r.fhir_version, ord: Number(r.ord) })),
+  );
+  for (const r of ranked) {
+    const artifact = `${r.package_id}#${r.package_version}|${canonical}`;
+    const alive = indexByArtifact.get(artifact)?.deref();
+    if (alive) return { artifact, index: alive, cs: null };
+    const raw = (
+      await query<{ raw_json: any }>(
+        "SELECT raw_json FROM fhir.artifacts WHERE resource_type = 'CodeSystem' AND package_id = $1 AND package_version = $2 AND canonical_url = $3 LIMIT 1",
+        [r.package_id, r.package_version, canonical],
+      )
+    ).rows[0];
+    const cs = raw ? jsonOf(raw.raw_json) : null;
+    if (cs) return { artifact, index: null, cs };
+  }
+  return ranked.length ? { artifact: "", index: null, cs: null } : undefined;
+}
+
 async function loadCodeSystemIndexUncached(url: string, pkg: PackageRow, exact: boolean, key: string, bar: number, version: string): Promise<CodeSystemIndex | null> {
+  if (!version) {
+    const found = await closureCodeSystem(url, pkg);
+    if (found && (found.index || found.cs)) {
+      const cs = found.cs;
+      const idx = found.index ?? (cs && cs.content !== "supplement" && cs.content !== "not-present" ? sharedCodeSystemIndex(cs) : null);
+      if (idx && !found.index) {
+        indexByArtifact.set(found.artifact, new WeakRef(idx));
+        indexByArtifactGone.register(idx, found.artifact);
+      }
+      csCache.set(key, idx, 64 + (idx ? await indexBytes(idx) : 0));
+      return idx;
+    }
+    if (found && exact) {
+      csCache.set(key, null, 64);
+      return null;
+    }
+  }
   // REVIEW_port_2 G3 (ValueSetValidator.resolveCodeSystem(system, version), tag 7.0.1:654): `url|version` is that
   // version of the CodeSystem — never the closure's other copy
   const cs = version ? await loadCodeSystemVersion(url.slice(0, bar), version, pkg) : await loadByCanonical("CodeSystem", url, pkg, exact);
   // `not-present` stubs (e.g. SNOMED / LOINC in core) carry no concepts: treat as not held.
   const idx = cs && cs.content !== "supplement" && cs.content !== "not-present" ? sharedCodeSystemIndex(cs) : null;
-  csCache.set(key, idx, 64 + (idx ? estimateBytes(idx) : 0));
+  csCache.set(key, idx, 64 + (idx ? await indexBytes(idx) : 0));
   return idx;
+}
+
+/** Estimated size of a (shared, immutable) CodeSystem index: walked once per index, in slices (up to a second each). */
+const indexSizes = new WeakMap<CodeSystemIndex, number>();
+async function indexBytes(idx: CodeSystemIndex): Promise<number> {
+  const known = indexSizes.get(idx);
+  if (known !== undefined) return known;
+  const bytes = await estimateBytesAsync(idx);
+  indexSizes.set(idx, bytes);
+  return bytes;
 }
 
 /**
@@ -518,7 +630,7 @@ export async function loadThoCurrentIndex(canonical: string): Promise<CodeSystem
   const best = rankCandidates(canonical, cands)[0];
   const cs = best ? jsonOf(best.raw_json) : null;
   const idx = cs && cs.content === "complete" ? sharedCodeSystemIndex(cs) : null;
-  csCache.set(key, idx, 64 + (idx ? estimateBytes(idx) : 0));
+  csCache.set(key, idx, 64 + (idx ? await indexBytes(idx) : 0));
   return idx;
 }
 

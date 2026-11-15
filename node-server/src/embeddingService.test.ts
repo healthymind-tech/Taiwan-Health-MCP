@@ -5,7 +5,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EmbeddingService, parseEmbeddingSettings } from "./embeddingService.js";
+import { EmbeddingService, allCoolingDown, parseEmbeddingSettings } from "./embeddingService.js";
+import { reportFailure, reportSuccess, resetBreakers } from "./admin/llmProfiles.js";
 import { recordRequest, resetAll } from "./rateLimiter.js";
 import type { LlmProfile } from "./admin/llmProfiles.js";
 
@@ -51,4 +52,17 @@ test("waitForCapacity waits (bounded) when every profile is out of RPM budget", 
   assert.equal(waited, 80, "capped at maxWaitMs (window reopens in ~60s)");
   assert.ok(Date.now() - t0 >= 75);
   resetAll();
+});
+
+test("every endpoint in cool-down → keyword-only without a request; one healthy endpoint → tried", () => {
+  resetBreakers();
+  assert.equal(allCoolingDown([]), false, "no endpoint configured: the construction-time profiles decide");
+  for (let i = 0; i < 3; i++) reportFailure(9101, "fetch failed"); // trips after FAILURES_BEFORE_TRIP
+  assert.equal(allCoolingDown([{ id: 9101 }]), true, "the only endpoint is down: no request at all");
+  assert.equal(allCoolingDown([{ id: 9101 }, { id: 9102 }]), false, "another endpoint is still healthy");
+  reportFailure(9102, "fetch failed");
+  assert.equal(allCoolingDown([{ id: 9101 }, { id: 9102 }]), false, "one failure does not trip it");
+  reportSuccess(9101);
+  assert.equal(allCoolingDown([{ id: 9101 }]), false, "recovered");
+  resetBreakers();
 });

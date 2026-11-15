@@ -41,3 +41,33 @@ test("shedTrackedCaches: every tracked cache drops its least recently used half 
   assert.ok(cache.get("c3") !== undefined && cache.get("c0") === undefined);
   assert.ok(released >= before - memo.weight + 2000, `released ${released}`);
 });
+
+test("estimateBytesAsync gives exactly estimateBytes, in slices", async () => {
+  const { estimateBytes, estimateBytesAsync } = await import("./memSize.js");
+  const shared = { s: "x".repeat(100) };
+  const value = { a: Array.from({ length: 5000 }, (_, i) => ({ i, t: `term ${i}`, shared })), m: new Map([["k", [1, 2, 3]]]), set: new Set(["a", "b"]) };
+  assert.equal(await estimateBytesAsync(value, Infinity, 100), estimateBytes(value));
+  assert.equal(await estimateBytesAsync(value, 10_000, 100), estimateBytes(value, 10_000), "the limit stops both at the same point");
+});
+
+test("TtlCache shared: one object held under several keys is weighed once; the weight moves when its payer goes", () => {
+  const idx = { big: true };
+  const other = { big: true };
+  const c = new TtlCache<object>(1100, 100, (v) => v);
+  c.set("closure-A|icd", idx, 600);
+  c.set("closure-B|icd", idx, 600); // same index through another closure
+  c.set("closure-C|icd", idx, 600);
+  assert.equal(c.size, 3, "all three held: the budget sees one 600-byte index, not 1800");
+  assert.ok(c.weight < 600 + 3 * 64 + 1, `weight ${c.weight}`);
+  c.set("closure-A|pcs", other, 300); // distinct content still fits (600 + 300 + 2 × 64)
+  assert.equal(c.size, 4);
+  c.shed(0.25); // drops the oldest: closure-A|icd, the payer
+  assert.equal(c.size, 3);
+  assert.ok(c.weight >= 600 + 300, `another holder took the 600 over: ${c.weight}`);
+  c.set("closure-D|x", { other: 1 }, 200); // 600 + 300 + 64 + 200 > 1100: the least recently used go first
+  assert.ok(c.weight <= 1100, `stays within the budget: ${c.weight}`);
+  const plain = new TtlCache<object>(1000);
+  plain.set("a", idx, 600);
+  plain.set("b", idx, 600);
+  assert.equal(plain.size, 1, "without `shared` every key pays (unchanged)");
+});

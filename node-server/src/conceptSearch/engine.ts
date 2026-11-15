@@ -326,6 +326,11 @@ export function prepareQuery(text: string, thesaurus: Thesaurus | null, opts: Pr
 /** Usage below 10^floorLog10 counts as no usage (one object so harnesses can sweep it). */
 export const POPULARITY = { floorLog10: 0 };
 
+/** Let pending I/O and timers run (setImmediate: after the poll phase, so requests are served in between). */
+export function yieldToLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 export class ConceptIndex {
   private readonly concepts: Concept[] = [];
   private readonly terms: Term[] = [];
@@ -339,10 +344,34 @@ export class ConceptIndex {
   private readonly conceptDf = new Map<string, number>();
   private maxIdf = 1;
   private maxPopularity = 0;
-  readonly termCount: number;
+  private built = 0;
+
+  get termCount(): number {
+    return this.built;
+  }
 
   constructor(input: Iterable<ConceptInput>) {
-    for (const c of input) {
+    for (const c of input) this.add(c);
+    this.finish();
+  }
+
+  /**
+   * The same index, built without holding the event loop: a 140k-term CodeSystem takes 10–20 s of CPU, and built in
+   * one synchronous run it stopped every other request for that long (staging 2026-11-15: event-loop lag up to 14 s,
+   * health checks timing out). Yields after every `chunk` concepts.
+   */
+  static async build(input: ConceptInput[], chunk = 500): Promise<ConceptIndex> {
+    const idx = new ConceptIndex([]);
+    for (let i = 0; i < input.length; i++) {
+      idx.add(input[i]);
+      if (i % chunk === chunk - 1) await yieldToLoop();
+    }
+    await idx.finish(true);
+    return idx;
+  }
+
+  private add(c: ConceptInput): void {
+    {
       const ci = this.concepts.length;
       const group = groupKey(c.display || c.terms.find((t) => t.kind === "display")?.text || "");
       this.concepts.push({ code: c.code, display: c.display, info: c.info ?? null, group });
@@ -375,18 +404,40 @@ export class ConceptIndex {
       }
       this.termRange.push([firstTerm, this.terms.length]);
     }
+  }
+
+  /** idf and term mass once every concept is in; with `yielding`, in slices that let the event loop run. */
+  private finish(): void;
+  private finish(yielding: true): Promise<void>;
+  private finish(yielding = false): void | Promise<void> {
+    this.idf.clear();
+    this.maxIdf = 1;
     const n = this.terms.length || 1;
     for (const [k, p] of this.postings) {
       const v = Math.log(1 + (n - p.length + 0.5) / (p.length + 0.5));
       this.idf.set(k, v);
       if (v > this.maxIdf) this.maxIdf = v;
     }
-    for (const t of this.terms) {
-      let m = 0;
-      for (const [k, w] of t.toks) m += w * (this.idf.get(k) ?? 0);
-      t.mass = m;
+    const mass = (from: number, to: number): void => {
+      for (let i = from; i < to; i++) {
+        const t = this.terms[i];
+        let m = 0;
+        for (const [k, w] of t.toks) m += w * (this.idf.get(k) ?? 0);
+        t.mass = m;
+      }
+    };
+    if (!yielding) {
+      mass(0, this.terms.length);
+      this.built = this.terms.length;
+      return;
     }
-    this.termCount = this.terms.length;
+    return (async () => {
+      for (let i = 0; i < this.terms.length; i += 20_000) {
+        mass(i, Math.min(this.terms.length, i + 20_000));
+        await yieldToLoop();
+      }
+      this.built = this.terms.length;
+    })();
   }
 
   get size(): number {

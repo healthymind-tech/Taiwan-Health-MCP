@@ -18,58 +18,95 @@ const ARRAY = 32;
  */
 const CALIBRATION = 1.5;
 
-export function estimateBytes(value: unknown, limit = Infinity): number {
-  const seen = new WeakSet<object>();
-  const stack: unknown[] = [value];
-  let total = 0;
-  while (stack.length) {
-    const v = stack.pop();
-    if (v === null || v === undefined) continue;
-    switch (typeof v) {
-      case "string":
-        total += STRING + 2 * v.length;
-        break;
-      case "number":
-      case "bigint":
-        total += SLOT;
-        break;
-      case "boolean":
-        break;
-      case "object": {
-        const o = v as object;
-        if (seen.has(o)) break;
-        seen.add(o);
-        if (Array.isArray(o)) {
-          total += ARRAY + SLOT * o.length;
-          for (const x of o) if (x !== null && (typeof x === "object" || typeof x === "string")) stack.push(x);
-        } else if (o instanceof Map) {
-          total += OBJECT + MAP_ENTRY * o.size;
-          for (const [k, x] of o) {
-            if (typeof k === "string" || (k !== null && typeof k === "object")) stack.push(k);
-            if (x !== null && (typeof x === "object" || typeof x === "string")) stack.push(x);
-          }
-        } else if (o instanceof Set) {
-          total += OBJECT + MAP_ENTRY * o.size;
-          for (const x of o) if (x !== null && (typeof x === "object" || typeof x === "string")) stack.push(x);
-        } else if (ArrayBuffer.isView(o)) {
-          total += OBJECT + (o as ArrayBufferView).byteLength;
-        } else if (!(o instanceof Promise) && !(o instanceof WeakMap) && !(o instanceof WeakSet)) {
-          const keys = Object.keys(o);
-          total += OBJECT + SLOT * keys.length;
-          for (const k of keys) {
-            const x = (o as Record<string, unknown>)[k];
-            if (x !== null && (typeof x === "object" || typeof x === "string")) stack.push(x);
-            else if (typeof x === "number") total += SLOT;
-          }
-        }
-        break;
-      }
-      default:
-        break;
-    }
-    if (total * CALIBRATION > limit) return Math.round(total * CALIBRATION);
+/** The walk behind estimateBytes, in steps: `step(n)` visits at most n more values; true when done. */
+class SizeWalk {
+  private readonly seen = new WeakSet<object>();
+  private readonly stack: unknown[];
+  total = 0;
+
+  constructor(
+    value: unknown,
+    private readonly limit: number,
+  ) {
+    this.stack = [value];
   }
-  return Math.round(total * CALIBRATION);
+
+  get bytes(): number {
+    return Math.round(this.total * CALIBRATION);
+  }
+
+  step(n: number): boolean {
+    const { seen, stack } = this;
+    let total = this.total;
+    for (let visited = 0; stack.length && visited < n; visited++) {
+      const v = stack.pop();
+      if (v === null || v === undefined) continue;
+      switch (typeof v) {
+        case "string":
+          total += STRING + 2 * v.length;
+          break;
+        case "number":
+        case "bigint":
+          total += SLOT;
+          break;
+        case "boolean":
+          break;
+        case "object": {
+          const o = v as object;
+          if (seen.has(o)) break;
+          seen.add(o);
+          if (Array.isArray(o)) {
+            total += ARRAY + SLOT * o.length;
+            for (const x of o) if (x !== null && (typeof x === "object" || typeof x === "string")) stack.push(x);
+          } else if (o instanceof Map) {
+            total += OBJECT + MAP_ENTRY * o.size;
+            for (const [k, x] of o) {
+              if (typeof k === "string" || (k !== null && typeof k === "object")) stack.push(k);
+              if (x !== null && (typeof x === "object" || typeof x === "string")) stack.push(x);
+            }
+          } else if (o instanceof Set) {
+            total += OBJECT + MAP_ENTRY * o.size;
+            for (const x of o) if (x !== null && (typeof x === "object" || typeof x === "string")) stack.push(x);
+          } else if (ArrayBuffer.isView(o)) {
+            total += OBJECT + (o as ArrayBufferView).byteLength;
+          } else if (!(o instanceof Promise) && !(o instanceof WeakMap) && !(o instanceof WeakSet)) {
+            const keys = Object.keys(o);
+            total += OBJECT + SLOT * keys.length;
+            for (const k of keys) {
+              const x = (o as Record<string, unknown>)[k];
+              if (x !== null && (typeof x === "object" || typeof x === "string")) stack.push(x);
+              else if (typeof x === "number") total += SLOT;
+            }
+          }
+          break;
+        }
+        default:
+          break;
+      }
+      if (total * CALIBRATION > this.limit) {
+        this.total = total;
+        return true;
+      }
+    }
+    this.total = total;
+    return stack.length === 0;
+  }
+}
+
+export function estimateBytes(value: unknown, limit = Infinity): number {
+  const w = new SizeWalk(value, limit);
+  w.step(Infinity);
+  return w.bytes;
+}
+
+/**
+ * estimateBytes without holding the event loop: yields after every `chunk` values (a 600 MB concept index is tens of
+ * millions of values — about a second of walking in one piece).
+ */
+export async function estimateBytesAsync(value: unknown, limit = Infinity, chunk = 20_000): Promise<number> {
+  const w = new SizeWalk(value, limit);
+  while (!w.step(chunk)) await new Promise((resolve) => setImmediate(resolve));
+  return w.bytes;
 }
 
 /** A positive byte budget from the environment (MB), else the default (MB). */

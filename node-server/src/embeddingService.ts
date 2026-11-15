@@ -25,6 +25,7 @@ import { logInfo, logWarning } from "./logger.js";
 import {
   candidateOrder,
   embeddingDimensions,
+  isCoolingDown,
   reportFailure,
   reportSuccess,
   type LlmProfile,
@@ -225,6 +226,14 @@ export class EmbeddingService {
       identityDims = await ident.identityDimensions();
       const order = await candidateOrder("embedding", this.settings.strategy);
       candidates = order.length > 0 ? order : this.profiles;
+      // Every endpoint in cool-down (it failed FAILURES_BEFORE_TRIP times): keyword-only at once, no request at all.
+      // Routing keeps cooling leaves last rather than dropping them (an analysis job still tries them), and with one
+      // embedding endpoint down that meant a failed request — and two warning lines — on every search (staging
+      // 2026-11-15: 4,586 lines while the GPU host's vLLM was stopped). One request per cool-down still probes it.
+      if (allCoolingDown(candidates)) {
+        this.available_ = false;
+        return texts.map(() => null);
+      }
     } catch (exc) {
       if (this.available_) {
         logWarning("Could not resolve embedding profiles — falling back to keyword search", {
@@ -306,6 +315,11 @@ export class EmbeddingService {
     this.available_ = false;
     return result;
   }
+}
+
+/** True when there are endpoints and every one is in cool-down: search then goes keyword-only without a request. */
+export function allCoolingDown(candidates: Array<{ id: number }>, cooling: (id: number) => boolean = isCoolingDown): boolean {
+  return candidates.length > 0 && candidates.every((p) => cooling(p.id));
 }
 
 /** Load the shared `embedding` settings group. Fails open to the defaults. */
