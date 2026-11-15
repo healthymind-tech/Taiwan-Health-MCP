@@ -2,11 +2,14 @@
  * The heap safety net (v22 G3): an alert while the live heap stays high, and a graceful self-rotation when it stays
  * too high after the caches have shed (toolConcurrency.maybeShedCaches at 0.7).
  *
- * Every MCP_HEAP_WATCH_INTERVAL_MS (30 s) the live heap ratio (the used size after the last major GC / the limit,
- * toolConcurrency.heapUsedRatio) is sampled:
+ * The live heap ratio (the used size after a major GC / the limit, toolConcurrency.heapUsedRatio) is sampled after
+ * every major GC and every MCP_HEAP_WATCH_INTERVAL_MS (30 s):
  *  - alert: above MCP_HEAP_ALERT_RATIO (0.75) for MCP_HEAP_ALERT_MINUTES (10) → one error log line and gauge
  *    mcp_heap_alert = 1 (back to 0, with an info line, once the ratio falls below it);
- *  - rotate: above MCP_HEAP_ROTATE_RATIO (0.85) for MCP_HEAP_ROTATE_MINUTES (5) → `rotate()`: the server stops
+ *  - rotate: the ratio has stayed above the alert ratio for MCP_HEAP_ROTATE_MINUTES (5) and is now above
+ *    MCP_HEAP_ROTATE_RATIO (0.85) — dips between the two do not restart the clock (local soak 2026-11-15: a heap
+ *    swinging 0.85–0.92 never stayed above 0.85 for 5 min and ran out) — or it is above MCP_HEAP_EMERGENCY_RATIO
+ *    (0.95) at all → `rotate()`: the caches are emptied (room for the drain), the server stops
  *    accepting new sessions and calls (503 + Retry-After), lets the requests in flight finish for at most
  *    MCP_ROTATE_DRAIN_MS (330 s: longer than the official validator's 300 s request limit), then exits with
  *    ROTATE_EXIT_CODE so the container's restart policy starts a fresh process (staging 2026-11-11: hours of BUSY
@@ -23,6 +26,8 @@ export interface HeapWatchOptions {
   alertMs: number;
   rotateRatio: number;
   rotateMs: number;
+  /** rotate at once above this ratio (0 = off) */
+  emergencyRatio: number;
 }
 
 function envNum(name: string, fallback: number, max = Infinity): number {
@@ -36,12 +41,12 @@ export function heapWatchOptionsFromEnv(): HeapWatchOptions {
     alertMs: envNum("MCP_HEAP_ALERT_MINUTES", 10) * 60_000,
     rotateRatio: envNum("MCP_HEAP_ROTATE_RATIO", 0.85, 1),
     rotateMs: envNum("MCP_HEAP_ROTATE_MINUTES", 5) * 60_000,
+    emergencyRatio: envNum("MCP_HEAP_EMERGENCY_RATIO", 0.95, 1),
   };
 }
 
 export class HeapWatch {
   private aboveAlertSince: number | null = null;
-  private aboveRotateSince: number | null = null;
   private alerting = false;
   private rotating = false;
 
@@ -57,7 +62,7 @@ export class HeapWatch {
 
   /** One sample of the live heap ratio at time `now`. */
   sample(ratio: number, now: number): void {
-    const { alertRatio, alertMs, rotateRatio, rotateMs } = this.opts;
+    const { alertRatio, alertMs, rotateRatio, rotateMs, emergencyRatio } = this.opts;
     if (alertRatio > 0 && ratio > alertRatio) {
       this.aboveAlertSince ??= now;
       if (!this.alerting && now - this.aboveAlertSince >= alertMs) {
@@ -75,18 +80,17 @@ export class HeapWatch {
         logInfo("heap alert cleared", { live_ratio: round3(ratio) });
       }
     }
-    if (rotateRatio > 0 && ratio > rotateRatio) {
-      this.aboveRotateSince ??= now;
-      if (!this.rotating && now - this.aboveRotateSince >= rotateMs) {
-        this.rotating = true;
-        logWarning("heap rotation: the live heap stayed above the rotation ratio after cache shedding; draining and restarting", {
-          live_ratio: round3(ratio),
-          rotate_ratio: rotateRatio,
-        });
-        this.onRotate(ratio);
-      }
-    } else {
-      this.aboveRotateSince = null;
+    if (this.rotating) return;
+    const emergency = emergencyRatio > 0 && ratio > emergencyRatio;
+    const sustained = rotateRatio > 0 && ratio > rotateRatio && this.aboveAlertSince !== null && now - this.aboveAlertSince >= rotateMs;
+    if (emergency || sustained) {
+      this.rotating = true;
+      logWarning("heap rotation: the live heap stays high after cache shedding; draining and restarting", {
+        live_ratio: round3(ratio),
+        rotate_ratio: rotateRatio,
+        emergency,
+      });
+      this.onRotate(ratio);
     }
   }
 }

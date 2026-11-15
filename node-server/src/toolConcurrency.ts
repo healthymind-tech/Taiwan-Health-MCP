@@ -62,6 +62,13 @@ export interface GateOptions {
 let liveAfterMajorGc = 0;
 let gcObserver: PerformanceObserver | null = null;
 let lastShedAt = 0;
+const majorGcListeners: Array<(liveRatio: number) => void> = [];
+
+/** Called with the live heap ratio after every major GC (heapWatch.ts); starts the GC observer. */
+export function onMajorGc(listener: (liveRatio: number) => void): void {
+  majorGcListeners.push(listener);
+  heapUsedRatio();
+}
 const SHED_INTERVAL_MS = 60_000;
 
 /** After a major GC: shed the caches when the live heap is above the shed ratio (at most once per interval). */
@@ -85,7 +92,11 @@ export function heapUsedRatio(): number {
         if ((e as unknown as { detail?: { kind?: number } }).detail?.kind === perfConstants.NODE_PERFORMANCE_GC_MAJOR) {
           const stats = v8.getHeapStatistics();
           liveAfterMajorGc = stats.used_heap_size;
-          if (stats.heap_size_limit > 0) maybeShedCaches(liveAfterMajorGc / stats.heap_size_limit);
+          if (stats.heap_size_limit > 0) {
+            const ratio = liveAfterMajorGc / stats.heap_size_limit;
+            maybeShedCaches(ratio);
+            for (const l of majorGcListeners) l(ratio);
+          }
         }
       }
     });

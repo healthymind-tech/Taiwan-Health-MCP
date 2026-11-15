@@ -41,7 +41,8 @@ import { allowedCorsOrigin, bearerTokenMatches, publicOrigin } from "./publicToo
 import { runWithRawRequest } from "./requestContext.js";
 import { SessionRegistry, sessionLimitsFromEnv } from "./mcpSessions.js";
 import { Drain, HeapWatch, ROTATE_EXIT_CODE, heapWatchOptionsFromEnv } from "./heapWatch.js";
-import { heapUsedRatio } from "./toolConcurrency.js";
+import { heapUsedRatio, onMajorGc } from "./toolConcurrency.js";
+import { shedTrackedCaches } from "./memSize.js";
 
 /** express.json keeps the raw body bytes here (`verify`), so a tool can re-read an argument losslessly (requestContext.ts). */
 type RawBodyRequest = Request & { rawBody?: Buffer };
@@ -536,8 +537,12 @@ async function main(): Promise<void> {
     await Promise.allSettled([closePool(), closeClient()]);
     process.exit(code);
   };
-  const watch = new HeapWatch(heapWatchOptionsFromEnv(), () => void exitAfterDrain("heap rotation", envMs("MCP_ROTATE_DRAIN_MS", 330_000), ROTATE_EXIT_CODE));
+  const watch = new HeapWatch(heapWatchOptionsFromEnv(), () => {
+    shedTrackedCaches(1); // every cached value goes: the calls being drained need the room
+    void exitAfterDrain("heap rotation", envMs("MCP_ROTATE_DRAIN_MS", 330_000), ROTATE_EXIT_CODE);
+  });
   reportHeapAlertWith(() => watch.alert);
+  onMajorGc((ratio) => watch.sample(ratio, Date.now()));
   setInterval(() => watch.sample(heapUsedRatio(), Date.now()), envMs("MCP_HEAP_WATCH_INTERVAL_MS", 30_000)).unref();
 
   const shutdown = async (signal: string) => {

@@ -7,7 +7,7 @@ import { Drain, HeapWatch, heapWatchOptionsFromEnv } from "./heapWatch.js";
 const MIN = 60_000;
 
 test("alert: only after the ratio stayed above it for the whole window; cleared once below", () => {
-  const w = new HeapWatch({ alertRatio: 0.75, alertMs: 10 * MIN, rotateRatio: 0, rotateMs: 0 }, () => assert.fail("no rotation"));
+  const w = new HeapWatch({ alertRatio: 0.75, alertMs: 10 * MIN, rotateRatio: 0, rotateMs: 0, emergencyRatio: 0 }, () => assert.fail("no rotation"));
   w.sample(0.8, 0);
   w.sample(0.8, 9 * MIN);
   assert.equal(w.alert, 0);
@@ -21,22 +21,35 @@ test("alert: only after the ratio stayed above it for the whole window; cleared 
   assert.equal(w.alert, 0);
 });
 
-test("rotation: once, after the ratio stayed above the rotation ratio for the window", () => {
+test("rotation: high for the window (dips above the alert ratio keep the clock), now above the rotation ratio; once", () => {
   const rotations: number[] = [];
-  const w = new HeapWatch({ alertRatio: 0.75, alertMs: 10 * MIN, rotateRatio: 0.85, rotateMs: 5 * MIN }, (r) => rotations.push(r));
+  const w = new HeapWatch({ alertRatio: 0.75, alertMs: 10 * MIN, rotateRatio: 0.85, rotateMs: 5 * MIN, emergencyRatio: 0.95 }, (r) => rotations.push(r));
   w.sample(0.9, 0);
-  w.sample(0.8, 2 * MIN); // between: alert window keeps running, rotation window restarts
-  w.sample(0.9, 3 * MIN);
-  w.sample(0.9, 7 * MIN);
+  w.sample(0.84, 2 * MIN); // a dip below 0.85 but above 0.75: the clock keeps running (soak 2026-11-15)
+  w.sample(0.9, 4 * MIN);
   assert.deepEqual(rotations, []);
-  w.sample(0.92, 8 * MIN);
-  assert.deepEqual(rotations, [0.92]);
-  w.sample(0.95, 30 * MIN);
+  w.sample(0.83, 5 * MIN); // window passed, but not above the rotation ratio now
+  assert.deepEqual(rotations, []);
+  w.sample(0.88, 6 * MIN);
+  assert.deepEqual(rotations, [0.88]);
+  w.sample(0.97, 30 * MIN);
   assert.equal(rotations.length, 1, "a rotation is started once");
 });
 
+test("rotation: a dip below the alert ratio restarts the window; above the emergency ratio it rotates at once", () => {
+  const rotations: number[] = [];
+  const w = new HeapWatch({ alertRatio: 0.75, alertMs: 10 * MIN, rotateRatio: 0.85, rotateMs: 5 * MIN, emergencyRatio: 0.95 }, (r) => rotations.push(r));
+  w.sample(0.9, 0);
+  w.sample(0.6, 3 * MIN);
+  w.sample(0.9, 4 * MIN);
+  w.sample(0.9, 8 * MIN);
+  assert.deepEqual(rotations, [], "only 4 min above since the dip");
+  w.sample(0.96, 8.5 * MIN);
+  assert.deepEqual(rotations, [0.96]);
+});
+
 test("ratio 0 turns alert and rotation off", () => {
-  const w = new HeapWatch({ alertRatio: 0, alertMs: 0, rotateRatio: 0, rotateMs: 0 }, () => assert.fail("no rotation"));
+  const w = new HeapWatch({ alertRatio: 0, alertMs: 0, rotateRatio: 0, rotateMs: 0, emergencyRatio: 0 }, () => assert.fail("no rotation"));
   w.sample(0.99, 0);
   w.sample(0.99, 100 * MIN);
   assert.equal(w.alert, 0);
@@ -64,11 +77,11 @@ test("drain: the bound wins over a request that never finishes", async () => {
 });
 
 test("options from env: defaults 0.75 / 10 min, 0.85 / 5 min", () => {
-  const keys = ["MCP_HEAP_ALERT_RATIO", "MCP_HEAP_ALERT_MINUTES", "MCP_HEAP_ROTATE_RATIO", "MCP_HEAP_ROTATE_MINUTES"];
+  const keys = ["MCP_HEAP_ALERT_RATIO", "MCP_HEAP_ALERT_MINUTES", "MCP_HEAP_ROTATE_RATIO", "MCP_HEAP_ROTATE_MINUTES", "MCP_HEAP_EMERGENCY_RATIO"];
   const saved = keys.map((k) => process.env[k]);
   try {
     for (const k of keys) delete process.env[k];
-    assert.deepEqual(heapWatchOptionsFromEnv(), { alertRatio: 0.75, alertMs: 10 * MIN, rotateRatio: 0.85, rotateMs: 5 * MIN });
+    assert.deepEqual(heapWatchOptionsFromEnv(), { alertRatio: 0.75, alertMs: 10 * MIN, rotateRatio: 0.85, rotateMs: 5 * MIN, emergencyRatio: 0.95 });
     process.env.MCP_HEAP_ROTATE_RATIO = "0";
     process.env.MCP_HEAP_ALERT_MINUTES = "2";
     assert.equal(heapWatchOptionsFromEnv().rotateRatio, 0);
