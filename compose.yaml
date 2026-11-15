@@ -123,6 +123,9 @@ services:
     container_name: taiwanHealthMcp
     # ops-v1 O3: per-container memory cap (an OOM restarts this container only); no swap use.
     mem_limit: ${APP_MEM_LIMIT:-5g}
+    # a crash must not write a multi-GB core dump into the container layer (staging 2026-11-09: 7.4 GB)
+    ulimits:
+      core: 0
     memswap_limit: ${APP_MEM_LIMIT:-5g}
     # `ocr`: internal network shared with ocr-indra only.
     networks:
@@ -245,6 +248,9 @@ services:
     container_name: taiwanHealthMcp_admin_worker
     # ops-v1 O3: per-container memory cap (an OOM restarts this container only); no swap use.
     mem_limit: ${WORKER_MEM_LIMIT:-9g}
+    # a crash must not write a multi-GB core dump into the container layer (staging 2026-11-09: 7.4 GB)
+    ulimits:
+      core: 0
     memswap_limit: ${WORKER_MEM_LIMIT:-9g}
     # CMD in Dockerfile.worker runs `node dist/admin/adminWorker.js`.
     networks:
@@ -310,6 +316,9 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     cpus: 2
     mem_limit: 2g
+    # a crash must not write a multi-GB core dump into the container layer (staging 2026-11-09: 7.4 GB)
+    ulimits:
+      core: 0
     pids_limit: 256
     read_only: true
     tmpfs:
@@ -345,6 +354,9 @@ services:
     cpus: 2
     cpu_shares: 256
     mem_limit: 3g
+    # no core dump on a JVM crash (it would land in the container layer)
+    ulimits:
+      core: 0
     pids_limit: 512
     security_opt:
       - no-new-privileges:true

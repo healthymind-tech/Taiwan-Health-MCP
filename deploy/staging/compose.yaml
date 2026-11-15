@@ -85,6 +85,9 @@ services:
     restart: unless-stopped
 
   admin-worker:
+    # no core dump on a crash (it would land in the container layer)
+    ulimits:
+      core: 0
     build:
       context: ../..
       dockerfile: Dockerfile.worker
@@ -116,6 +119,9 @@ services:
       INDRA_THREADS_PER_WORKER: "2"
     cpus: 2
     mem_limit: 2g
+    # a crash must not write a multi-GB core dump into the container layer (staging 2026-11-09: 7.4 GB)
+    ulimits:
+      core: 0
     pids_limit: 256
     read_only: true
     tmpfs:

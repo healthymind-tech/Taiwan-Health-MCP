@@ -13,6 +13,9 @@ x-validator: &validator
   cpus: 2
   cpu_shares: 256
   mem_limit: 3g
+  # no core dump on a JVM crash (it would land in the container layer)
+  ulimits:
+    core: 0
   memswap_limit: 3g
   pids_limit: 512
   security_opt:
@@ -61,6 +64,9 @@ services:
       MCP_HEAVY_TOOL_CONCURRENCY: "2"
       MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS: "240000"
     mem_limit: 8g
+    # a crash must not write a multi-GB core dump into the container layer (staging 2026-11-09: 7.4 GB)
+    ulimits:
+      core: 0
     memswap_limit: 8g
   admin-worker:
     environment:
