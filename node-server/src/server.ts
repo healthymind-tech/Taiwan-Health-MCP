@@ -528,11 +528,25 @@ async function main(): Promise<void> {
   });
 
   // v22 G3: heap alert + graceful self-rotation (heapWatch.ts)
+  // Close without resetting anyone: requests that arrive right after the last call finished still get their 503
+  // (MCP_ROTATE_LINGER_MS), then the listener closes (a new connection is refused, which clients retry) and the
+  // process waits for the open connections to finish (idle keep-alive ones are closed at once) before it exits.
+  // Exiting the moment the drain ended reset a request sent in that millisecond (local soak 2026-11-15).
+  const closeServer = (boundMs: number): Promise<void> =>
+    new Promise((resolve) => {
+      const timer = setTimeout(resolve, boundMs);
+      server.close(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+      server.closeIdleConnections();
+    });
   const exitAfterDrain = async (reason: string, boundMs: number, code: number): Promise<void> => {
     drain.startDrain();
     const drained = await drain.drained(boundMs);
+    await new Promise((r) => setTimeout(r, envMs("MCP_ROTATE_LINGER_MS", 3_000)));
     logWarning("draining done; exiting", { reason, drained, in_flight: drain.active, exit_code: code });
-    server.close();
+    await closeServer(5_000);
     dbHealthMonitor().stop();
     await Promise.allSettled([closePool(), closeClient()]);
     process.exit(code);
@@ -550,7 +564,7 @@ async function main(): Promise<void> {
     // the calls in flight finish first, within docker's stop grace period (default 10 s)
     drain.startDrain();
     await drain.drained(envMs("MCP_SHUTDOWN_DRAIN_MS", 8_000));
-    server.close();
+    await closeServer(1_000);
     dbHealthMonitor().stop();
     await Promise.allSettled([closePool(), closeClient()]);
     process.exit(0);
