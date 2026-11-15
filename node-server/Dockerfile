@@ -2,7 +2,7 @@
 # Stage 1 compiles TS -> dist/; stage 2 ships a slim runtime image.
 # Build context is the repo root (see compose.yaml `app.build`).
 
-FROM node:20-slim AS build
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY node-server/package.json node-server/package-lock.json ./
 RUN npm ci
@@ -10,7 +10,7 @@ COPY node-server/tsconfig.json ./
 COPY node-server/src ./src
 RUN npm run build
 
-FROM node:20-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 ENV NODE_ENV=production
 # Git sha reported by health_check.build (docker build --build-arg BUILD_SHA=$(git rev-parse --short HEAD)).
 ARG BUILD_SHA=dev

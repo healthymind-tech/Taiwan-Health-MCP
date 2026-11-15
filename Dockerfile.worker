@@ -11,7 +11,7 @@
 # Build context is the repo root (see compose.yaml `admin-worker.build`).
 
 # ── node build (TS -> dist) ───────────────────────────────────────────────────
-FROM node:20-slim AS nodebuild
+FROM node:24-bookworm-slim AS nodebuild
 WORKDIR /nb
 COPY node-server/package.json node-server/package-lock.json ./
 RUN npm ci
@@ -22,7 +22,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ── runtime ───────────────────────────────────────────────────────────────────
-FROM node:20-slim
+FROM node:24-bookworm-slim
 # Git sha reported in the worker startup log (compose passes BUILD_SHA; see compose.yaml).
 ARG BUILD_SHA=dev
 ENV BUILD_SHA=$BUILD_SHA
