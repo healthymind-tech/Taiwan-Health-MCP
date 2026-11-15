@@ -13,6 +13,7 @@ import { envBudgetBytes, estimateBytes, trackCache } from "../memSize.js";
 import { currentSnapshot } from "../fhirValidationSnapshot.js";
 import { query } from "../db.js";
 import { logWarning } from "../logger.js";
+import { admitMemory, oneAtATime } from "../toolConcurrency.js";
 import type { EmbeddingService } from "../embeddingService.js";
 import * as terminology from "../fhirTerminology.js";
 import type { PackageRow } from "../fhirIg.js";
@@ -78,6 +79,12 @@ const FULLER_COPY_MIN_EXTRA = 1000;
 const FIRST_CLAUSE_BOOST = 0.15;
 const RECHECK_MS = 60_000;
 const SEM_LIMIT = 200;
+/**
+ * Heap a ConceptIndex build needs per concept + term at its peak (rows, normalised texts, postings), measured on the
+ * largest TW Core / EMPD CodeSystems (medication-nhi-tw 44,709 concepts / 143,031 terms: peak +374 MB sampled,
+ * medication-device-fda-tw: 7 kB per term) — rounded up; the admission check (toolConcurrency.admitMemory) uses it.
+ */
+const BUILD_BYTES_PER_ENTRY = 5 * 1024;
 
 /**
  * Process-wide memos of the per-closure CodeSystem resolution (`locate`) and of the
@@ -144,6 +151,8 @@ function round4(x: number): number {
 
 export class IgConceptSearch {
   private cache = new Map<string, CacheEntry>();
+  /** index builds in flight: concurrent requests for one CodeSystem share the build */
+  private building = new Map<string, Promise<{ index: ConceptIndex; indexed: boolean }>>();
   private thesaurus: { at: number; value: Thesaurus } | null = null;
 
   constructor(private readonly embeddingSvc: EmbeddingService | null) {
@@ -300,12 +309,17 @@ export class IgConceptSearch {
   }
 
   private async indexSignature(loc: CsLocation): Promise<string | null> {
+    return (await this.indexMeta(loc))?.signature ?? null;
+  }
+
+  private async indexMeta(loc: CsLocation): Promise<{ signature: string; entries: number } | null> {
     try {
-      const r = await query<{ signature: string }>(
-        "SELECT signature FROM fhir.concept_index_cs WHERE package_id=$1 AND package_version=$2 AND cs_url=$3",
+      const r = await query<{ signature: string; concept_count: number; term_count: number }>(
+        "SELECT signature, concept_count, term_count FROM fhir.concept_index_cs WHERE package_id=$1 AND package_version=$2 AND cs_url=$3",
         [loc.packageId, loc.packageVersion, loc.url],
       );
-      return r.rows[0]?.signature ?? null;
+      const row = r.rows[0];
+      return row ? { signature: row.signature, entries: Number(row.concept_count) + Number(row.term_count) } : null;
     } catch {
       return null;
     }
@@ -330,17 +344,31 @@ export class IgConceptSearch {
       hit.usedAt = now;
       return { index: hit.index, indexed: hit.signature !== "raw" };
     }
-    const sig = (await this.indexSignature(loc)) ?? "raw";
+    const meta = await this.indexMeta(loc);
+    const sig = meta?.signature ?? "raw";
     if (hit && hit.signature === sig) {
       hit.checkedAt = now;
       hit.usedAt = now;
       return { index: hit.index, indexed: sig !== "raw" };
     }
-    const concepts = sig === "raw" ? await this.rawConcepts(loc) : await this.indexedConcepts(loc);
-    const index = new ConceptIndex(concepts);
-    this.cache.set(key, { index, signature: sig, checkedAt: now, usedAt: now, bytes: estimateBytes(index) });
-    this.evict();
-    return { index, indexed: sig !== "raw" };
+    const inFlight = this.building.get(key);
+    if (inFlight) return inFlight;
+    const build = oneAtATime(async () => {
+      // built meanwhile by the build queued before this one
+      const done = this.cache.get(key);
+      if (done && done.signature === sig) return { index: done.index, indexed: sig !== "raw" };
+      const what = `the concept index of ${loc.url}`;
+      if (meta) admitMemory(meta.entries * BUILD_BYTES_PER_ENTRY, what);
+      const concepts = sig === "raw" ? await this.rawConcepts(loc) : await this.indexedConcepts(loc);
+      if (!meta) admitMemory(concepts.reduce((n, c) => n + 1 + c.terms.length, 0) * BUILD_BYTES_PER_ENTRY, what);
+      const index = new ConceptIndex(concepts);
+      const at = Date.now();
+      this.cache.set(key, { index, signature: sig, checkedAt: at, usedAt: at, bytes: estimateBytes(index) });
+      this.evict();
+      return { index, indexed: sig !== "raw" };
+    }).finally(() => this.building.delete(key));
+    this.building.set(key, build);
+    return build;
   }
 
   /** Drop about `fraction` of the indexes, least recently used first (memory pressure; a request keeps what it pinned). */

@@ -27,6 +27,7 @@
  * cached values give way before the guards turn calls away.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { PerformanceObserver, constants as perfConstants } from "node:perf_hooks";
 import v8 from "node:v8";
 import { logWarning } from "./logger.js";
@@ -61,6 +62,61 @@ export interface GateOptions {
 
 let liveAfterMajorGc = 0;
 let gcObserver: PerformanceObserver | null = null;
+/**
+ * Memory admission for large in-memory builds (v22 G4: a fhir_finalize_bundle built a ConceptIndex of a 140k-term
+ * CodeSystem — over 1 GB at its peak, in synchronous code — and took a 2 GB heap from 74 % to out-of-memory before the
+ * guard, the shedding or the rotation could run). A build states its estimated need first: when the live heap plus the
+ * need is above MCP_BUILD_ADMIT_RATIO (0.85) of the limit the caches are emptied, and when that does not make room
+ * the build is refused — MemoryPressureError, and the tool call it belongs to answers BUSY (reason memory) whatever
+ * its code did with the error, so no result is ever computed from a skipped lookup. `oneAtATime` keeps such builds
+ * one at a time across the process, so two of them never peak together.
+ */
+export class MemoryPressureError extends Error {
+  constructor(
+    readonly what: string,
+    readonly ratio: number,
+  ) {
+    super(`not enough memory to build ${what} now (${Math.round(ratio * 100)}% of the heap with it)`);
+    this.name = "MemoryPressureError";
+  }
+}
+
+const callScope = new AsyncLocalStorage<{ refused: number | null }>();
+
+/** Refuse (MemoryPressureError, the current tool call then answers BUSY) unless `needBytes` more fit beside the live heap. */
+export function admitMemory(needBytes: number, what: string, ratioLimit: number = envRatio("MCP_BUILD_ADMIT_RATIO", 0.85), shed: (f: number) => number = shedTrackedCaches, heap: { live: () => number; limit: () => number } = { live: () => heapUsedRatio() * v8.getHeapStatistics().heap_size_limit, limit: () => v8.getHeapStatistics().heap_size_limit }): void {
+  const limit = heap.limit();
+  if (!(limit > 0) || ratioLimit <= 0 || !(needBytes > 0)) return;
+  const live = heap.live();
+  if (live + needBytes <= ratioLimit * limit) return;
+  const released = shed(1);
+  if (live - released + needBytes <= ratioLimit * limit) {
+    logWarning("memory admission: caches emptied to make room for a large build", { what, need_mb: Math.round(needBytes / 1048576), released_estimated_mb: Math.round(released / 1048576) });
+    return;
+  }
+  const ratio = (live - released + needBytes) / limit;
+  const ctx = callScope.getStore();
+  if (ctx) ctx.refused = Math.max(ctx.refused ?? 0, ratio);
+  logWarning("memory admission: large build refused", { what, need_mb: Math.round(needBytes / 1048576), live_mb: Math.round(live / 1048576), limit_mb: Math.round(limit / 1048576) });
+  throw new MemoryPressureError(what, ratio);
+}
+
+let buildChain: Promise<unknown> = Promise.resolve();
+/** Run large builds one at a time (FIFO) across the process. */
+export function oneAtATime<T>(fn: () => Promise<T>): Promise<T> {
+  const run = buildChain.then(fn, fn);
+  buildChain = run.catch(() => undefined);
+  return run;
+}
+
+/** Run a tool handler with its admission scope: a refused build anywhere inside turns the result into BUSY (memory). */
+async function inCallScope<R>(name: string, run: () => Promise<R> | R): Promise<R> {
+  const ctx = { refused: null as number | null };
+  const out = await callScope.run(ctx, run);
+  if (ctx.refused !== null) return memoryBusyToolResult(name, ctx.refused) as unknown as R;
+  return out;
+}
+
 let lastShedAt = 0;
 const majorGcListeners: Array<(liveRatio: number) => void> = [];
 
@@ -237,7 +293,7 @@ export function withConcurrencyLimit<A extends unknown[], R>(
         const r = heap.ratio();
         if (r > limit) return memoryBusyToolResult(name, r) as unknown as R;
       }
-      return handler(...args);
+      return inCallScope(name, () => handler(...args));
     };
   }
   return async (...args: A): Promise<R> => {
@@ -249,7 +305,7 @@ export function withConcurrencyLimit<A extends unknown[], R>(
         const r = heap.ratio();
         if (r > limit) return memoryBusyToolResult(name, r) as unknown as R;
       }
-      return await handler(...args);
+      return await inCallScope(name, () => handler(...args));
     } finally {
       g.release();
     }

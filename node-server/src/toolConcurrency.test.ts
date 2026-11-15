@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BUSY_CODE, ToolGate, gateOptionsFromEnv, maybeShedCaches, withConcurrencyLimit } from "./toolConcurrency.js";
+import { BUSY_CODE, MemoryPressureError, ToolGate, admitMemory, gateOptionsFromEnv, maybeShedCaches, oneAtATime, withConcurrencyLimit } from "./toolConcurrency.js";
 
 const heavy = new Set(["heavy"]);
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -135,4 +135,59 @@ test("cache shedding: above the shed ratio after a major GC the caches shed half
   assert.equal(maybeShedCaches(0.9, t0 + 61_000, 0.7, shed), true);
   assert.equal(maybeShedCaches(0.99, t0 + 200_000, 0, shed), false, "ratio 0 = off");
   assert.deepEqual(calls, [0.5, 0.5]);
+});
+
+test("memory admission: a build fits → runs; fits after the caches are emptied → runs; else refused", () => {
+  const GB = 1 << 30;
+  const heap = (live: number) => ({ live: () => live, limit: () => 6 * GB });
+  let shed = 0;
+  const shedder = (released: number) => (f: number): number => {
+    assert.equal(f, 1, "everything cached goes");
+    shed++;
+    return released;
+  };
+  admitMemory(1 * GB, "x", 0.85, shedder(0), heap(3 * GB)); // 4 of 6 GB = 0.67
+  assert.equal(shed, 0);
+  admitMemory(2 * GB, "x", 0.85, shedder(1 * GB), heap(4 * GB)); // 6 → after 1 GB released 5 of 6 = 0.83
+  assert.equal(shed, 1);
+  assert.throws(() => admitMemory(2 * GB, "the concept index of S", 0.85, shedder(0.2 * GB), heap(4 * GB)), (e: unknown) => e instanceof MemoryPressureError && /concept index of S/.test((e as Error).message));
+  admitMemory(100 * GB, "x", 0, shedder(0), heap(4 * GB)); // ratio 0 = off
+});
+
+test("a refused build turns the whole tool call into BUSY (memory), also when the tool swallowed the error", async () => {
+  const GB = 1 << 30;
+  const gate = new ToolGate({ limit: 2, queueTimeoutMs: 1000, maxQueue: 4, heapRatio: 0.8, lightHeapRatio: 0.9 });
+  const handler = async (): Promise<string> => {
+    try {
+      admitMemory(3 * GB, "an index", 0.85, () => 0, { live: () => 4 * GB, limit: () => 6 * GB });
+    } catch {
+      return "degraded result"; // a caller that falls back silently
+    }
+    return "full result";
+  };
+  for (const tool of ["fhir_finalize_bundle", "fhir_normalize_code"]) {
+    const r = (await withConcurrencyLimit(tool, handler, () => gate, undefined, { ratio: () => 0.1 })()) as unknown as { isError: boolean; content: Array<{ text: string }> };
+    assert.equal(r.isError, true, tool);
+    const body = JSON.parse(r.content[0].text);
+    assert.equal(body.error.code, BUSY_CODE);
+    assert.equal(body.error.reason, "memory");
+  }
+  const ok = withConcurrencyLimit("fhir_normalize_code", async () => "fine", () => gate, undefined, { ratio: () => 0.1 });
+  assert.equal(await ok(), "fine", "a call without a refusal is unchanged");
+});
+
+test("oneAtATime: large builds run one after another, a failed one does not block the next", async () => {
+  let running = 0;
+  let peak = 0;
+  const job = (fail: boolean) => async (): Promise<number> => {
+    running++;
+    peak = Math.max(peak, running);
+    await new Promise((r) => setTimeout(r, 5));
+    running--;
+    if (fail) throw new Error("boom");
+    return 1;
+  };
+  const r = await Promise.allSettled([oneAtATime(job(false)), oneAtATime(job(true)), oneAtATime(job(false))]);
+  assert.deepEqual(r.map((x) => x.status), ["fulfilled", "rejected", "fulfilled"]);
+  assert.equal(peak, 1);
 });
