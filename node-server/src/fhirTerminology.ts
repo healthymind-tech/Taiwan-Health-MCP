@@ -193,7 +193,9 @@ export class TtlCache<V> {
 // v22 G6: 1280 MB (was 512): with PAS (TW Core 0.3.2) and 15 other IGs the working set alone — ICD-10-CM 2023 185 MB,
 // ICD-10-PCS 151, FDA devices 109, … ≈ 740 MB estimated — outgrew 512, every eviction reloaded a CodeSystem (2–3.5 s
 // of CPU each) and the event loop lagged up to 14 s
-const csCache = new TtlCache<CodeSystemIndex | null>(envBudgetBytes("CS_CACHE_MB", 1280), CACHE_MAX, (idx) => idx);
+// Up to 4000 keys (not CACHE_MAX 400): one key per closure × canonical, most of them small or sharing an index (64 bytes
+// each); at 400 the count, not the bytes, evicted the large indexes on the 16-IG soak and they were reloaded (v22 G6)
+const csCache = new TtlCache<CodeSystemIndex | null>(envBudgetBytes("CS_CACHE_MB", 1280), 4000, (idx) => idx);
 const csLoading = new Map<string, Promise<CodeSystemIndex | null>>();
 
 /**
