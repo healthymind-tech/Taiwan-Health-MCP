@@ -60,6 +60,9 @@ services:
     restart: unless-stopped
 
   app:
+    # tini as PID 1: the kernel ignores a signal a container's PID 1 sends itself, so without it the event-loop
+    # watchdog's SIGKILL never landed (v22 G4); exit codes (75 = heap rotation) pass through to the restart policy
+    init: true
     build:
       context: ../..
       dockerfile: node-server/Dockerfile
@@ -85,6 +88,9 @@ services:
     restart: unless-stopped
 
   admin-worker:
+    # tini as PID 1: the kernel ignores a signal a container's PID 1 sends itself, so without it the event-loop
+    # watchdog's SIGKILL never landed (v22 G4); exit codes (75 = heap rotation) pass through to the restart policy
+    init: true
     # no core dump on a crash (it would land in the container layer)
     ulimits:
       core: 0
