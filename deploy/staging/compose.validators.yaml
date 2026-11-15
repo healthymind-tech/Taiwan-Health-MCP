@@ -31,19 +31,19 @@ x-validator: &validator
 services:
   hl7-validator-twcore:
     <<: *validator
-    environment: { VALIDATOR_IG: "tw.gov.mohw.twcore#1.0.0", JAVA_XMX: 2400m }
+    environment: { VALIDATOR_IG: "tw.gov.mohw.twcore#1.0.0", JAVA_XMX: 2048m }
   hl7-validator-pas:
     <<: *validator
-    environment: { VALIDATOR_IG: "tw.gov.mohw.nhi.pas#1.2.7", JAVA_XMX: 2400m }
+    environment: { VALIDATOR_IG: "tw.gov.mohw.nhi.pas#1.2.7", JAVA_XMX: 2048m }
   hl7-validator-ips:
     <<: *validator
-    environment: { VALIDATOR_IG: "hl7.fhir.uv.ips#1.1.0", JAVA_XMX: 2400m }
+    environment: { VALIDATOR_IG: "hl7.fhir.uv.ips#1.1.0", JAVA_XMX: 2048m }
   hl7-validator-empd:
     <<: *validator
-    environment: { VALIDATOR_IG: "tw.gov.mohw.nhi.empd#0.2.1", JAVA_XMX: 2400m }
+    environment: { VALIDATOR_IG: "tw.gov.mohw.nhi.empd#0.2.1", JAVA_XMX: 2048m }
   hl7-validator-ngs:
     <<: *validator
-    environment: { VALIDATOR_IG: "tw.gov.mohw.nhi.ngs#1.0.0", JAVA_XMX: 2400m }
+    environment: { VALIDATOR_IG: "tw.gov.mohw.nhi.ngs#1.0.0", JAVA_XMX: 2048m }
   app:
     depends_on:
       hl7-validator-twcore: { condition: service_healthy, required: false }

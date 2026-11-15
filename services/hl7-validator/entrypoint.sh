@@ -1,7 +1,8 @@
 #!/bin/bash
 # VALIDATOR_IG   package#version loaded into this validator (required)
 # VALIDATOR_TX   terminology server (default https://tx.fhir.org; "n/a" = none)
-# JAVA_XMX       heap (default 2400m) — keep below the container's mem_limit
+# JAVA_XMX       heap (default 2048m) — with a 3 GB container: the JVM commits the whole heap under load and needs
+#                ~0.6 GB more (metaspace, code, threads, buffers); 2400m left ~30 MB (v22 G3c, PAS: RSS 2.97 / 3 GB)
 # WARM_MAX       IG example resources validated before the service reports ready (default 40; 0 = no warm-up)
 # WATCHDOG_FAILS consecutive unanswered HTTP probes (30 s apart, 20 s each) before the JVM is killed (default 5)
 # JAVA_EXTRA     more JVM options (appended)
@@ -24,7 +25,7 @@ READY=/tmp/validator-ready
 rm -f "$READY"
 
 # shellcheck disable=SC2086 # JAVA_EXTRA is a list of options
-java "-Xmx${JAVA_XMX:-2400m}" -XX:+ExitOnOutOfMemoryError -XX:MaxMetaspaceSize=512m -XX:G1PeriodicGCInterval=300000 \
+java "-Xmx${JAVA_XMX:-2048m}" -XX:+ExitOnOutOfMemoryError -XX:MaxMetaspaceSize=512m -XX:G1PeriodicGCInterval=300000 \
   "-Xlog:gc:file=/tmp/gc.log:uptime:filecount=2,filesize=10m" ${JAVA_EXTRA:-} \
   -jar /opt/validator/validator_cli.jar server "$PORT" -allowNetworkAccess \
   -version 4.0.1 -ig "${VALIDATOR_IG}" -tx "${VALIDATOR_TX:-https://tx.fhir.org}" &

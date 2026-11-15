@@ -348,7 +348,7 @@ services:
     environment:
       - VALIDATOR_IG=tw.gov.mohw.twcore#1.0.0
       - VALIDATOR_TX=${VALIDATOR_TX:-https://tx.fhir.org}
-      - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2400m}
+      - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2048m}
     volumes:
       - validator_fhircache:/root/.fhir
     cpus: 2
@@ -374,7 +374,7 @@ services:
     environment:
       - VALIDATOR_IG=tw.gov.mohw.nhi.pas#1.2.7
       - VALIDATOR_TX=${VALIDATOR_TX:-https://tx.fhir.org}
-      - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2400m}
+      - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2048m}
 
   hl7-validator-ips:
     <<: *hl7validator
@@ -382,7 +382,7 @@ services:
     environment:
       - VALIDATOR_IG=hl7.fhir.uv.ips#1.1.0
       - VALIDATOR_TX=${VALIDATOR_TX:-https://tx.fhir.org}
-      - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2400m}
+      - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2048m}
 
   hl7-validator-empd:
     <<: *hl7validator
@@ -390,7 +390,7 @@ services:
     environment:
       - VALIDATOR_IG=tw.gov.mohw.nhi.empd#0.2.1
       - VALIDATOR_TX=${VALIDATOR_TX:-https://tx.fhir.org}
-      - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2400m}
+      - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2048m}
 
   hl7-validator-ngs:
     <<: *hl7validator
@@ -398,7 +398,7 @@ services:
     environment:
       - VALIDATOR_IG=tw.gov.mohw.nhi.ngs#1.0.0
       - VALIDATOR_TX=${VALIDATOR_TX:-https://tx.fhir.org}
-      - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2400m}
+      - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2048m}
 
   # ── Admin console v2 (static Vite SPA served by its own nginx) ────────────────
   # nginx (below) routes /admin pages here; API / MCP / WS still go straight to
