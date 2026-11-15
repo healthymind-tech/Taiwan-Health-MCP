@@ -270,3 +270,17 @@ test("lexicon: ROC / western dates, times, genders, routes, IDs, units and name 
   assert.equal(nameSimilarity("Acute sinusitis　急性鼻竇炎（右側上頷竇）", "Acute sinusitis, unspecified"), 1);
   assert.equal(nameSimilarity("診斷：Acute bronchitis　急性支氣管炎", "Type 2 diabetes mellitus without complications"), 0);
 });
+
+test("a large Bundle: checkGrounding lets the event loop run while it works and still equals the sync core", async () => {
+  const big = structuredClone(FABRICATED);
+  const entries = (big.bundle as { entry: unknown[] }).entry;
+  (big.bundle as { entry: unknown[] }).entry = Array.from({ length: 300 }, (_, i) => structuredClone(entries[i % entries.length]));
+  let ticks = 0;
+  const timer = setInterval(() => ticks++, 1);
+  const a = await run(big);
+  clearInterval(timer);
+  const terms = await terminology.lookup(collectCodingKeys(big.bundle));
+  const s = checkGroundingSync({ ...big, verbosity: "all" }, terms);
+  assert.equal(firstDiff(comparable(s), comparable(a)), null);
+  assert.ok(ticks > 0, `other work ran during the check (${ticks} ticks)`);
+});

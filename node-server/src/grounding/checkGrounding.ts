@@ -2088,11 +2088,12 @@ function nowMs(): number {
  * Synchronous core. `terms` must contain the authoritative names for the Bundle's codings
  * (see `collectCodingKeys`); missing keys are treated as unknown codes.
  */
-export function checkGroundingSync(
+/** The grounding check, one entry at a time: yields after each entry (checkGroundingSync runs it through at once). */
+function* groundingSteps(
   input: GroundingInput,
   terms: ReadonlyMap<string, TermRecord>,
   opts: { instructionMarkers?: readonly string[]; now?: () => number; abbreviations?: AbbreviationMap | null } = {},
-): GroundingResult {
+): Generator<void, GroundingResult, void> {
   const clock = opts.now ?? nowMs;
   const t0 = clock();
   const bundle = (isDict(input.bundle) ? input.bundle : {}) as JsonObject;
@@ -2156,7 +2157,8 @@ export function checkGroundingSync(
     bundleIssues.push(issue("information", "G-NO-STRUCTURE", "Bundle", "no section headers recognised in the record; section rules are downgraded to warnings"));
   const allUnits: Unit[] = [];
   const usedEv = new Set<number>();
-  entries.forEach((e, ei) => {
+  for (let ei = 0; ei < entries.length; ei++) {
+    const e = entries[ei];
     const res = (isDict(e.resource) ? e.resource : {}) as JsonObject;
     if (!isDict(e.resource) || !Object.keys(e.resource).length || !truthy(res.resourceType)) {
       // Deviation (spec §2.2.8): report entries that cannot be checked instead of skipping them silently.
@@ -2269,7 +2271,8 @@ export function checkGroundingSync(
           );
       }
     }
-  });
+    yield;
+  }
   ev.forEach(([, , , p], k) => {
     if (!usedEv.has(k))
       bundleIssues.push(issue("information", "G-EVIDENCE-PATH", p, "evidence entry does not cover any checked element (exempt or default element); ignored"));
@@ -2344,6 +2347,40 @@ export function checkGroundingSync(
  * Grounding check (`fhir_check_grounding`). Pre-fetches authoritative code names through the injected provider,
  * then runs the deterministic core.
  */
+export function checkGroundingSync(
+  input: GroundingInput,
+  terms: ReadonlyMap<string, TermRecord>,
+  opts: { instructionMarkers?: readonly string[]; now?: () => number; abbreviations?: AbbreviationMap | null } = {},
+): GroundingResult {
+  const steps = groundingSteps(input, terms, opts);
+  let r = steps.next();
+  while (!r.done) r = steps.next();
+  return r.value;
+}
+
+/**
+ * The same check without holding the event loop: a large Bundle against a long record took up to 8 s of synchronous
+ * CPU (staging 2026-11-15: one block of 15.8 s with its GC), so every ~20 ms of work it lets other requests run.
+ * Same steps, same result as checkGroundingSync.
+ */
+async function checkGroundingYielding(
+  input: GroundingInput,
+  terms: ReadonlyMap<string, TermRecord>,
+  opts: { instructionMarkers?: readonly string[]; now?: () => number; abbreviations?: AbbreviationMap | null },
+): Promise<GroundingResult> {
+  const steps = groundingSteps(input, terms, opts);
+  let slice = performance.now();
+  let r = steps.next();
+  while (!r.done) {
+    if (performance.now() - slice > 20) {
+      await new Promise((resolve) => setImmediate(resolve));
+      slice = performance.now();
+    }
+    r = steps.next();
+  }
+  return r.value;
+}
+
 export async function checkGrounding(input: GroundingInput, deps: GroundingDeps): Promise<GroundingResult> {
   const clock = deps.now ?? nowMs;
   const t0 = clock();
@@ -2367,7 +2404,7 @@ export async function checkGrounding(input: GroundingInput, deps: GroundingDeps)
       abbreviations = null;
     }
   }
-  const out = checkGroundingSync(input, terms, { instructionMarkers: deps.instructionMarkers, now: clock, abbreviations });
+  const out = await checkGroundingYielding(input, terms, { instructionMarkers: deps.instructionMarkers, now: clock, abbreviations });
   out.elapsed_ms = pyRound(clock() - t0, 1);
   deps.logger?.debug?.("grounding check", {
     sourceSha256: sourceSha256Prefix(input.source_text),

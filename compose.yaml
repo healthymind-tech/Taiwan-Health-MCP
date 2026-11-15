@@ -185,7 +185,9 @@ services:
       - DRUG_HTTP_TIMEOUT=${DRUG_HTTP_TIMEOUT:-30}
       - DRUG_CRAWLER_CONCURRENCY=${DRUG_CRAWLER_CONCURRENCY:-4}
       # ops-v1 O3: V8 heap below the container cap (APP_MEM_LIMIT) so Node fails before the cgroup OOMs.
-      - NODE_OPTIONS=--max-old-space-size=${APP_MAX_OLD_SPACE_MB:-3584}
+      # a larger young generation: the validation / grounding / index work allocates heavily, and 64 MB semi-spaces cut
+      # the minutes with event-loop p99 > 1 s from 12 to 4 of 25 on the 16-IG staging soak (v22 G6)
+      - NODE_OPTIONS=--max-old-space-size=${APP_MAX_OLD_SPACE_MB:-3584} --max-semi-space-size=64
       # ops-v1 O4: concurrent heavy calls (validate / finalize / author / assemble / grounding); excess wait, then BUSY.
       - MCP_HEAVY_TOOL_CONCURRENCY=${MCP_HEAVY_TOOL_CONCURRENCY:-4}
       - MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS=${MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS:-60000}

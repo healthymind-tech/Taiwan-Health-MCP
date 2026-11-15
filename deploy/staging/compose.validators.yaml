@@ -60,7 +60,7 @@ services:
       # validation of large Bundles (suggestions, finalize) needs more than the 640 MB of compose.limits.yaml; PAS finalize
       # steadies at ~1.7 GB heap (2 GB OOM-crashed on 2026-11-01). 3072 MB ran out 11 times under the acceptance load of
       # 2026-11-07 (heap at the cap within 4-6 min) — same as production now: 6144 MB heap in an 8 GB container.
-      NODE_OPTIONS: --max-old-space-size=6144
+      NODE_OPTIONS: --max-old-space-size=6144 --max-semi-space-size=64
       MCP_HEAVY_TOOL_CONCURRENCY: "2"
       MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS: "240000"
     mem_limit: 8g
