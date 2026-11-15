@@ -23,6 +23,11 @@
  * because validator_cli keeps such failures in its in-memory terminology cache for the life of the process
  * (TerminologyCache.store: transient failures are not persisted but stay in memory), the validator is restarted
  * (POST /stop; the container's restart policy brings it back) at most once per 10 minutes, and calls wait for it.
+ *
+ * Every restart drains first (v22 G3c): new calls wait, the ones in flight finish (at most the request timeout), only
+ * then POST /stop — a recycle never fails a call. Besides the terminology-failure restart, a validator is recycled
+ * after OFFICIAL_VALIDATOR_RECYCLE_HOURS of service (default 24; 0 = never): validator_cli's in-memory caches only grow
+ * for the life of the JVM, and a fresh one also gets a fresh terminology-server session.
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -59,6 +64,8 @@ export interface OfficialConfig {
   /** validator_cli's per-request time limit (`validationTimeout`, ms): it stops and returns a partial result instead of
    *  holding its single request thread (v20.2 — one slow ValueSet check must not take the service down) */
   validationTimeoutMs: number;
+  /** recycle a validator after this much service (ms; 0 = never) */
+  recycleMs: number;
 }
 
 export function parseOfficialConfig(env: Record<string, string | undefined>): OfficialConfig {
@@ -77,6 +84,7 @@ export function parseOfficialConfig(env: Record<string, string | undefined>): Of
     timeoutMs,
     concurrency: num(env.OFFICIAL_VALIDATOR_CONCURRENCY, 1),
     validationTimeoutMs: num(env.OFFICIAL_VALIDATOR_VALIDATION_TIMEOUT_MS, Math.max(10_000, timeoutMs - 30_000)),
+    recycleMs: (env.OFFICIAL_VALIDATOR_RECYCLE_HOURS !== undefined && Number(env.OFFICIAL_VALIDATOR_RECYCLE_HOURS) === 0 ? 0 : num(env.OFFICIAL_VALIDATOR_RECYCLE_HOURS, 24)) * 3_600_000,
   };
 }
 
@@ -140,6 +148,10 @@ export class OfficialValidator {
   private downUntil = new Map<string, number>();
   private restarting = new Map<string, Promise<void>>();
   private lastRestart = new Map<string, number>();
+  /** validators being drained for a restart: a released slot is not handed to a waiting call */
+  private draining = new Set<string>();
+  /** when each validator was first used / last restarted (for the recycle by age) */
+  private servingSince = new Map<string, number>();
 
   constructor(
     readonly config: OfficialConfig,
@@ -195,6 +207,8 @@ export class OfficialValidator {
 
   async validate(base: string, resource: unknown, profile: string | null): Promise<OfficialResult> {
     if ((this.downUntil.get(base) ?? 0) > this.now()) throw new OfficialUnavailable(`official validator ${base} is not reachable (retry shortly)`);
+    if (!this.servingSince.has(base)) this.servingSince.set(base, this.now());
+    else if (this.config.recycleMs > 0 && this.now() - (this.servingSince.get(base) ?? 0) >= this.config.recycleMs) this.scheduleRestart(base, "age");
     const restarting = this.restarting.get(base);
     if (restarting) await restarting;
     await this.acquire(base);
@@ -215,7 +229,7 @@ export class OfficialValidator {
       const all = issuesFromOutcome(await res.json());
       const unverified = all.filter(isTransientTxIssue);
       // only a terminology-server failure is cached inside the validator (restart to drop it); its own time limit is not
-      if (unverified.some((i) => TX_TRANSIENT.test(i.message))) this.scheduleRestart(base);
+      if (unverified.some((i) => TX_TRANSIENT.test(i.message))) this.scheduleRestart(base, "terminology");
       return { issues: all.filter((i) => !isTransientTxIssue(i)), unverified };
     } catch (e) {
       const timedOut = ctl.signal.aborted;
@@ -232,15 +246,22 @@ export class OfficialValidator {
   }
 
   /**
-   * Restart a validator whose terminology cache holds a transient failure (POST /stop → the container restarts), at
-   * most once per 10 minutes; later calls wait (≤ 3 min) until it answers again.
+   * Restart a validator (POST /stop → the container restarts) whose terminology cache holds a transient failure, at
+   * most once per 10 minutes, or that served for `recycleMs`. It drains first: later calls wait, the calls in flight
+   * finish (at most the request timeout); then the stop, and calls wait (≤ 3 min) until it answers again.
    */
-  private scheduleRestart(base: string): void {
+  private scheduleRestart(base: string, reason: "terminology" | "age"): void {
     const last = this.lastRestart.get(base) ?? -Infinity;
     if (this.now() - last < 600_000 || this.restarting.has(base)) return;
     this.lastRestart.set(base, this.now());
-    logWarning("official validator: terminology failure cached in the validator; restarting it", { endpoint: base });
+    logWarning(
+      reason === "age" ? "official validator: recycling it after its service period" : "official validator: terminology failure cached in the validator; restarting it",
+      { endpoint: base, reason },
+    );
     const p = (async (): Promise<void> => {
+      this.draining.add(base);
+      const drainUntil = this.now() + this.config.timeoutMs;
+      while ((this.inflight.get(base) ?? 0) > 0 && this.now() < drainUntil) await this.sleep(500);
       try {
         await outsideRequest(() => this.fetchImpl(`${base}/stop`, { method: "POST", headers: {}, body: "", signal: AbortSignal.timeout(10_000) }));
       } catch {
@@ -257,7 +278,17 @@ export class OfficialValidator {
           await this.sleep(3_000);
         }
       }
-    })().finally(() => this.restarting.delete(base));
+    })().finally(() => {
+      this.restarting.delete(base);
+      this.draining.delete(base);
+      this.servingSince.set(base, this.now());
+      // the calls that queued for a slot during the drain go on now
+      while ((this.inflight.get(base) ?? 0) < this.config.concurrency && this.waiters.get(base)?.length) {
+        const next = this.waiters.get(base)!.shift()!;
+        this.inflight.set(base, (this.inflight.get(base) ?? 0) + 1);
+        next();
+      }
+    });
     this.restarting.set(base, p);
   }
 
@@ -267,18 +298,22 @@ export class OfficialValidator {
       this.inflight.set(base, n + 1);
       return;
     }
+    // the slot is counted for this call by whoever hands it over (release, or the end of a restart)
     await new Promise<void>((resolve) => {
       const q = this.waiters.get(base) ?? [];
       q.push(resolve);
       this.waiters.set(base, q);
     });
-    this.inflight.set(base, (this.inflight.get(base) ?? 0) + 1);
   }
 
   private release(base: string): void {
     this.inflight.set(base, Math.max(0, (this.inflight.get(base) ?? 1) - 1));
+    if (this.draining.has(base)) return; // a restart is draining this validator: queued calls wait for it
     const next = this.waiters.get(base)?.shift();
-    if (next) next();
+    if (next) {
+      this.inflight.set(base, (this.inflight.get(base) ?? 0) + 1);
+      next();
+    }
   }
 }
 

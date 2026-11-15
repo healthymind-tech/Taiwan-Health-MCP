@@ -4,6 +4,13 @@
 # JAVA_XMX       heap (default 2400m) — keep below the container's mem_limit
 # WARM_MAX       IG example resources validated before the service reports ready (default 40; 0 = no warm-up)
 # WATCHDOG_FAILS consecutive unanswered HTTP probes (30 s apart, 20 s each) before the JVM is killed (default 5)
+# JAVA_EXTRA     more JVM options (appended)
+#
+# JVM memory (v22 G3c): the heap is bounded by -Xmx; an OutOfMemoryError exits the JVM (the restart policy brings a
+# fresh one) instead of leaving a half-dead server; G1 returns idle heap to the OS (periodic GC every 5 min), so the
+# container's RSS is not the high-water mark of a busy hour; metaspace is capped. GC log: /tmp/gc.log (2 x 10 MB,
+# rotated; docker exec <container> cat /tmp/gc.log) has the live heap after each GC - the way to tell heap growth
+# from reservation. The app also recycles each validator after OFFICIAL_VALIDATOR_RECYCLE_HOURS (draining it first).
 #
 # validator_cli's HTTP server handles one request at a time: a request stuck in terminology work (seen 2026-11-01:
 # codeInValueSet over a large ValueSet, "Operation took too long") leaves the process alive but deaf, and Docker does
@@ -16,7 +23,10 @@ PORT=8080
 READY=/tmp/validator-ready
 rm -f "$READY"
 
-java "-Xmx${JAVA_XMX:-2400m}" -jar /opt/validator/validator_cli.jar server "$PORT" -allowNetworkAccess \
+# shellcheck disable=SC2086 # JAVA_EXTRA is a list of options
+java "-Xmx${JAVA_XMX:-2400m}" -XX:+ExitOnOutOfMemoryError -XX:MaxMetaspaceSize=512m -XX:G1PeriodicGCInterval=300000 \
+  "-Xlog:gc:file=/tmp/gc.log:uptime:filecount=2,filesize=10m" ${JAVA_EXTRA:-} \
+  -jar /opt/validator/validator_cli.jar server "$PORT" -allowNetworkAccess \
   -version 4.0.1 -ig "${VALIDATOR_IG}" -tx "${VALIDATOR_TX:-https://tx.fhir.org}" &
 JPID=$!
 trap 'kill -TERM "$JPID" 2>/dev/null; wait "$JPID"; exit 0' TERM INT

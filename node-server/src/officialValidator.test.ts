@@ -259,3 +259,71 @@ test("a tx cache-session failure: the issue goes to unverified (not issues) and 
   await v.validate("http://v:1", {}, null);
   assert.equal(seen.filter((u) => u === "/stop").length, 1, "restarted once");
 });
+
+test("a restart drains: the calls in flight finish before /stop, queued calls run after it, none fails", async () => {
+  const events: string[] = [];
+  let release1: () => void = () => {};
+  const cacheFailure = { resourceType: "OperationOutcome", issue: [{ severity: "error", code: "exception", details: { text: "Error from https://tx.fhir.org/r4: Error: The cache 1 expired" }, expression: ["Patient.x"] }] };
+  const ok = { resourceType: "OperationOutcome", issue: [] };
+  let call = 0;
+  const v = new OfficialValidator(parseOfficialConfig({ OFFICIAL_VALIDATOR_URLS: "p=http://v:1", OFFICIAL_VALIDATOR_CONCURRENCY: "2" }), async (url) => {
+    const path = url.replace("http://v:1", "").replace(/\?.*$/, "");
+    if (path !== "/validateResource") {
+      events.push(path);
+      return { ok: true, status: 200, json: async () => ({}) };
+    }
+    const n = ++call;
+    events.push(`start${n}`);
+    if (n === 1) await new Promise<void>((r) => (release1 = r)); // a long call in flight on the same validator
+    events.push(`end${n}`);
+    return { ok: true, status: 200, json: async () => (n === 2 ? cacheFailure : ok) };
+  });
+  const first = v.validate("http://v:1", {}, null);
+  await new Promise((r) => setTimeout(r, 5));
+  const second = await v.validate("http://v:1", {}, null); // answers with a tx cache failure → restart scheduled
+  assert.equal(second.unverified.length, 1);
+  const third = v.validate("http://v:1", {}, null); // arrives during the drain: waits
+  await new Promise((r) => setTimeout(r, 30));
+  assert.ok(!events.includes("/stop"), `no stop while call 1 is in flight: ${events.join(",")}`);
+  release1();
+  const [r1, r3] = await Promise.all([first, third]);
+  assert.equal(r1.issues.length, 0);
+  assert.equal(r3.issues.length, 0);
+  const iStop = events.indexOf("/stop");
+  assert.ok(iStop > events.indexOf("end1"), `stop after the call in flight ended: ${events.join(",")}`);
+  assert.ok(events.indexOf("start3") > iStop, `the waiting call ran after the restart: ${events.join(",")}`);
+});
+
+test("recycle by age: after OFFICIAL_VALIDATOR_RECYCLE_HOURS of service the next call drains and restarts it once; 0 = never", async () => {
+  let t = 0;
+  const seen: string[] = [];
+  const mk = (hours: string): OfficialValidator =>
+    new OfficialValidator(
+      parseOfficialConfig({ OFFICIAL_VALIDATOR_URLS: "p=http://v:1", OFFICIAL_VALIDATOR_RECYCLE_HOURS: hours }),
+      async (url) => {
+        seen.push(url.replace("http://v:1", "").replace(/\?.*$/, ""));
+        return { ok: true, status: 200, json: async () => ({ resourceType: "OperationOutcome", issue: [] }) };
+      },
+      () => t,
+      async (ms) => {
+        t += ms;
+      },
+    );
+  assert.equal(parseOfficialConfig({}).recycleMs, 24 * 3_600_000, "default 24 h");
+  const v = mk("2");
+  await v.validate("http://v:1", {}, null);
+  t += 3_600_000;
+  await v.validate("http://v:1", {}, null);
+  assert.ok(!seen.includes("/stop"));
+  t += 3_600_000;
+  await v.validate("http://v:1", {}, null);
+  assert.equal(seen.filter((s) => s === "/stop").length, 1);
+  await v.validate("http://v:1", {}, null);
+  assert.equal(seen.filter((s) => s === "/stop").length, 1, "the service period starts again after the restart");
+  seen.length = 0;
+  const never = mk("0");
+  await never.validate("http://v:1", {}, null);
+  t += 1000 * 3_600_000;
+  await never.validate("http://v:1", {}, null);
+  assert.ok(!seen.includes("/stop"));
+});
