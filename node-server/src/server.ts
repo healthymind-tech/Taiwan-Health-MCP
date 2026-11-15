@@ -24,7 +24,7 @@ import { initBroadcast, startWsRelay, handleAdminWsConnection } from "./admin/ad
 import { initPool, getPool, closePool } from "./db.js";
 import { monitor as dbHealthMonitor } from "./dbHealth.js";
 import { initClient, closeClient } from "./cache.js";
-import { countOpenSessionsWith, startDbStatsCollector, startMetricsServer } from "./metrics.js";
+import { countOpenSessionsWith, reportHeapAlertWith, startDbStatsCollector, startMetricsServer } from "./metrics.js";
 import { buildMcpServer, buildOpenApiSpec, invokeRegisteredTool, toolRegistryReady } from "./mcp.js";
 import { toolErrorFields } from "./toolErrors.js";
 import { seedIfEmpty } from "./admin/adminSettings.js";
@@ -40,6 +40,8 @@ import * as minioService from "./minioService.js";
 import { allowedCorsOrigin, bearerTokenMatches, publicOrigin } from "./publicToolsSecurity.js";
 import { runWithRawRequest } from "./requestContext.js";
 import { SessionRegistry, sessionLimitsFromEnv } from "./mcpSessions.js";
+import { Drain, HeapWatch, ROTATE_EXIT_CODE, heapWatchOptionsFromEnv } from "./heapWatch.js";
+import { heapUsedRatio } from "./toolConcurrency.js";
 
 /** express.json keeps the raw body bytes here (`verify`), so a tool can re-read an argument losslessly (requestContext.ts). */
 type RawBodyRequest = Request & { rawBody?: Buffer };
@@ -190,6 +192,15 @@ async function bootstrapResources(): Promise<void> {
   }
 }
 
+/** Public calls in flight; drained before a heap rotation or a shutdown (heapWatch.ts). */
+const drain = new Drain();
+const RETRY_AFTER_S = 10;
+
+function envMs(name: string, fallback: number): number {
+  const v = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(v) && v >= 0 ? v : fallback;
+}
+
 function buildApp(): express.Express {
   const cfg = config();
   const app = express();
@@ -205,7 +216,8 @@ function buildApp(): express.Express {
 
   // B1: liveness probe.
   app.get("/health", (_req: Request, res: Response) => {
-    res.status(200).json({ status: "ok" });
+    if (drain.isDraining) res.status(503).json({ status: "draining" });
+    else res.status(200).json({ status: "ok" });
   });
 
   // ── OpenAPI bridge (for OpenAPI tool clients, e.g. Open WebUI) ───────────────
@@ -296,6 +308,25 @@ function buildApp(): express.Express {
       })
       .end();
   });
+  // While the process drains (heap rotation / shutdown) new calls and sessions are refused with 503 + Retry-After;
+  // the POSTs in flight are counted so the drain knows when they are done. A GET (the session's event stream) is
+  // not counted — it stays open for the session's life — but a new one is refused while draining.
+  app.use(["/tools", cfg.path], (req: Request, res: Response, next) => {
+    const refuse = (): void => {
+      res.status(503).set("retry-after", String(RETRY_AFTER_S));
+      const message = `The server is restarting to free memory; retry in ${RETRY_AFTER_S} s (a new MCP session may be needed).`;
+      if (req.baseUrl === cfg.path || req.path === cfg.path) res.json({ jsonrpc: "2.0", error: { code: -32000, message }, id: null });
+      else res.json({ error: "server_restarting", retryable: true, retry_after_s: RETRY_AFTER_S, message });
+    };
+    if (req.method !== "POST") {
+      if (drain.isDraining && req.method === "GET") return refuse();
+      return next();
+    }
+    if (!drain.enter()) return refuse();
+    res.once("close", () => drain.leave());
+    next();
+  });
+
   app.post("/tools/:name", (req: Request, res: Response) => {
     void (async () => {
       const args = req.body;
@@ -495,8 +526,25 @@ async function main(): Promise<void> {
     });
   });
 
+  // v22 G3: heap alert + graceful self-rotation (heapWatch.ts)
+  const exitAfterDrain = async (reason: string, boundMs: number, code: number): Promise<void> => {
+    drain.startDrain();
+    const drained = await drain.drained(boundMs);
+    logWarning("draining done; exiting", { reason, drained, in_flight: drain.active, exit_code: code });
+    server.close();
+    dbHealthMonitor().stop();
+    await Promise.allSettled([closePool(), closeClient()]);
+    process.exit(code);
+  };
+  const watch = new HeapWatch(heapWatchOptionsFromEnv(), () => void exitAfterDrain("heap rotation", envMs("MCP_ROTATE_DRAIN_MS", 330_000), ROTATE_EXIT_CODE));
+  reportHeapAlertWith(() => watch.alert);
+  setInterval(() => watch.sample(heapUsedRatio(), Date.now()), envMs("MCP_HEAP_WATCH_INTERVAL_MS", 30_000)).unref();
+
   const shutdown = async (signal: string) => {
     logInfo(`Received ${signal}, shutting down`);
+    // the calls in flight finish first, within docker's stop grace period (default 10 s)
+    drain.startDrain();
+    await drain.drained(envMs("MCP_SHUTDOWN_DRAIN_MS", 8_000));
     server.close();
     dbHealthMonitor().stop();
     await Promise.allSettled([closePool(), closeClient()]);

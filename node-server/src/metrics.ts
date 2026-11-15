@@ -59,6 +59,20 @@ export function countOpenSessionsWith(fn: () => number): void {
   openSessions = fn;
 }
 
+let heapAlert: () => number = () => 0;
+/** server.ts registers the heap watch's alert state. */
+export function reportHeapAlertWith(fn: () => number): void {
+  heapAlert = fn;
+}
+
+export const heapAlertGauge = new Gauge({
+  name: "mcp_heap_alert",
+  help: "1 while the live heap has stayed above MCP_HEAP_ALERT_RATIO for MCP_HEAP_ALERT_MINUTES (heapWatch.ts)",
+  collect() {
+    this.set(heapAlert());
+  },
+});
+
 export const mcpSessionsOpen = new Gauge({
   name: "mcp_sessions_open",
   help: "Open MCP streamable-http sessions (each holds a server instance until DELETE or idle close)",
