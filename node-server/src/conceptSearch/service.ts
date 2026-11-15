@@ -70,12 +70,12 @@ export interface ConceptSearchResult {
 }
 
 /**
- * In-memory ConceptIndexes, bounded by their estimated size (CONCEPT_INDEX_CACHE_MB, default 2048 MB), least recently
+ * In-memory ConceptIndexes, bounded by their estimated size (CONCEPT_INDEX_CACHE_MB, default 1536 MB), least recently
  * used out. A count of terms did not bound memory: 800k terms held ~1.1 GB on staging (heap profile 2026-11-08).
  */
-// v22 G6: 2048 (was 1536): with 16 IGs the indexes in use (121, 1.48 GB estimated) sat at the budget and churned — every
-// rebuild of a large one is seconds of CPU and hundreds of MB of garbage
-const CACHE_BYTE_BUDGET = envBudgetBytes("CONCEPT_INDEX_CACHE_MB", 2048);
+// 1536 MB: a rebuild after an eviction is built from rows in time slices (csRows.ts), so churn costs CPU, not event-loop
+// stalls; a larger budget only raised the sum of the cache budgets (v22 G6 budget account)
+const CACHE_BYTE_BUDGET = envBudgetBytes("CONCEPT_INDEX_CACHE_MB", 1536);
 /** fullerCopy: how much larger another installed copy of a CodeSystem must be to be preferred. */
 const FULLER_COPY_FACTOR = 10;
 const FULLER_COPY_MIN_EXTRA = 1000;
