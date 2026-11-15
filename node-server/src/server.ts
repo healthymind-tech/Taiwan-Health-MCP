@@ -42,6 +42,7 @@ import { runWithRawRequest } from "./requestContext.js";
 import { SessionRegistry, sessionLimitsFromEnv } from "./mcpSessions.js";
 import { Drain, HeapWatch, ROTATE_EXIT_CODE, heapWatchOptionsFromEnv } from "./heapWatch.js";
 import { heapUsedRatio, onMajorGc } from "./toolConcurrency.js";
+import { officialValidator } from "./officialValidator.js";
 import { shedTrackedCaches } from "./memSize.js";
 
 /** express.json keeps the raw body bytes here (`verify`), so a tool can re-read an argument losslessly (requestContext.ts). */
@@ -556,6 +557,7 @@ async function main(): Promise<void> {
     void exitAfterDrain("heap rotation", envMs("MCP_ROTATE_DRAIN_MS", 330_000), ROTATE_EXIT_CODE);
   });
   reportHeapAlertWith(() => watch.alert);
+  officialValidator().startKeepalive();
   onMajorGc((ratio) => watch.sample(ratio, Date.now()));
   setInterval(() => watch.sample(heapUsedRatio(), Date.now()), envMs("MCP_HEAP_WATCH_INTERVAL_MS", 30_000)).unref();
 

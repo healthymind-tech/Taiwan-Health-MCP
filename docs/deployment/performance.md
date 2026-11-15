@@ -55,6 +55,7 @@ MCP 伺服器以 Node.js（Express + `@modelcontextprotocol/sdk`）實作。若�
 | `MCP_HEAP_ROTATE_RATIO` / `MCP_HEAP_ROTATE_MINUTES` / `MCP_HEAP_EMERGENCY_RATIO` | `0.85` / `5` / `0.95` | 自我輪替：清空快取、新連線與呼叫回 503 + `Retry-After`、等進行中的呼叫做完（最多 `MCP_ROTATE_DRAIN_MS` 330 秒）、結束程序（exit 75），由 restart policy 起新的行程 |
 | `MCP_SESSION_IDLE_MS` / `MCP_MAX_SESSIONS` | `3600000` / `500` | 閒置的 MCP session 自動關閉；未知的 session id 回 404，用戶端重新 initialize |
 | `OFFICIAL_VALIDATOR_RECYCLE_HOURS` | `24` | 每個常駐驗證器服務這麼久後先排空再重啟（`0` = 不回收） |
+| `OFFICIAL_VALIDATOR_KEEPALIVE_MS` | `1200000` | 每隔這麼久讓每個驗證器送一個需要術語伺服器的小請求：tx.fhir.org 會關閉閒置 30 分鐘的 session，驗證器多半用本機快取回答而不連線，session 仍會過期（`0` = 關閉） |
 
 用戶端收到 503 時請依 `Retry-After` 重試，輪替期間最久可能持續到最長的進行中呼叫結束（約 5 分鐘）。驗證器 JVM 預設 `-Xmx2048m`（`VALIDATOR_JAVA_XMX`，3 GB 容器：JVM 在負載下會把整個 heap 撐滿，另外還需要約 0.6 GB），GC log 在容器內 `/tmp/gc.log`。`app` 與 `admin-worker` 以 `init: true`（tini）執行、不產生 core dump。
 

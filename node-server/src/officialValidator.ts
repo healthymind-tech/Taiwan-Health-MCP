@@ -28,6 +28,15 @@
  * then POST /stop — a recycle never fails a call. Besides the terminology-failure restart, a validator is recycled
  * after OFFICIAL_VALIDATOR_RECYCLE_HOURS of service (default 24; 0 = never): validator_cli's in-memory caches only grow
  * for the life of the JVM, and a fresh one also gets a fresh terminology-server session.
+ *
+ * Session keepalive (v22 G6): tx.fhir.org closes a client's terminology cache session after 30 minutes without use
+ * ("The cache '…' expired: it went 32 minutes without being used, and this server closes caches that have been idle
+ * for more than 30 minutes") — and a busy validator answers most lookups from its own local cache, so even a busy one
+ * went idle on the server and failed (staging 11/15: EMPD and IPS recycled about once an hour). Every
+ * OFFICIAL_VALIDATOR_KEEPALIVE_MS (default 20 min; 0 = off) each validator therefore validates a tiny Observation whose
+ * LOINC code is new each time (never in its local cache), so it talks to the server and the session stays alive. The
+ * keepalive takes a slot like any call, waits for a restart in progress, and its answer is not used (a session failure
+ * in it recycles the validator as any call would).
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -66,6 +75,8 @@ export interface OfficialConfig {
   validationTimeoutMs: number;
   /** recycle a validator after this much service (ms; 0 = never) */
   recycleMs: number;
+  /** keep each validator's terminology-server session alive with a request this often (ms; 0 = off) */
+  keepaliveMs: number;
 }
 
 export function parseOfficialConfig(env: Record<string, string | undefined>): OfficialConfig {
@@ -84,6 +95,7 @@ export function parseOfficialConfig(env: Record<string, string | undefined>): Of
     timeoutMs,
     concurrency: num(env.OFFICIAL_VALIDATOR_CONCURRENCY, 1),
     validationTimeoutMs: num(env.OFFICIAL_VALIDATOR_VALIDATION_TIMEOUT_MS, Math.max(10_000, timeoutMs - 30_000)),
+    keepaliveMs: env.OFFICIAL_VALIDATOR_KEEPALIVE_MS !== undefined && Number(env.OFFICIAL_VALIDATOR_KEEPALIVE_MS) === 0 ? 0 : num(env.OFFICIAL_VALIDATOR_KEEPALIVE_MS, 20 * 60_000),
     recycleMs: (env.OFFICIAL_VALIDATOR_RECYCLE_HOURS !== undefined && Number(env.OFFICIAL_VALIDATOR_RECYCLE_HOURS) === 0 ? 0 : num(env.OFFICIAL_VALIDATOR_RECYCLE_HOURS, 24)) * 3_600_000,
   };
 }
@@ -127,6 +139,11 @@ const TX_TRANSIENT =
 // v20.2: validator_cli's own per-request time limit (`validationTimeout`): the result is incomplete, not a finding
 const VALIDATION_TIMED_OUT = /^Validation process exceeded maximum allowed time of \d+ms/u;
 
+/** A terminology-server message fit for a log line: quoted values (codes, cache ids, displays) masked, 200 chars. */
+export function redactTxMessage(message: string): string {
+  return message.replace(/'[^']*'/gu, "'…'").replace(/"[^"]*"/gu, '"…"').slice(0, 200);
+}
+
 export function isTransientTxIssue(i: { message: string }): boolean {
   return TX_TRANSIENT.test(i.message) || VALIDATION_TIMED_OUT.test(i.message);
 }
@@ -162,6 +179,29 @@ export class OfficialValidator {
 
   get mode(): OfficialMode {
     return this.config.mode;
+  }
+
+  /** One keepalive round: each configured validator validates a probe that needs the terminology server. */
+  async keepalive(): Promise<void> {
+    if (this.config.mode === "off") return;
+    const probe = (): Record<string, unknown> => ({
+      resourceType: "Observation",
+      status: "final",
+      // a code no validator has looked up before: its local terminology cache cannot answer, the server must
+      code: { coding: [{ system: "http://loinc.org", code: `keepalive-${this.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}` }] },
+      subject: { display: "keepalive" },
+    });
+    await Promise.allSettled(
+      [...new Set(this.config.endpoints.map((e) => e.url))].map((base) =>
+        this.validate(base, probe(), null).catch((e) => logWarning("official validator keepalive failed", { endpoint: base, error: String((e as Error).message).slice(0, 200) })),
+      ),
+    );
+  }
+
+  /** Start the keepalive timer (server.ts; not in tests). */
+  startKeepalive(): void {
+    if (this.config.mode === "off" || this.config.keepaliveMs <= 0 || !this.config.endpoints.length) return;
+    setInterval(() => void this.keepalive(), this.config.keepaliveMs).unref();
   }
 
   /** The validator configured for a package: the exact package#version first, then an entry for the id without a version. */
@@ -229,7 +269,8 @@ export class OfficialValidator {
       const all = issuesFromOutcome(await res.json());
       const unverified = all.filter(isTransientTxIssue);
       // only a terminology-server failure is cached inside the validator (restart to drop it); its own time limit is not
-      if (unverified.some((i) => TX_TRANSIENT.test(i.message))) this.scheduleRestart(base, "terminology");
+      const txFailure = unverified.find((i) => TX_TRANSIENT.test(i.message));
+      if (txFailure) this.scheduleRestart(base, "terminology", redactTxMessage(txFailure.message));
       return { issues: all.filter((i) => !isTransientTxIssue(i)), unverified };
     } catch (e) {
       const timedOut = ctl.signal.aborted;
@@ -250,13 +291,13 @@ export class OfficialValidator {
    * most once per 10 minutes, or that served for `recycleMs`. It drains first: later calls wait, the calls in flight
    * finish (at most the request timeout); then the stop, and calls wait (≤ 3 min) until it answers again.
    */
-  private scheduleRestart(base: string, reason: "terminology" | "age"): void {
+  private scheduleRestart(base: string, reason: "terminology" | "age", trigger?: string): void {
     const last = this.lastRestart.get(base) ?? -Infinity;
     if (this.now() - last < 600_000 || this.restarting.has(base)) return;
     this.lastRestart.set(base, this.now());
     logWarning(
       reason === "age" ? "official validator: recycling it after its service period" : "official validator: terminology failure cached in the validator; restarting it",
-      { endpoint: base, reason },
+      { endpoint: base, reason, ...(trigger ? { trigger } : {}) },
     );
     const p = (async (): Promise<void> => {
       this.draining.add(base);

@@ -55,6 +55,7 @@ The app's memory figure is always the live heap after the last major GC ÷ the h
 | `MCP_HEAP_ROTATE_RATIO` / `MCP_HEAP_ROTATE_MINUTES` / `MCP_HEAP_EMERGENCY_RATIO` | `0.85` / `5` / `0.95` | Self-rotation: caches emptied, new connections and calls get 503 + `Retry-After`, calls in flight finish (at most `MCP_ROTATE_DRAIN_MS` 330 s), the process exits 75 and the restart policy starts a fresh one |
 | `MCP_SESSION_IDLE_MS` / `MCP_MAX_SESSIONS` | `3600000` / `500` | Idle MCP sessions are closed; an unknown session id answers 404 and the client initialises again |
 | `OFFICIAL_VALIDATOR_RECYCLE_HOURS` | `24` | Each resident validator is drained and restarted after this much service (`0` = never) |
+| `OFFICIAL_VALIDATOR_KEEPALIVE_MS` | `1200000` | How often each validator sends a tiny request that needs the terminology server: tx.fhir.org closes a session idle for 30 minutes, and a validator answering from its local cache never contacts it, so the session expires anyway (`0` = off) |
 
 Clients should retry a 503 after `Retry-After`; a rotation can last until the longest call in flight ends (about 5 minutes). The validator JVM defaults to `-Xmx2048m` (`VALIDATOR_JAVA_XMX`, 3 GB container: under load the JVM commits its whole heap and needs ~0.6 GB more); its GC log is `/tmp/gc.log` in the container. `app` and `admin-worker` run with `init: true` (tini) and write no core dumps.
 

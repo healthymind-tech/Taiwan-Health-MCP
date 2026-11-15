@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { OFFICIAL_SOURCE, OfficialUnavailable, OfficialValidator, isTransientTxIssue, issuesFromOutcome, parseOfficialConfig } from "./officialValidator.js";
+import { OFFICIAL_SOURCE, OfficialUnavailable, OfficialValidator, isTransientTxIssue, issuesFromOutcome, parseOfficialConfig, redactTxMessage } from "./officialValidator.js";
 
 const OO = {
   resourceType: "OperationOutcome",
@@ -326,4 +326,48 @@ test("recycle by age: after OFFICIAL_VALIDATOR_RECYCLE_HOURS of service the next
   t += 1000 * 3_600_000;
   await never.validate("http://v:1", {}, null);
   assert.ok(!seen.includes("/stop"));
+});
+
+test("keepalive: every configured validator validates a probe with a fresh LOINC code each round; default 20 min, 0 = off", async () => {
+  const sent: Array<{ url: string; code: string }> = [];
+  const v = new OfficialValidator(parseOfficialConfig({ OFFICIAL_VALIDATOR_URLS: "a#1=http://v:1,b#1=http://v:2,c#2=http://v:2" }), async (url, init) => {
+    const code = JSON.parse(init.body).code.coding[0];
+    assert.equal(code.system, "http://loinc.org");
+    sent.push({ url: url.replace(/\?.*$/, ""), code: code.code });
+    return { ok: true, status: 200, json: async () => ({ resourceType: "OperationOutcome", issue: [] }) };
+  });
+  await v.keepalive();
+  await v.keepalive();
+  assert.deepEqual(sent.map((s) => s.url).sort(), ["http://v:1/validateResource", "http://v:1/validateResource", "http://v:2/validateResource", "http://v:2/validateResource"], "each validator once per round");
+  assert.equal(new Set(sent.map((s) => s.code)).size, 4, "never the same code twice (a local cache hit would not reach the server)");
+  assert.equal(parseOfficialConfig({ OFFICIAL_VALIDATOR_URLS: "a=http://v:1" }).keepaliveMs, 20 * 60_000);
+  assert.equal(parseOfficialConfig({ OFFICIAL_VALIDATOR_URLS: "a=http://v:1", OFFICIAL_VALIDATOR_KEEPALIVE_MS: "0" }).keepaliveMs, 0);
+});
+
+test("keepalive: a session failure in the probe recycles the validator like any call; a failing validator never throws", async () => {
+  const seen: string[] = [];
+  let t = 0;
+  const v = new OfficialValidator(
+    parseOfficialConfig({ OFFICIAL_VALIDATOR_URLS: "p=http://v:1,q=http://v:9" }),
+    async (url) => {
+      seen.push(url.replace(/\?.*$/, ""));
+      if (url.startsWith("http://v:9")) throw new Error("connect ECONNREFUSED");
+      return { ok: true, status: 200, json: async () => ({ resourceType: "OperationOutcome", issue: [{ severity: "error", code: "exception", details: { text: "Error from https://tx.fhir.org/r4: Error: The cache 'x' expired: it went 32 minutes without being used" }, expression: ["Observation.code"] }] }) };
+    },
+    () => t,
+    async (ms) => {
+      t += ms;
+    },
+  );
+  await v.keepalive();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.ok(seen.includes("http://v:1/stop"), `the expired session recycled the validator: ${seen.join(",")}`);
+});
+
+test("redactTxMessage: the recycle log names the kind of failure, never a code or cache id", () => {
+  assert.equal(
+    redactTxMessage("Error from https://tx.fhir.org/r4: Error: The cache '5f0c2a1e-77b3' expired: it went 32 minutes without being used"),
+    "Error from https://tx.fhir.org/r4: Error: The cache '…' expired: it went 32 minutes without being used",
+  );
+  assert.equal(redactTxMessage("Unknown code 'E11.9' in \"ICD\""), "Unknown code '…' in \"…\"");
 });
