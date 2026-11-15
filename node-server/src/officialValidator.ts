@@ -201,6 +201,8 @@ export class OfficialValidator {
   /** Start the keepalive timer (server.ts; not in tests). */
   startKeepalive(): void {
     if (this.config.mode === "off" || this.config.keepaliveMs <= 0 || !this.config.endpoints.length) return;
+    // a first round soon after start: the validators may have been idle for longer than the server keeps a session
+    setTimeout(() => void this.keepalive(), Math.min(60_000, this.config.keepaliveMs)).unref();
     setInterval(() => void this.keepalive(), this.config.keepaliveMs).unref();
   }
 
@@ -303,21 +305,44 @@ export class OfficialValidator {
       this.draining.add(base);
       const drainUntil = this.now() + this.config.timeoutMs;
       while ((this.inflight.get(base) ?? 0) > 0 && this.now() < drainUntil) await this.sleep(500);
-      try {
-        await outsideRequest(() => this.fetchImpl(`${base}/stop`, { method: "POST", headers: {}, body: "", signal: AbortSignal.timeout(10_000) }));
-      } catch {
-        // already gone
+      // Stop it and see it go: the old process must stop answering before an answer counts as the new one. A /stop
+      // that had no effect (staging 11/15: three at once, none stopped) left the old JVM answering /version, the
+      // restart counted as done and its expired session failed calls for the next 10 minutes.
+      const answers = async (): Promise<boolean> => {
+        try {
+          // any HTTP answer (405 for GET) means a server is listening
+          await outsideRequest(() => this.fetchImpl(`${base}/version`, { method: "GET", headers: {}, body: undefined as unknown as string, signal: AbortSignal.timeout(3_000) }));
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      let stopped = false;
+      for (let attempt = 1; attempt <= 3 && !stopped; attempt++) {
+        try {
+          await outsideRequest(() => this.fetchImpl(`${base}/stop`, { method: "POST", headers: {}, body: "", signal: AbortSignal.timeout(10_000) }));
+        } catch {
+          // already gone, or busy: the check below decides
+        }
+        const downBy = this.now() + 30_000;
+        while (this.now() < downBy) {
+          if (!(await answers())) {
+            stopped = true;
+            break;
+          }
+          await this.sleep(1_000);
+        }
+        if (!stopped) logWarning("official validator: still running after /stop; asking again", { endpoint: base, attempt });
+      }
+      if (!stopped) {
+        logError("official validator: /stop had no effect; the next failure will try again", { endpoint: base, reason });
+        this.lastRestart.delete(base);
+        return;
       }
       const until = this.now() + 180_000;
-      await this.sleep(5_000);
       while (this.now() < until) {
-        try {
-          // any HTTP answer (405 for GET) means the server is back
-          await outsideRequest(() => this.fetchImpl(`${base}/version`, { method: "GET", headers: {}, body: undefined as unknown as string, signal: AbortSignal.timeout(3_000) }));
-          return;
-        } catch {
-          await this.sleep(3_000);
-        }
+        if (await answers()) return;
+        await this.sleep(3_000);
       }
     })().finally(() => {
       this.restarting.delete(base);

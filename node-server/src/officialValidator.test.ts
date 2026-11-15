@@ -21,6 +21,24 @@ const OO = {
   ],
 };
 
+
+/** A fake validator that really restarts: after POST /stop the next /version finds nothing listening, then the new one answers. */
+type FakeFetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+function restarting(fake: FakeFetch): FakeFetch {
+  const down = new Set<string>();
+  return async (url, init) => {
+    const base = url.replace(/^(https?:\/\/[^/]+).*$/, "$1");
+    if (url.endsWith("/version") && down.has(base)) {
+      down.delete(base);
+      await fake(url, init); // still recorded by the test
+      throw new Error("connect ECONNREFUSED");
+    }
+    const r = await fake(url, init);
+    if (url.endsWith("/stop")) down.add(base);
+    return r;
+  };
+}
+
 test("config: package[#version]=url list; mode defaults to prefer with endpoints, off without", () => {
   const c = parseOfficialConfig({ OFFICIAL_VALIDATOR_URLS: "tw.gov.mohw.nhi.pas#1.2.7=http://v-pas:18081/, hl7.fhir.uv.ips=http://v-ips:18082" });
   assert.deepEqual(c.endpoints, [
@@ -97,10 +115,10 @@ test("terminology-server failures are returned apart as unverified, and the vali
   let t = 0;
   const v = new OfficialValidator(
     parseOfficialConfig({ OFFICIAL_VALIDATOR_URLS: "p=http://v:1" }),
-    async (url) => {
+    restarting(async (url) => {
       seen.push(url.replace("http://v:1", ""));
       return { ok: true, status: 200, json: async () => oo };
-    },
+    }),
     () => t,
     async (ms) => {
       t += ms;
@@ -244,10 +262,10 @@ test("a tx cache-session failure: the issue goes to unverified (not issues) and 
   let t = 0;
   const v = new OfficialValidator(
     parseOfficialConfig({ OFFICIAL_VALIDATOR_URLS: "p=http://v:1" }),
-    async (url) => {
+    restarting(async (url) => {
       seen.push(url.replace("http://v:1", ""));
       return { ok: true, status: 200, json: async () => oo };
-    },
+    }),
     () => t,
     async (ms) => {
       t += ms;
@@ -266,7 +284,7 @@ test("a restart drains: the calls in flight finish before /stop, queued calls ru
   const cacheFailure = { resourceType: "OperationOutcome", issue: [{ severity: "error", code: "exception", details: { text: "Error from https://tx.fhir.org/r4: Error: The cache 1 expired" }, expression: ["Patient.x"] }] };
   const ok = { resourceType: "OperationOutcome", issue: [] };
   let call = 0;
-  const v = new OfficialValidator(parseOfficialConfig({ OFFICIAL_VALIDATOR_URLS: "p=http://v:1", OFFICIAL_VALIDATOR_CONCURRENCY: "2" }), async (url) => {
+  const v = new OfficialValidator(parseOfficialConfig({ OFFICIAL_VALIDATOR_URLS: "p=http://v:1", OFFICIAL_VALIDATOR_CONCURRENCY: "2" }), restarting(async (url) => {
     const path = url.replace("http://v:1", "").replace(/\?.*$/, "");
     if (path !== "/validateResource") {
       events.push(path);
@@ -277,7 +295,7 @@ test("a restart drains: the calls in flight finish before /stop, queued calls ru
     if (n === 1) await new Promise<void>((r) => (release1 = r)); // a long call in flight on the same validator
     events.push(`end${n}`);
     return { ok: true, status: 200, json: async () => (n === 2 ? cacheFailure : ok) };
-  });
+  }));
   const first = v.validate("http://v:1", {}, null);
   await new Promise((r) => setTimeout(r, 5));
   const second = await v.validate("http://v:1", {}, null); // answers with a tx cache failure → restart scheduled
@@ -300,10 +318,10 @@ test("recycle by age: after OFFICIAL_VALIDATOR_RECYCLE_HOURS of service the next
   const mk = (hours: string): OfficialValidator =>
     new OfficialValidator(
       parseOfficialConfig({ OFFICIAL_VALIDATOR_URLS: "p=http://v:1", OFFICIAL_VALIDATOR_RECYCLE_HOURS: hours }),
-      async (url) => {
+      restarting(async (url) => {
         seen.push(url.replace("http://v:1", "").replace(/\?.*$/, ""));
         return { ok: true, status: 200, json: async () => ({ resourceType: "OperationOutcome", issue: [] }) };
-      },
+      }),
       () => t,
       async (ms) => {
         t += ms;
@@ -349,11 +367,11 @@ test("keepalive: a session failure in the probe recycles the validator like any 
   let t = 0;
   const v = new OfficialValidator(
     parseOfficialConfig({ OFFICIAL_VALIDATOR_URLS: "p=http://v:1,q=http://v:9" }),
-    async (url) => {
+    restarting(async (url) => {
       seen.push(url.replace(/\?.*$/, ""));
       if (url.startsWith("http://v:9")) throw new Error("connect ECONNREFUSED");
       return { ok: true, status: 200, json: async () => ({ resourceType: "OperationOutcome", issue: [{ severity: "error", code: "exception", details: { text: "Error from https://tx.fhir.org/r4: Error: The cache 'x' expired: it went 32 minutes without being used" }, expression: ["Observation.code"] }] }) };
-    },
+    }),
     () => t,
     async (ms) => {
       t += ms;
@@ -370,4 +388,27 @@ test("redactTxMessage: the recycle log names the kind of failure, never a code o
     "Error from https://tx.fhir.org/r4: Error: The cache '…' expired: it went 32 minutes without being used",
   );
   assert.equal(redactTxMessage("Unknown code 'E11.9' in \"ICD\""), "Unknown code '…' in \"…\"");
+});
+
+test("a /stop with no effect is not taken for a restart: asked 3 times, then the next failure tries again at once", async () => {
+  const seen: string[] = [];
+  let t = 0;
+  const expired = { resourceType: "OperationOutcome", issue: [{ severity: "error", code: "exception", details: { text: "Error from https://tx.fhir.org/r4: Error: The cache 'c' expired: it went 31 minutes without being used" }, expression: ["Observation.code"] }] };
+  const v = new OfficialValidator(
+    parseOfficialConfig({ OFFICIAL_VALIDATOR_URLS: "p=http://v:1" }),
+    async (url) => {
+      seen.push(url.replace("http://v:1", "").replace(/\?.*$/, ""));
+      return { ok: true, status: 200, json: async () => expired }; // a JVM that ignores /stop and keeps answering
+    },
+    () => t,
+    async (ms) => {
+      t += ms;
+    },
+  );
+  await v.validate("http://v:1", {}, null);
+  await v.validate("http://v:1", {}, null); // waits for the attempt, which gives up; its own failure starts the next one
+  const calls = seen.map((u, i) => [u, i] as const).filter(([u]) => u === "/validateResource").map(([, i]) => i);
+  const stopsBeforeSecond = seen.slice(0, calls[1]).filter((u) => u === "/stop").length;
+  assert.equal(stopsBeforeSecond, 3, `the first attempt asked three times: ${seen.join(",")}`);
+  assert.ok(seen.slice(calls[1]).includes("/stop"), "the next failure tries again at once, not after 10 minutes");
 });
