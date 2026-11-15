@@ -42,6 +42,22 @@ A call that cannot start in time gets an `isError` result with `error.code = "BU
 
 Every container has a `mem_limit` (with an equal `memswap_limit` — no swap use), overridable by environment: Postgres `PG_MEM_LIMIT` (6g; `PG_SHARED_BUFFERS` 2560MB, `PG_MAINTENANCE_WORK_MEM` 512MB, `PG_EFFECTIVE_CACHE_SIZE` 6GB, set with `-c` on the `command`, which wins over `postgresql.auto.conf`), `app` `APP_MEM_LIMIT` (5g, V8 heap `APP_MAX_OLD_SPACE_MB` 3584), `admin-worker` `WORKER_MEM_LIMIT` (9g, heap `WORKER_MAX_OLD_SPACE_MB` 8192), Redis 768m, MinIO 1g, pgBouncer / nginx / web-v2 256m, ocr-indra 2g. A container over its cap is OOM-killed alone and `restart: unless-stopped` brings it back, instead of the whole host stalling. A Node heap limit must stay below its container's cap.
 
+### Memory safety net (v22)
+
+The app's memory figure is always the live heap after the last major GC ÷ the heap limit (Prometheus `mcp_heap_live_ratio`).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MCP_HEAVY_TOOL_HEAP_RATIO` / `MCP_TOOL_HEAP_RATIO` | `0.8` / `0.9` | Above it heavy / other tools do not start and answer `BUSY` (`reason: "memory"`) |
+| `MCP_CACHE_SHED_RATIO` | `0.7` | Above it every cross-request cache drops its least recently used half (at most once a minute) |
+| `MCP_BUILD_ADMIT_RATIO` | `0.85` | A large in-memory build (the concept index of a big IG CodeSystem) states its need first; if it does not fit the caches are emptied, and if it still does not fit it is refused and the whole tool call answers `BUSY` (memory) |
+| `MCP_HEAP_ALERT_RATIO` / `MCP_HEAP_ALERT_MINUTES` | `0.75` / `10` | Sustained above it: one error log line, `mcp_heap_alert = 1` |
+| `MCP_HEAP_ROTATE_RATIO` / `MCP_HEAP_ROTATE_MINUTES` / `MCP_HEAP_EMERGENCY_RATIO` | `0.85` / `5` / `0.95` | Self-rotation: caches emptied, new connections and calls get 503 + `Retry-After`, calls in flight finish (at most `MCP_ROTATE_DRAIN_MS` 330 s), the process exits 75 and the restart policy starts a fresh one |
+| `MCP_SESSION_IDLE_MS` / `MCP_MAX_SESSIONS` | `3600000` / `500` | Idle MCP sessions are closed; an unknown session id answers 404 and the client initialises again |
+| `OFFICIAL_VALIDATOR_RECYCLE_HOURS` | `24` | Each resident validator is drained and restarted after this much service (`0` = never) |
+
+Clients should retry a 503 after `Retry-After`; a rotation can last until the longest call in flight ends (about 5 minutes). The validator JVM defaults to `-Xmx2048m` (`VALIDATOR_JAVA_XMX`, 3 GB container: under load the JVM commits its whole heap and needs ~0.6 GB more); its GC log is `/tmp/gc.log` in the container. `app` and `admin-worker` run with `init: true` (tini) and write no core dumps.
+
 ## Background jobs
 
 - `ADMIN_MAX_CONCURRENT_JOBS` bounds how many jobs `admin-worker` runs at once (4 by default in compose); per-module resource slots additionally prevent parallel imports of the same module.

@@ -42,6 +42,22 @@ MCP 伺服器以 Node.js（Express + `@modelcontextprotocol/sdk`）實作。若�
 
 每個容器都有 `mem_limit`（`memswap_limit` 相同，不使用 swap），可用環境變數覆寫：Postgres `PG_MEM_LIMIT`（6g；`PG_SHARED_BUFFERS` 2560MB、`PG_MAINTENANCE_WORK_MEM` 512MB、`PG_EFFECTIVE_CACHE_SIZE` 6GB，以 `command` 的 `-c` 設定，優先於 `postgresql.auto.conf`）、`app` `APP_MEM_LIMIT`（5g，V8 heap `APP_MAX_OLD_SPACE_MB` 3584）、`admin-worker` `WORKER_MEM_LIMIT`（9g，heap `WORKER_MAX_OLD_SPACE_MB` 8192）、Redis 768m、MinIO 1g、pgBouncer / nginx / web-v2 256m、ocr-indra 2g。某個容器超過上限時只有它被 OOM 終止，`restart: unless-stopped` 讓它自動重啟，不會拖垮整台主機。Node 的 heap 上限一定要小於容器上限。
 
+### 記憶體安全網（v22）
+
+`app` 的記憶體指標一律是「上次 major GC 之後仍存活的 heap ÷ heap 上限」（Prometheus `mcp_heap_live_ratio`）。
+
+| 環境變數 | 預設 | 說明 |
+|---|---|---|
+| `MCP_HEAVY_TOOL_HEAP_RATIO` / `MCP_TOOL_HEAP_RATIO` | `0.8` / `0.9` | 超過時重負載 / 其他工具不開始執行，回 `BUSY`（`reason: "memory"`） |
+| `MCP_CACHE_SHED_RATIO` | `0.7` | 超過時所有跨請求快取各丟掉最久未用的一半（每分鐘最多一次） |
+| `MCP_BUILD_ADMIT_RATIO` | `0.85` | 大型記憶體建構（大型 IG CodeSystem 的概念索引）先估算所需記憶體；放不下時先清空快取，仍放不下就拒絕，整個工具呼叫回 `BUSY`（memory） |
+| `MCP_HEAP_ALERT_RATIO` / `MCP_HEAP_ALERT_MINUTES` | `0.75` / `10` | 持續超過時寫一行 error log，`mcp_heap_alert = 1` |
+| `MCP_HEAP_ROTATE_RATIO` / `MCP_HEAP_ROTATE_MINUTES` / `MCP_HEAP_EMERGENCY_RATIO` | `0.85` / `5` / `0.95` | 自我輪替：清空快取、新連線與呼叫回 503 + `Retry-After`、等進行中的呼叫做完（最多 `MCP_ROTATE_DRAIN_MS` 330 秒）、結束程序（exit 75），由 restart policy 起新的行程 |
+| `MCP_SESSION_IDLE_MS` / `MCP_MAX_SESSIONS` | `3600000` / `500` | 閒置的 MCP session 自動關閉；未知的 session id 回 404，用戶端重新 initialize |
+| `OFFICIAL_VALIDATOR_RECYCLE_HOURS` | `24` | 每個常駐驗證器服務這麼久後先排空再重啟（`0` = 不回收） |
+
+用戶端收到 503 時請依 `Retry-After` 重試，輪替期間最久可能持續到最長的進行中呼叫結束（約 5 分鐘）。驗證器 JVM 預設 `-Xmx2048m`（`VALIDATOR_JAVA_XMX`，3 GB 容器：JVM 在負載下會把整個 heap 撐滿，另外還需要約 0.6 GB），GC log 在容器內 `/tmp/gc.log`。`app` 與 `admin-worker` 以 `init: true`（tini）執行、不產生 core dump。
+
 ## 背景工作
 
 - `ADMIN_MAX_CONCURRENT_JOBS` 限制 `admin-worker` 同時執行的工作數（compose 預設 4）；各模組另有資源槽位，避免同一模組並行匯入。
