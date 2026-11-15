@@ -545,16 +545,65 @@ async function closureCodeSystem(url: string, pkg: PackageRow): Promise<{ artifa
   return ranked.length ? { artifact: "", index: null, cs: null } : undefined;
 }
 
+/**
+ * The CodeSystem of exactly `version` as loadCodeSystemVersion picks it (pickCanonicalVersion reads only the version),
+ * with its artifact — the versions come from the database (raw_json->>'version'), so only the chosen copy's JSON is
+ * fetched, and only when no index of it is alive. Before, every copy of the canonical in every installed package was
+ * fetched and parsed to pick one (ICD-10-CM 2023: several 30 MB JSONs per Coding.version lookup; staging 2026-11-15:
+ * GC took 8–9 s of each 10–13 s event-loop block). undefined = no copy of that version (the caller falls back as before).
+ */
+async function versionedCodeSystem(canonical: string, version: string, pkg: PackageRow): Promise<{ artifact: string; index: CodeSystemIndex | null; cs: Record<string, any> | null } | undefined> {
+  const [pids, pvers] = closureArrays(pkg);
+  const rows = (
+    await query<{ package_id: string; package_version: string; version: string | null; in_closure: boolean }>(
+      "SELECT a.package_id, a.package_version, " +
+        "CASE WHEN jsonb_typeof(a.raw_json->'version') = 'string' THEN a.raw_json->>'version' END AS version, " +
+        "(dep.pid IS NOT NULL) AS in_closure FROM fhir.artifacts a " +
+        "LEFT JOIN unnest($1::text[], $2::text[]) AS dep(pid, pver) ON a.package_id = dep.pid AND a.package_version = dep.pver " +
+        "WHERE a.resource_type = 'CodeSystem' AND a.canonical_url = $3 AND a.raw_json IS NOT NULL",
+      [pids, pvers, canonical],
+    )
+  ).rows;
+  const pick = pickCanonicalVersion(rows.filter((r) => r.in_closure), version) ?? pickCanonicalVersion(rows, version);
+  if (!pick) return undefined;
+  const artifact = `${pick.package_id}#${pick.package_version}|${canonical}`;
+  const alive = indexByArtifact.get(artifact)?.deref();
+  if (alive) return { artifact, index: alive, cs: null };
+  const raw = (
+    await query<{ raw_json: any }>(
+      "SELECT raw_json FROM fhir.artifacts WHERE resource_type = 'CodeSystem' AND package_id = $1 AND package_version = $2 AND canonical_url = $3 LIMIT 1",
+      [pick.package_id, pick.package_version, canonical],
+    )
+  ).rows[0];
+  const cs = raw ? jsonOf(raw.raw_json) : null;
+  return cs ? { artifact, index: null, cs } : undefined;
+}
+
+/** Index of a resolved CodeSystem artifact, remembered by artifact; null for a supplement / not-present stub. */
+function indexOfArtifact(found: { artifact: string; index: CodeSystemIndex | null; cs: Record<string, any> | null }): CodeSystemIndex | null {
+  if (found.index) return found.index;
+  const cs = found.cs;
+  const idx = cs && cs.content !== "supplement" && cs.content !== "not-present" ? sharedCodeSystemIndex(cs) : null;
+  if (idx && found.artifact) {
+    indexByArtifact.set(found.artifact, new WeakRef(idx));
+    indexByArtifactGone.register(idx, found.artifact);
+  }
+  return idx;
+}
+
 async function loadCodeSystemIndexUncached(url: string, pkg: PackageRow, exact: boolean, key: string, bar: number, version: string): Promise<CodeSystemIndex | null> {
+  if (version) {
+    const found = await versionedCodeSystem(url.slice(0, bar), version, pkg);
+    if (found) {
+      const idx = indexOfArtifact(found);
+      csCache.set(key, idx, 64 + (idx ? await indexBytes(idx) : 0));
+      return idx;
+    }
+  }
   if (!version) {
     const found = await closureCodeSystem(url, pkg);
     if (found && (found.index || found.cs)) {
-      const cs = found.cs;
-      const idx = found.index ?? (cs && cs.content !== "supplement" && cs.content !== "not-present" ? sharedCodeSystemIndex(cs) : null);
-      if (idx && !found.index) {
-        indexByArtifact.set(found.artifact, new WeakRef(idx));
-        indexByArtifactGone.register(idx, found.artifact);
-      }
+      const idx = indexOfArtifact(found);
       csCache.set(key, idx, 64 + (idx ? await indexBytes(idx) : 0));
       return idx;
     }
