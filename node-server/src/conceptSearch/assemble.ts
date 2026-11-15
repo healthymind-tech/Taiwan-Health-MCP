@@ -16,6 +16,7 @@
  */
 
 import { guessLang, normalizeText } from "./text.js";
+import { SLICE_MS, Slicer } from "../csRows.js";
 import type { TermInput } from "./engine.js";
 
 export interface LinkCoding {
@@ -84,28 +85,41 @@ interface Flat {
   parents: string[];
 }
 
-function flatten(cs: Record<string, any>): Map<string, Flat> {
-  const out = new Map<string, Flat>();
-  const visit = (list: any[], parent: string | null): void => {
+/** One concept of a CodeSystem in depth-first pre-order, without its `concept` list, and its parent's code. */
+export interface ConceptRow {
+  node: Record<string, any>;
+  parent: string | null;
+}
+
+/** The concepts of a CodeSystem resource as rows (the same order and skips as the database flattening, csRows.ts). */
+function* conceptRows(cs: Record<string, any>): Generator<ConceptRow> {
+  function* visit(list: any[], parent: string | null): Generator<ConceptRow> {
     for (const raw of list || []) {
       if (!raw || typeof raw !== "object" || raw.code === undefined || raw.code === null) continue;
-      const code = String(raw.code);
-      let f = out.get(code);
-      if (!f) {
-        f = { code, display: null, definition: null, designations: [], properties: [], parents: [] };
-        out.set(code, f);
-      }
-      if (raw.display != null && f.display === null) f.display = String(raw.display);
-      if (raw.definition != null && f.definition === null) f.definition = String(raw.definition);
-      for (const d of raw.designation || []) {
-        if (d && d.value != null) f.designations.push({ language: typeof d.language === "string" ? d.language : null, value: String(d.value) });
-      }
-      for (const p of raw.property || []) if (p && p.code) f.properties.push(p);
-      if (parent && !f.parents.includes(parent)) f.parents.push(parent);
-      if (Array.isArray(raw.concept)) visit(raw.concept, code);
+      yield { node: raw, parent };
+      if (Array.isArray(raw.concept)) yield* visit(raw.concept, String(raw.code));
     }
-  };
-  visit(cs.concept || [], null);
+  }
+  yield* visit(cs.concept || [], null);
+}
+
+function addFlat(out: Map<string, Flat>, raw: Record<string, any>, parent: string | null): void {
+  const code = String(raw.code);
+  let f = out.get(code);
+  if (!f) {
+    f = { code, display: null, definition: null, designations: [], properties: [], parents: [] };
+    out.set(code, f);
+  }
+  if (raw.display != null && f.display === null) f.display = String(raw.display);
+  if (raw.definition != null && f.definition === null) f.definition = String(raw.definition);
+  for (const d of raw.designation || []) {
+    if (d && d.value != null) f.designations.push({ language: typeof d.language === "string" ? d.language : null, value: String(d.value) });
+  }
+  for (const p of raw.property || []) if (p && p.code) f.properties.push(p);
+  if (parent && !f.parents.includes(parent)) f.parents.push(parent);
+}
+
+function finishFlat(out: Map<string, Flat>): Map<string, Flat> {
   // Explicit `parent` properties (flat hierarchies).
   for (const f of out.values()) {
     for (const p of f.properties) {
@@ -117,6 +131,12 @@ function flatten(cs: Record<string, any>): Map<string, Flat> {
     }
   }
   return out;
+}
+
+function flatten(cs: Record<string, any>): Map<string, Flat> {
+  const out = new Map<string, Flat>();
+  for (const r of conceptRows(cs)) addFlat(out, r.node, r.parent);
+  return finishFlat(out);
 }
 
 function declaredProps(cs: Record<string, any>): Map<string, { type: string | null; description: string; uri: string }> {
@@ -135,9 +155,14 @@ function looksLikeValue(s: string): boolean {
   return /[\p{L}]/u.test(t);
 }
 
-/** Assemble searchable concepts from a CodeSystem and the supplements that apply to it. */
-export function assembleCodeSystem(cs: Record<string, any>, supplements: SupplementRef[] = []): AssembledConcept[] {
-  const base = flatten(cs);
+interface AssembleCtx {
+  base: Map<string, Flat>;
+  csLang: string | null;
+  props: Map<string, { type: string | null; description: string; uri: string }>;
+  sups: Array<{ ref: SupplementRef; lang: string | null; flat: Map<string, Flat>; props: Map<string, { type: string | null; description: string; uri: string }> }>;
+}
+
+function assembleCtx(base: Map<string, Flat>, cs: Record<string, any>, supplements: SupplementRef[]): AssembleCtx {
   const csLang = typeof cs.language === "string" ? cs.language : null;
   const props = declaredProps(cs);
   const sups = supplements.map((s) => ({
@@ -147,72 +172,103 @@ export function assembleCodeSystem(cs: Record<string, any>, supplements: Supplem
     props: declaredProps(s.resource),
   }));
   for (const s of sups) for (const [k, v] of s.props) if (!props.has(k)) props.set(k, v);
+  return { base, csLang, props, sups };
+}
 
+function assembleOne(f: Flat, ctx: AssembleCtx): AssembledConcept {
+  const { base, csLang, props, sups } = ctx;
+  const terms: TermInput[] = [];
+  const links: LinkCoding[] = [];
+  const info: Record<string, unknown> = {};
+  const seen = new Set<string>();
+  const addTerm = (text: string | null | undefined, lang: string | null, kind: TermInput["kind"], source: string): void => {
+    if (!text) return;
+    const key = `${kind === "display" ? "designation" : kind}|${normalizeText(text)}`;
+    if (!normalizeText(text) || seen.has(key)) return;
+    seen.add(key);
+    terms.push({ text: String(text), lang: lang || guessLang(String(text)), kind, source });
+  };
+  addTerm(f.display, csLang, "display", "codesystem");
+  for (const d of f.designations) addTerm(d.value, d.language, "designation", "codesystem");
+  const allProps: Array<{ p: Record<string, any>; source: string }> = f.properties.map((p) => ({ p, source: "codesystem" }));
+  for (const s of sups) {
+    const sf = s.flat.get(f.code);
+    if (!sf) continue;
+    const src = `supplement:${s.ref.url}${s.ref.version ? `|${s.ref.version}` : ""}`;
+    addTerm(sf.display, s.lang, "designation", src);
+    for (const d of sf.designations) addTerm(d.value, d.language || s.lang, "designation", src);
+    for (const p of sf.properties) allProps.push({ p, source: src });
+  }
+  for (const { p, source } of allProps) {
+    const code = String(p.code);
+    if (SKIP_PROPERTIES.test(code)) continue;
+    const decl = props.get(code);
+    if (POPULARITY_PROP.test(code) || (!/year|date|time|年/i.test(code) && POPULARITY_PROP.test(decl?.description || ""))) {
+      const n = numericValue(p);
+      if (n !== null) {
+        info.popularity = Math.max(Number(info.popularity ?? 0), n);
+        continue;
+      }
+    }
+    const v = propValue(p);
+    const categorical = CATEGORY_PROP.test(code) || CATEGORY_PROP.test(decl?.description || "");
+    if (v.kind === "coding") {
+      const c = v.value as Record<string, any>;
+      if (c.code == null) continue;
+      links.push({ system: c.system ? String(c.system) : null, code: String(c.code), display: c.display ? String(c.display) : null, via: code });
+      if (categorical && info.category === undefined) info.category = c.display || c.code;
+    } else if (v.kind === "string" && typeof v.value === "string") {
+      const sv = v.value;
+      // A code-typed value that names a LOINC code (e.g. property "loinc" valueCode).
+      if (/^\d{1,7}-\d$/.test(sv.trim()) && /loinc/i.test(`${code} ${decl?.uri || ""}`)) {
+        links.push({ system: "http://loinc.org", code: sv.trim(), display: null, via: code });
+        continue;
+      }
+      if (categorical && info.category === undefined && looksLikeValue(sv)) info.category = sv;
+      if ((decl?.type ?? "string") === "string" && looksLikeValue(sv)) addTerm(sv, null, "property", `${source}#${code}`);
+    }
+  }
+  if (f.definition && f.definition.length <= DEFINITION_MAX) {
+    const nd = normalizeText(f.definition);
+    if (nd && nd !== normalizeText(f.display)) addTerm(f.definition, csLang, "definition", "codesystem");
+  }
+  if (f.parents.length) {
+    info.parents = f.parents.slice(0, 5);
+    if (info.category === undefined) {
+      const pd = base.get(f.parents[0])?.display;
+      if (pd) info.category = pd;
+    }
+  }
+  return { code: f.code, display: f.display ?? terms.find((t) => t.kind === "designation")?.text ?? null, terms, info, links };
+}
+
+/** Assemble searchable concepts from a CodeSystem and the supplements that apply to it. */
+export function assembleCodeSystem(cs: Record<string, any>, supplements: SupplementRef[] = []): AssembledConcept[] {
+  const ctx = assembleCtx(flatten(cs), cs, supplements);
+  const out: AssembledConcept[] = [];
+  for (const f of ctx.base.values()) out.push(assembleOne(f, ctx));
+  return out;
+}
+
+/**
+ * assembleCodeSystem from the database's flattened rows (csRows.ts) and the CodeSystem without its concepts, in slices
+ * of `chunk` rows / concepts with the event loop running in between: a large CodeSystem assembled in one piece was
+ * seconds of synchronous normalisation (staging 2026-11-15). Same concepts as assembleCodeSystem (test).
+ */
+export async function assembleCodeSystemRows(head: Record<string, any>, rows: ConceptRow[], sliceMs = SLICE_MS): Promise<AssembledConcept[]> {
+  const slice = new Slicer(sliceMs);
+  const base = new Map<string, Flat>();
+  for (const r of rows) {
+    addFlat(base, r.node, r.parent);
+    await slice.tick();
+  }
+  finishFlat(base);
+  await slice.next();
+  const ctx = assembleCtx(base, head, []);
   const out: AssembledConcept[] = [];
   for (const f of base.values()) {
-    const terms: TermInput[] = [];
-    const links: LinkCoding[] = [];
-    const info: Record<string, unknown> = {};
-    const seen = new Set<string>();
-    const addTerm = (text: string | null | undefined, lang: string | null, kind: TermInput["kind"], source: string): void => {
-      if (!text) return;
-      const key = `${kind === "display" ? "designation" : kind}|${normalizeText(text)}`;
-      if (!normalizeText(text) || seen.has(key)) return;
-      seen.add(key);
-      terms.push({ text: String(text), lang: lang || guessLang(String(text)), kind, source });
-    };
-    addTerm(f.display, csLang, "display", "codesystem");
-    for (const d of f.designations) addTerm(d.value, d.language, "designation", "codesystem");
-    const allProps: Array<{ p: Record<string, any>; source: string }> = f.properties.map((p) => ({ p, source: "codesystem" }));
-    for (const s of sups) {
-      const sf = s.flat.get(f.code);
-      if (!sf) continue;
-      const src = `supplement:${s.ref.url}${s.ref.version ? `|${s.ref.version}` : ""}`;
-      addTerm(sf.display, s.lang, "designation", src);
-      for (const d of sf.designations) addTerm(d.value, d.language || s.lang, "designation", src);
-      for (const p of sf.properties) allProps.push({ p, source: src });
-    }
-    for (const { p, source } of allProps) {
-      const code = String(p.code);
-      if (SKIP_PROPERTIES.test(code)) continue;
-      const decl = props.get(code);
-      if (POPULARITY_PROP.test(code) || (!/year|date|time|年/i.test(code) && POPULARITY_PROP.test(decl?.description || ""))) {
-        const n = numericValue(p);
-        if (n !== null) {
-          info.popularity = Math.max(Number(info.popularity ?? 0), n);
-          continue;
-        }
-      }
-      const v = propValue(p);
-      const categorical = CATEGORY_PROP.test(code) || CATEGORY_PROP.test(decl?.description || "");
-      if (v.kind === "coding") {
-        const c = v.value as Record<string, any>;
-        if (c.code == null) continue;
-        links.push({ system: c.system ? String(c.system) : null, code: String(c.code), display: c.display ? String(c.display) : null, via: code });
-        if (categorical && info.category === undefined) info.category = c.display || c.code;
-      } else if (v.kind === "string" && typeof v.value === "string") {
-        const sv = v.value;
-        // A code-typed value that names a LOINC code (e.g. property "loinc" valueCode).
-        if (/^\d{1,7}-\d$/.test(sv.trim()) && /loinc/i.test(`${code} ${decl?.uri || ""}`)) {
-          links.push({ system: "http://loinc.org", code: sv.trim(), display: null, via: code });
-          continue;
-        }
-        if (categorical && info.category === undefined && looksLikeValue(sv)) info.category = sv;
-        if ((decl?.type ?? "string") === "string" && looksLikeValue(sv)) addTerm(sv, null, "property", `${source}#${code}`);
-      }
-    }
-    if (f.definition && f.definition.length <= DEFINITION_MAX) {
-      const nd = normalizeText(f.definition);
-      if (nd && nd !== normalizeText(f.display)) addTerm(f.definition, csLang, "definition", "codesystem");
-    }
-    if (f.parents.length) {
-      info.parents = f.parents.slice(0, 5);
-      if (info.category === undefined) {
-        const pd = base.get(f.parents[0])?.display;
-        if (pd) info.category = pd;
-      }
-    }
-    out.push({ code: f.code, display: f.display ?? terms.find((t) => t.kind === "designation")?.text ?? null, terms, info, links });
+    out.push(assembleOne(f, ctx));
+    await slice.tick();
   }
   return out;
 }

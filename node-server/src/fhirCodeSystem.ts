@@ -61,98 +61,148 @@ function propertyValue(p: Record<string, any>): any {
   return undefined;
 }
 
-/** Flatten a CodeSystem resource (any nesting depth) into an index with hierarchy links. */
-export function indexCodeSystem(cs: Record<string, any>): CodeSystemIndex {
-  const concepts = new Map<string, CsConcept>();
-  const ensure = (code: string): CsConcept => {
-    let c = concepts.get(code);
+/**
+ * Builds a CodeSystemIndex concept by concept: `add(raw, parentCode)` for every concept in depth-first pre-order (a
+ * concept before its children, as the nested `concept.concept` lists give them; `raw` without its `concept` list is
+ * enough), then `finish(header)` with the CodeSystem minus its concepts. indexCodeSystem feeds it from the whole
+ * resource; loading by rows (fhirTerminology) feeds it from the database's flattening, a few thousand at a time, so a
+ * 100k-concept CodeSystem is never one synchronous piece of work.
+ */
+export class CodeSystemIndexBuilder {
+  private readonly concepts = new Map<string, CsConcept>();
+
+  private ensure(code: string): CsConcept {
+    let c = this.concepts.get(code);
     if (!c) {
       c = { code, display: null, designations: [], designationList: [], parents: new Set(), children: new Set(), properties: new Map() };
-      concepts.set(code, c);
+      this.concepts.set(code, c);
     }
     return c;
-  };
-  const visit = (list: any[], parent: string | null): void => {
-    for (const raw of list || []) {
-      if (!raw || typeof raw !== "object" || raw.code === undefined || raw.code === null) continue;
-      const code = String(raw.code);
-      const c = ensure(code);
-      if (Array.isArray(raw.extension) && raw.extension.some((e: any) => e && e.url === STANDARDS_STATUS_EXT && e.valueCode === "withdrawn")) c.withdrawn = true;
-      if (raw.display !== undefined && raw.display !== null) {
-        c.display = String(raw.display);
-        c.designations.push(String(raw.display));
+  }
+
+  /** One concept (null / non-object / code-less entries are skipped, with their descendants, by the caller). */
+  add(raw: Record<string, any>, parent: string | null): void {
+    const code = String(raw.code);
+    const c = this.ensure(code);
+    if (Array.isArray(raw.extension) && raw.extension.some((e: any) => e && e.url === STANDARDS_STATUS_EXT && e.valueCode === "withdrawn")) c.withdrawn = true;
+    if (raw.display !== undefined && raw.display !== null) {
+      c.display = String(raw.display);
+      c.designations.push(String(raw.display));
+    }
+    for (const d of raw.designation || []) {
+      if (d && d.value !== undefined && d.value !== null) {
+        c.designations.push(String(d.value));
+        const st = Array.isArray(d.extension) ? d.extension.find((e: any) => e && e.url === STANDARDS_STATUS_EXT) : null;
+        c.designationList.push({ language: typeof d.language === "string" ? d.language : null, value: String(d.value), ...(st && typeof st.valueCode === "string" ? { status: st.valueCode } : {}) });
       }
-      for (const d of raw.designation || []) {
-        if (d && d.value !== undefined && d.value !== null) {
-          c.designations.push(String(d.value));
-          const st = Array.isArray(d.extension) ? d.extension.find((e: any) => e && e.url === STANDARDS_STATUS_EXT) : null;
-          c.designationList.push({ language: typeof d.language === "string" ? d.language : null, value: String(d.value), ...(st && typeof st.valueCode === "string" ? { status: st.valueCode } : {}) });
+    }
+    for (const p of raw.property || []) {
+      if (!p || !p.code) continue;
+      const v = propertyValue(p);
+      if (!c.properties.has(p.code)) c.properties.set(p.code, []);
+      c.properties.get(p.code)!.push(v);
+    }
+    if (parent !== null) {
+      c.parents.add(parent);
+      this.ensure(parent).children.add(code);
+    }
+  }
+
+  /** finish() with the event loop running in between: `pause` is awaited after each concept (a time slicer). */
+  async finishAsync(cs: Record<string, any>, pause: () => Promise<void> | undefined): Promise<CodeSystemIndex> {
+    const steps = this.finishSteps(cs);
+    let r = steps.next();
+    while (!r.done) {
+      await pause();
+      r = steps.next();
+    }
+    return r.value;
+  }
+
+  /** The index, once every concept is in; `cs` is the CodeSystem resource (its `concept` list is not read). */
+  finish(cs: Record<string, any>): CodeSystemIndex {
+    const steps = this.finishSteps(cs);
+    let r = steps.next();
+    while (!r.done) r = steps.next();
+    return r.value;
+  }
+
+  private *finishSteps(cs: Record<string, any>): Generator<void, CodeSystemIndex, void> {
+    const concepts = this.concepts;
+    // Hierarchy expressed through a property: only the first one declared with the URI
+    // http://hl7.org/fhir/concept-properties#parent (CodeSystemUtilities.crossLinkCodeSystem /
+    // getPropertyByUrl, org.hl7.fhir.model tag 7.0.1:688; REVIEW_port_2 G25 — `child` and URI-less
+    // `parent` / `subsumedBy` properties are not hierarchy).
+    const parentProps = new Set<string>();
+    const childProps = new Set<string>();
+    for (const pd of cs.property || []) {
+      if (!pd || !pd.code) continue;
+      if (String(pd.uri || "") === "http://hl7.org/fhir/concept-properties#parent") {
+        parentProps.add(pd.code);
+        break;
+      }
+    }
+    for (const c of [...concepts.values()]) {
+      const parents: any[] = [];
+      for (const k of parentProps) pushEach(parents, c.properties.get(k) || []);
+      const kids: any[] = [];
+      for (const k of childProps) pushEach(kids, c.properties.get(k) || []);
+      for (const p of parents) {
+        // crossLinkConcepts links to existing concepts only (no stub concept for an undefined parent)
+        if (typeof p === "string" && p !== c.code && concepts.has(p)) {
+          c.parents.add(p);
+          concepts.get(p)!.children.add(c.code);
         }
       }
-      for (const p of raw.property || []) {
-        if (!p || !p.code) continue;
-        const v = propertyValue(p);
-        if (!c.properties.has(p.code)) c.properties.set(p.code, []);
-        c.properties.get(p.code)!.push(v);
+      for (const ch of kids) {
+        if (typeof ch === "string" && ch !== c.code) {
+          c.children.add(ch);
+          this.ensure(ch).parents.add(c.code);
+        }
       }
-      if (parent !== null) {
-        c.parents.add(parent);
-        ensure(parent).children.add(code);
-      }
-      if (Array.isArray(raw.concept)) visit(raw.concept, code);
+      yield;
+    }
+    const lower = new Map<string, string>();
+    for (const code of concepts.keys()) {
+      lower.set(code.toLowerCase(), code);
+      yield;
+    }
+    return {
+      url: String(cs.url || ""),
+      version: cs.version ?? null,
+      content: String(cs.content || "complete"),
+      language: typeof cs.language === "string" ? cs.language : null,
+      // CodeSystem.getCaseSensitive(): false when not stated (REVIEW_port_2 G5)
+      caseSensitive: cs.caseSensitive === true,
+      supplements: typeof cs.supplements === "string" && cs.supplements ? cs.supplements : null,
+      propertyCodes: new Map(
+        (Array.isArray(cs.property) ? cs.property : [])
+          .filter((p: any) => p && typeof p.code === "string")
+          .flatMap((p: any) => [[p.code, p.code], ...(typeof p.uri === "string" ? [[p.uri, p.code]] : [])] as Array<[string, string]>),
+      ),
+      concepts,
+      lower,
+    };
+  }
+}
+
+/** Whether a nested `concept` entry is indexed (with its descendants): an object with a code. */
+export function isIndexedConcept(raw: unknown): raw is Record<string, any> {
+  return !!raw && typeof raw === "object" && (raw as Record<string, any>).code !== undefined && (raw as Record<string, any>).code !== null;
+}
+
+/** Flatten a CodeSystem resource (any nesting depth) into an index with hierarchy links. */
+export function indexCodeSystem(cs: Record<string, any>): CodeSystemIndex {
+  const b = new CodeSystemIndexBuilder();
+  const visit = (list: any[], parent: string | null): void => {
+    for (const raw of list || []) {
+      if (!isIndexedConcept(raw)) continue;
+      b.add(raw, parent);
+      if (Array.isArray(raw.concept)) visit(raw.concept, String(raw.code));
     }
   };
   visit(cs.concept || [], null);
-  // Hierarchy expressed through a property: only the first one declared with the URI
-  // http://hl7.org/fhir/concept-properties#parent (CodeSystemUtilities.crossLinkCodeSystem /
-  // getPropertyByUrl, org.hl7.fhir.model tag 7.0.1:688; REVIEW_port_2 G25 — `child` and URI-less
-  // `parent` / `subsumedBy` properties are not hierarchy).
-  const parentProps = new Set<string>();
-  const childProps = new Set<string>();
-  for (const pd of cs.property || []) {
-    if (!pd || !pd.code) continue;
-    if (String(pd.uri || "") === "http://hl7.org/fhir/concept-properties#parent") {
-      parentProps.add(pd.code);
-      break;
-    }
-  }
-  for (const c of [...concepts.values()]) {
-    const parents: any[] = [];
-    for (const k of parentProps) pushEach(parents, c.properties.get(k) || []);
-    const kids: any[] = [];
-    for (const k of childProps) pushEach(kids, c.properties.get(k) || []);
-    for (const p of parents) {
-      // crossLinkConcepts links to existing concepts only (no stub concept for an undefined parent)
-      if (typeof p === "string" && p !== c.code && concepts.has(p)) {
-        c.parents.add(p);
-        concepts.get(p)!.children.add(c.code);
-      }
-    }
-    for (const ch of kids) {
-      if (typeof ch === "string" && ch !== c.code) {
-        c.children.add(ch);
-        ensure(ch).parents.add(c.code);
-      }
-    }
-  }
-  const lower = new Map<string, string>();
-  for (const code of concepts.keys()) lower.set(code.toLowerCase(), code);
-  return {
-    url: String(cs.url || ""),
-    version: cs.version ?? null,
-    content: String(cs.content || "complete"),
-    language: typeof cs.language === "string" ? cs.language : null,
-    // CodeSystem.getCaseSensitive(): false when not stated (REVIEW_port_2 G5)
-    caseSensitive: cs.caseSensitive === true,
-    supplements: typeof cs.supplements === "string" && cs.supplements ? cs.supplements : null,
-    propertyCodes: new Map(
-      (Array.isArray(cs.property) ? cs.property : [])
-        .filter((p: any) => p && typeof p.code === "string")
-        .flatMap((p: any) => [[p.code, p.code], ...(typeof p.uri === "string" ? [[p.uri, p.code]] : [])] as Array<[string, string]>),
-    ),
-    concepts,
-    lower,
-  };
+  return b.finish(cs);
 }
 
 /** Find a concept honouring CodeSystem.caseSensitive (exact match is always tried first). */

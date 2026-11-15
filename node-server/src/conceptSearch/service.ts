@@ -17,7 +17,8 @@ import { admitMemory, oneAtATime } from "../toolConcurrency.js";
 import type { EmbeddingService } from "../embeddingService.js";
 import * as terminology from "../fhirTerminology.js";
 import type { PackageRow } from "../fhirIg.js";
-import { assembleCodeSystem } from "./assemble.js";
+import { assembleCodeSystem, assembleCodeSystemRows } from "./assemble.js";
+import { Slicer, codeSystemConceptRows, codeSystemHead, queryInPages } from "../csRows.js";
 import { abbreviationWords, ConceptIndex, SENSES, fuse, nearCodes, querySegments, queryWords, type FuseOptions, type PhraseSynonyms, type QueryVariant, prepareQuery, type ConceptInput, type RankedConcept, type SemHit, type TermKind } from "./engine.js";
 import { abbreviationKey, applicableExpansions } from "./abbreviations.js";
 import { clinicalCore, compact, LATIN_STOP, normalizeText, tokenize, umlsNorm } from "./text.js";
@@ -397,24 +398,41 @@ export class IgConceptSearch {
 
   private async indexedConcepts(loc: CsLocation): Promise<ConceptInput[]> {
     const params = [loc.packageId, loc.packageVersion, loc.url];
-    const cs = await query<{ code: string; display: string | null; info: Record<string, unknown> | null }>(
-      "SELECT code, display, info FROM fhir.concept_index_concepts WHERE package_id=$1 AND package_version=$2 AND cs_url=$3",
-      params,
-    );
-    const terms = await query<{ code: string; term: string; lang: string | null; kind: string }>(
-      "SELECT code, term, lang, kind FROM fhir.concept_index_terms WHERE package_id=$1 AND package_version=$2 AND cs_url=$3",
-      params,
-    );
+    // through cursors (csRows.queryInPages): a 143k-term CodeSystem is ~20 MB of rows the driver would parse in one turn
+    const cs = {
+      rows: await queryInPages<{ code: string; display: string | null; info: Record<string, unknown> | null }>(
+        "SELECT code, display, info FROM fhir.concept_index_concepts WHERE package_id=$1 AND package_version=$2 AND cs_url=$3",
+        params,
+      ),
+    };
+    const terms = {
+      rows: await queryInPages<{ code: string; term: string; lang: string | null; kind: string }>(
+        "SELECT code, term, lang, kind FROM fhir.concept_index_terms WHERE package_id=$1 AND package_version=$2 AND cs_url=$3",
+        params,
+      ),
+    };
     const by = new Map<string, ConceptInput>();
-    for (const r of cs.rows) by.set(r.code, { code: r.code, display: r.display, terms: [], info: r.info });
+    const slice = new Slicer();
+    for (const r of cs.rows) {
+      by.set(r.code, { code: r.code, display: r.display, terms: [], info: r.info });
+      await slice.tick();
+    }
     for (const t of terms.rows) {
       const c = by.get(t.code);
       if (c) c.terms.push({ text: t.term, lang: t.lang, kind: t.kind as TermKind });
+      await slice.tick();
     }
     return [...by.values()];
   }
 
   private async rawConcepts(loc: CsLocation): Promise<ConceptInput[]> {
+    // the database flattens the CodeSystem (csRows.ts) and it is assembled in slices: never one 30 MB JSON.parse plus
+    // seconds of normalisation on the event loop (v22 G6)
+    const where = "package_id=$1 AND package_version=$2 AND artifact_key=$3";
+    const params = [loc.packageId, loc.packageVersion, loc.artifactKey];
+    const head = await codeSystemHead(where, params);
+    const rows = head ? await codeSystemConceptRows(where, params) : undefined;
+    if (head && rows) return (await assembleCodeSystemRows(head.head, rows)).map((c) => ({ code: c.code, display: c.display, terms: c.terms, info: c.info }));
     const r = await query<{ raw_json: any }>(
       "SELECT raw_json FROM fhir.artifacts WHERE package_id=$1 AND package_version=$2 AND artifact_key=$3",
       [loc.packageId, loc.packageVersion, loc.artifactKey],

@@ -12,6 +12,8 @@ import { createHash } from "node:crypto";
 import { envBudgetBytes, estimateBytes, estimateBytesAsync, trackCache } from "./memSize.js";
 import { txDisplays } from "./txCodeTables.js";
 import { query } from "./db.js";
+import { Slicer, codeSystemConceptRows, codeSystemHead } from "./csRows.js";
+import { oneAtATime } from "./toolConcurrency.js";
 import { pickCanonicalVersion } from "./fhirValidator.js";
 import { languageTagParts, terminologyServerKnows } from "./fhirSpecialSystems.js";
 import type { PackageRow } from "./fhirIg.js";
@@ -21,6 +23,7 @@ import {
   type ExpandResult,
   type TerminologyDeps,
   expandComposeWith,
+  CodeSystemIndexBuilder,
   findConcept,
   indexCodeSystem,
   valueSetContains,
@@ -500,21 +503,76 @@ export async function loadCodeSystemIndex(url: string, pkg: PackageRow, exact = 
 }
 
 /**
- * CodeSystem indexes by the artifact they were built from (package#version|canonical), held weakly: the same artifact
- * reached through another IG's closure reuses the index without fetching and parsing its JSON again (a 30 MB
- * ICD-10-CM JSON: ~1.4 s parse + 0.5 s hash on the event loop, once per closure before; staging 2026-11-15).
+ * CodeSystem indexes by the artifact they were built from (package#version|canonical) and by content (md5 of the stored
+ * JSON, computed by Postgres), held weakly: the same artifact reached through another IG's closure, or the same content
+ * in another package, reuses the index without loading anything.
  */
 const indexByArtifact = new Map<string, WeakRef<CodeSystemIndex>>();
-const indexByArtifactGone = new FinalizationRegistry<string>((k) => {
-  if (!indexByArtifact.get(k)?.deref()) indexByArtifact.delete(k);
+const indexByContent = new Map<string, WeakRef<CodeSystemIndex>>();
+const indexGone = new FinalizationRegistry<{ map: Map<string, WeakRef<CodeSystemIndex>>; key: string }>(({ map, key }) => {
+  if (!map.get(key)?.deref()) map.delete(key);
 });
+function remember(map: Map<string, WeakRef<CodeSystemIndex>>, key: string, idx: CodeSystemIndex): void {
+  map.set(key, new WeakRef(idx));
+  indexGone.register(idx, { map, key });
+}
+
+/** The artifact a CodeSystem lookup resolved to (no JSON loaded yet). */
+interface CsArtifact {
+  packageId: string;
+  packageVersion: string;
+  canonical: string;
+}
+
+/**
+ * The index of one stored CodeSystem without ever parsing its whole JSON on the event loop (v22 G6: a 30 MB ICD-10-CM
+ * JSON was one ~1.4 s JSON.parse, plus a 0.5 s hash of its re-serialisation, per load; with the lag those caused the
+ * staging health checks timed out). Postgres hands over the CodeSystem without its concepts and a content md5, then the
+ * concepts flattened — one row per concept, in the depth-first pre-order of the nested lists, with its parent's code —
+ * and the builder takes them INDEX_ROWS_PER_SLICE at a time. Same index as indexCodeSystem(resource) (test: rows vs
+ * resource). undefined when the database cannot flatten it (the caller loads the resource whole, as before).
+ */
+export async function indexFromRows(a: CsArtifact): Promise<{ index: CodeSystemIndex | null } | undefined> {
+  const artifact = `${a.packageId}#${a.packageVersion}|${a.canonical}`;
+  const known = indexByArtifact.get(artifact)?.deref();
+  if (known) return { index: known };
+  const params = [a.packageId, a.packageVersion, a.canonical];
+  const where = "resource_type = 'CodeSystem' AND package_id = $1 AND package_version = $2 AND canonical_url = $3";
+  const head = await codeSystemHead(where, params);
+  if (!head) return undefined;
+  const cs = head.head;
+  // `not-present` stubs (e.g. SNOMED / LOINC in core) carry no concepts: treat as not held.
+  if (cs.content === "supplement" || cs.content === "not-present") return { index: null };
+  const same = indexByContent.get(head.md5)?.deref();
+  if (same) {
+    remember(indexByArtifact, artifact, same);
+    return { index: same };
+  }
+  const rows = await codeSystemConceptRows(where, params);
+  if (!rows) return undefined;
+  // built in time slices, one large build at a time across the process (oneAtATime, shared with the concept indexes)
+  const idx = await oneAtATime(async () => {
+    const again = indexByContent.get(head.md5)?.deref(); // built meanwhile by a build queued before this one
+    if (again) return again;
+    const b = new CodeSystemIndexBuilder();
+    const slice = new Slicer();
+    for (const r of rows) {
+      b.add(r.node, r.parent);
+      await slice.tick();
+    }
+    await slice.next();
+    return b.finishAsync(cs, () => slice.tick());
+  });
+  remember(indexByArtifact, artifact, idx);
+  remember(indexByContent, head.md5, idx);
+  return { index: idx };
+}
 
 /**
  * The closure's CodeSystem by exact canonical, as loadArtifactByCanonical picks it (rankCandidates reads only package
- * metadata), with the artifact it came from — but only the chosen copy's JSON is fetched, and only when no index of
- * that artifact is alive. undefined = no copy in the closure (the caller falls back as before).
+ * metadata): its artifact, without loading it. undefined = no copy in the closure (the caller falls back as before).
  */
-async function closureCodeSystem(url: string, pkg: PackageRow): Promise<{ artifact: string; index: CodeSystemIndex | null; cs: Record<string, any> | null } | undefined> {
+async function closureCodeSystem(url: string, pkg: PackageRow): Promise<CsArtifact | undefined> {
   const [pids, pvers] = closureArrays(pkg);
   const canonical = url.split("|")[0];
   const rows = (
@@ -523,38 +581,24 @@ async function closureCodeSystem(url: string, pkg: PackageRow): Promise<{ artifa
         "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) " +
         "  ON a.package_id = dep.pid AND a.package_version = dep.pver " +
         "JOIN fhir.ig_packages p ON p.package_id = a.package_id AND p.version = a.package_version " +
-        "WHERE a.resource_type = 'CodeSystem' AND a.canonical_url = $3",
+        "WHERE a.resource_type = 'CodeSystem' AND a.canonical_url = $3 AND a.raw_json IS NOT NULL",
       [pids, pvers, canonical],
     )
   ).rows;
-  const ranked = rankCandidates(
+  const best = rankCandidates(
     canonical,
     rows.map((r) => ({ ...r, packageId: r.package_id, packageVersion: r.package_version, fhirVersion: r.fhir_version, ord: Number(r.ord) })),
-  );
-  for (const r of ranked) {
-    const artifact = `${r.package_id}#${r.package_version}|${canonical}`;
-    const alive = indexByArtifact.get(artifact)?.deref();
-    if (alive) return { artifact, index: alive, cs: null };
-    const raw = (
-      await query<{ raw_json: any }>(
-        "SELECT raw_json FROM fhir.artifacts WHERE resource_type = 'CodeSystem' AND package_id = $1 AND package_version = $2 AND canonical_url = $3 LIMIT 1",
-        [r.package_id, r.package_version, canonical],
-      )
-    ).rows[0];
-    const cs = raw ? jsonOf(raw.raw_json) : null;
-    if (cs) return { artifact, index: null, cs };
-  }
-  return ranked.length ? { artifact: "", index: null, cs: null } : undefined;
+  )[0];
+  return best ? { packageId: best.package_id, packageVersion: best.package_version, canonical } : undefined;
 }
 
 /**
- * The CodeSystem of exactly `version` as loadCodeSystemVersion picks it (pickCanonicalVersion reads only the version),
- * with its artifact — the versions come from the database (raw_json->>'version'), so only the chosen copy's JSON is
- * fetched, and only when no index of it is alive. Before, every copy of the canonical in every installed package was
- * fetched and parsed to pick one (ICD-10-CM 2023: several 30 MB JSONs per Coding.version lookup; staging 2026-11-15:
- * GC took 8–9 s of each 10–13 s event-loop block). undefined = no copy of that version (the caller falls back as before).
+ * The CodeSystem of exactly `version` as loadCodeSystemVersion picks it (pickCanonicalVersion reads only the version):
+ * its artifact, without loading it — the versions come from the database (raw_json->>'version', string only, as the
+ * code reads them). Before, every copy of the canonical in every installed package was parsed to pick one (ICD-10-CM
+ * 2023: several 30 MB JSONs per Coding.version lookup; staging 2026-11-15). undefined = no copy of that version.
  */
-async function versionedCodeSystem(canonical: string, version: string, pkg: PackageRow): Promise<{ artifact: string; index: CodeSystemIndex | null; cs: Record<string, any> | null } | undefined> {
+async function versionedCodeSystem(canonical: string, version: string, pkg: PackageRow): Promise<CsArtifact | undefined> {
   const [pids, pvers] = closureArrays(pkg);
   const rows = (
     await query<{ package_id: string; package_version: string; version: string | null; in_closure: boolean }>(
@@ -567,51 +611,16 @@ async function versionedCodeSystem(canonical: string, version: string, pkg: Pack
     )
   ).rows;
   const pick = pickCanonicalVersion(rows.filter((r) => r.in_closure), version) ?? pickCanonicalVersion(rows, version);
-  if (!pick) return undefined;
-  const artifact = `${pick.package_id}#${pick.package_version}|${canonical}`;
-  const alive = indexByArtifact.get(artifact)?.deref();
-  if (alive) return { artifact, index: alive, cs: null };
-  const raw = (
-    await query<{ raw_json: any }>(
-      "SELECT raw_json FROM fhir.artifacts WHERE resource_type = 'CodeSystem' AND package_id = $1 AND package_version = $2 AND canonical_url = $3 LIMIT 1",
-      [pick.package_id, pick.package_version, canonical],
-    )
-  ).rows[0];
-  const cs = raw ? jsonOf(raw.raw_json) : null;
-  return cs ? { artifact, index: null, cs } : undefined;
-}
-
-/** Index of a resolved CodeSystem artifact, remembered by artifact; null for a supplement / not-present stub. */
-function indexOfArtifact(found: { artifact: string; index: CodeSystemIndex | null; cs: Record<string, any> | null }): CodeSystemIndex | null {
-  if (found.index) return found.index;
-  const cs = found.cs;
-  const idx = cs && cs.content !== "supplement" && cs.content !== "not-present" ? sharedCodeSystemIndex(cs) : null;
-  if (idx && found.artifact) {
-    indexByArtifact.set(found.artifact, new WeakRef(idx));
-    indexByArtifactGone.register(idx, found.artifact);
-  }
-  return idx;
+  return pick ? { packageId: pick.package_id, packageVersion: pick.package_version, canonical } : undefined;
 }
 
 async function loadCodeSystemIndexUncached(url: string, pkg: PackageRow, exact: boolean, key: string, bar: number, version: string): Promise<CodeSystemIndex | null> {
-  if (version) {
-    const found = await versionedCodeSystem(url.slice(0, bar), version, pkg);
-    if (found) {
-      const idx = indexOfArtifact(found);
-      csCache.set(key, idx, 64 + (idx ? await indexBytes(idx) : 0));
-      return idx;
-    }
-  }
-  if (!version) {
-    const found = await closureCodeSystem(url, pkg);
-    if (found && (found.index || found.cs)) {
-      const idx = indexOfArtifact(found);
-      csCache.set(key, idx, 64 + (idx ? await indexBytes(idx) : 0));
-      return idx;
-    }
-    if (found && exact) {
-      csCache.set(key, null, 64);
-      return null;
+  const found = version ? await versionedCodeSystem(url.slice(0, bar), version, pkg) : await closureCodeSystem(url, pkg);
+  if (found) {
+    const built = await indexFromRows(found);
+    if (built) {
+      csCache.set(key, built.index, 64 + (built.index ? await indexBytes(built.index) : 0));
+      return built.index;
     }
   }
   // REVIEW_port_2 G3 (ValueSetValidator.resolveCodeSystem(system, version), tag 7.0.1:654): `url|version` is that

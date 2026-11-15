@@ -11,6 +11,7 @@
  * expansions, zh↔en lexicon bridges); a concept keeps its best variant score.
  */
 
+import { SLICE_MS, Slicer } from "../csRows.js";
 import {
   clinicalCore,
   compact,
@@ -360,12 +361,14 @@ export class ConceptIndex {
    * one synchronous run it stopped every other request for that long (staging 2026-11-15: event-loop lag up to 14 s,
    * health checks timing out). Yields after every `chunk` concepts.
    */
-  static async build(input: ConceptInput[], chunk = 500): Promise<ConceptIndex> {
+  static async build(input: ConceptInput[], sliceMs = SLICE_MS): Promise<ConceptIndex> {
     const idx = new ConceptIndex([]);
-    for (let i = 0; i < input.length; i++) {
-      idx.add(input[i]);
-      if (i % chunk === chunk - 1) await yieldToLoop();
+    const slice = new Slicer(sliceMs);
+    for (const c of input) {
+      idx.add(c);
+      await slice.tick();
     }
+    await slice.next();
     await idx.finish(true);
     return idx;
   }
@@ -413,11 +416,11 @@ export class ConceptIndex {
     this.idf.clear();
     this.maxIdf = 1;
     const n = this.terms.length || 1;
-    for (const [k, p] of this.postings) {
+    const idfOf = (k: string, p: number[]): void => {
       const v = Math.log(1 + (n - p.length + 0.5) / (p.length + 0.5));
       this.idf.set(k, v);
       if (v > this.maxIdf) this.maxIdf = v;
-    }
+    };
     const mass = (from: number, to: number): void => {
       for (let i = from; i < to; i++) {
         const t = this.terms[i];
@@ -427,13 +430,19 @@ export class ConceptIndex {
       }
     };
     if (!yielding) {
+      for (const [k, p] of this.postings) idfOf(k, p);
       mass(0, this.terms.length);
       this.built = this.terms.length;
       return;
     }
     return (async () => {
-      for (let i = 0; i < this.terms.length; i += 20_000) {
-        mass(i, Math.min(this.terms.length, i + 20_000));
+      const slice = new Slicer();
+      for (const [k, p] of this.postings) {
+        idfOf(k, p);
+        await slice.tick();
+      }
+      for (let i = 0; i < this.terms.length; i += 2_000) {
+        mass(i, Math.min(this.terms.length, i + 2_000));
         await yieldToLoop();
       }
       this.built = this.terms.length;

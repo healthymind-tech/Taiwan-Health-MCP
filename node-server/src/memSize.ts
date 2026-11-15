@@ -18,9 +18,25 @@ const ARRAY = 32;
  */
 const CALIBRATION = 1.5;
 
+/**
+ * The children of a large container still to visit: one per visit, so a step stays small (a 97k-entry Map pushed all
+ * its entries in one visit — hundreds of ms of one "visit"). Objects are counted once and strings per occurrence, so
+ * the order of the walk does not change the total.
+ */
+class Pending {
+  constructor(
+    readonly it: Iterator<unknown>,
+    readonly pairs: boolean,
+  ) {}
+}
+const LARGE = 64;
+const walkable = (x: unknown): boolean => x !== null && (typeof x === "object" || typeof x === "string");
+
 /** The walk behind estimateBytes, in steps: `step(n)` visits at most n more values; true when done. */
 class SizeWalk {
-  private readonly seen = new WeakSet<object>();
+  // a plain Set, dropped with the walk: a WeakSet of millions of objects (a large index) made every add and the next
+  // major GC slow (ephemeron tables; a 645 ms pause in the v22 G6 measurements)
+  private readonly seen = new Set<object>();
   private readonly stack: unknown[];
   total = 0;
 
@@ -41,6 +57,17 @@ class SizeWalk {
     for (let visited = 0; stack.length && visited < n; visited++) {
       const v = stack.pop();
       if (v === null || v === undefined) continue;
+      if (v instanceof Pending) {
+        const r = v.it.next();
+        if (r.done) continue;
+        stack.push(v);
+        if (v.pairs) {
+          const [k, x] = r.value as [unknown, unknown];
+          if (typeof k === "string" || (k !== null && typeof k === "object")) stack.push(k);
+          if (walkable(x)) stack.push(x);
+        } else if (walkable(r.value)) stack.push(r.value);
+        continue;
+      }
       switch (typeof v) {
         case "string":
           total += STRING + 2 * v.length;
@@ -57,16 +84,20 @@ class SizeWalk {
           seen.add(o);
           if (Array.isArray(o)) {
             total += ARRAY + SLOT * o.length;
-            for (const x of o) if (x !== null && (typeof x === "object" || typeof x === "string")) stack.push(x);
+            if (o.length > LARGE) stack.push(new Pending(o[Symbol.iterator](), false));
+            else for (const x of o) if (walkable(x)) stack.push(x);
           } else if (o instanceof Map) {
             total += OBJECT + MAP_ENTRY * o.size;
-            for (const [k, x] of o) {
-              if (typeof k === "string" || (k !== null && typeof k === "object")) stack.push(k);
-              if (x !== null && (typeof x === "object" || typeof x === "string")) stack.push(x);
-            }
+            if (o.size > LARGE) stack.push(new Pending(o.entries(), true));
+            else
+              for (const [k, x] of o) {
+                if (typeof k === "string" || (k !== null && typeof k === "object")) stack.push(k);
+                if (walkable(x)) stack.push(x);
+              }
           } else if (o instanceof Set) {
             total += OBJECT + MAP_ENTRY * o.size;
-            for (const x of o) if (x !== null && (typeof x === "object" || typeof x === "string")) stack.push(x);
+            if (o.size > LARGE) stack.push(new Pending(o.values(), false));
+            else for (const x of o) if (walkable(x)) stack.push(x);
           } else if (ArrayBuffer.isView(o)) {
             total += OBJECT + (o as ArrayBufferView).byteLength;
           } else if (!(o instanceof Promise) && !(o instanceof WeakMap) && !(o instanceof WeakSet)) {
@@ -103,9 +134,14 @@ export function estimateBytes(value: unknown, limit = Infinity): number {
  * estimateBytes without holding the event loop: yields after every `chunk` values (a 600 MB concept index is tens of
  * millions of values — about a second of walking in one piece).
  */
-export async function estimateBytesAsync(value: unknown, limit = Infinity, chunk = 20_000): Promise<number> {
+export async function estimateBytesAsync(value: unknown, limit = Infinity, chunk = 5_000, sliceMs = 15): Promise<number> {
   const w = new SizeWalk(value, limit);
-  while (!w.step(chunk)) await new Promise((resolve) => setImmediate(resolve));
+  let start = performance.now();
+  while (!w.step(chunk)) {
+    if (performance.now() - start < sliceMs) continue;
+    await new Promise((resolve) => setImmediate(resolve));
+    start = performance.now();
+  }
   return w.bytes;
 }
 

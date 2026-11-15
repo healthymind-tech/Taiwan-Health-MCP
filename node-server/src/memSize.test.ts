@@ -71,3 +71,52 @@ test("TtlCache shared: one object held under several keys is weighed once; the w
   plain.set("b", idx, 600);
   assert.equal(plain.size, 1, "without `shared` every key pays (unchanged)");
 });
+
+test("estimateBytes walks large containers child by child and still counts exactly what the one-visit walk counted", async () => {
+  const { estimateBytes, estimateBytesAsync } = await import("./memSize.js");
+  // the walk before v22 G6 (all children pushed in one visit), as the reference
+  const reference = (value: unknown): number => {
+    const seen = new WeakSet<object>();
+    const stack: unknown[] = [value];
+    let total = 0;
+    while (stack.length) {
+      const v = stack.pop();
+      if (v === null || v === undefined) continue;
+      if (typeof v === "string") total += 16 + 2 * v.length;
+      else if (typeof v === "number") total += 8;
+      else if (typeof v === "object") {
+        if (seen.has(v)) continue;
+        seen.add(v);
+        const push = (x: unknown): void => void (x !== null && (typeof x === "object" || typeof x === "string") && stack.push(x));
+        if (Array.isArray(v)) {
+          total += 32 + 8 * v.length;
+          v.forEach(push);
+        } else if (v instanceof Map) {
+          total += 24 + 40 * v.size;
+          for (const [k, x] of v) {
+            if (typeof k === "string" || (k !== null && typeof k === "object")) stack.push(k);
+            push(x);
+          }
+        } else if (v instanceof Set) {
+          total += 24 + 40 * v.size;
+          v.forEach(push);
+        } else {
+          const keys = Object.keys(v);
+          total += 24 + 8 * keys.length;
+          for (const k of keys) {
+            const x = (v as Record<string, unknown>)[k];
+            if (typeof x === "number") total += 8;
+            else push(x);
+          }
+        }
+      }
+    }
+    return Math.round(total * 1.5);
+  };
+  const shared = { name: "shared", list: Array.from({ length: 100 }, (_, i) => `s${i}`) };
+  const concepts = new Map(Array.from({ length: 5000 }, (_, i) => [`C${i}`, { code: `C${i}`, n: i, parents: new Set(i ? [`C${i - 1}`] : []), shared, terms: Array.from({ length: i % 90 }, (_, j) => `t${j}`) }]));
+  const value = { concepts, lower: new Map([...concepts.keys()].map((k) => [k.toLowerCase(), k])), big: Array.from({ length: 3000 }, (_, i) => (i % 3 ? { i } : shared)) };
+  const want = reference(value);
+  assert.equal(estimateBytes(value), want);
+  assert.equal(await estimateBytesAsync(value, Infinity, 100), want);
+});
