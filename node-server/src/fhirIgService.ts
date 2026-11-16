@@ -9,6 +9,7 @@
  * service for semantic normalize_code.
  */
 
+import { queryInPages } from "./csRows.js";
 import { envBudgetBytes } from "./memSize.js";
 import { completeDocument, repairNarratives, repairSystemVersions } from "./fhirRepair/document.js";
 import { annotateChanges, autoFixBundle, buildAmbiguous, countByCategory, EntryMap, guardNoNewErrors, noneDisabled, type Disabled, type ExposedErrorsMode, type PipelineResult } from "./fhirRepair/autoFix.js";
@@ -1918,15 +1919,16 @@ export class FHIRIGService {
     const targetSystems = new Set(targets.map((t) => t.system));
     const maps = await conceptMapsMemo.get(terminology.closureKey(pkg), async () => {
       const [pids, pvers] = terminology.closureArrays(pkg);
-      const rows = (
-        await query<{ raw_json: any }>(
-          "SELECT a.raw_json FROM fhir.artifacts a " +
-            "JOIN unnest($1::text[], $2::text[]) AS dep(pid, pver) " +
-            "  ON a.package_id = dep.pid AND a.package_version = dep.pver " +
-            "WHERE a.resource_type = 'ConceptMap'",
-          [pids, pvers],
-        )
-      ).rows;
+      // a closure's ConceptMaps are megabytes of JSON: 20 per page through a cursor, so the driver never parses them in
+      // one turn of the event loop (v22 G6)
+      const rows = await queryInPages<{ raw_json: any }>(
+        "SELECT a.raw_json FROM fhir.artifacts a " +
+          "JOIN unnest($1::text[], $2::text[]) AS dep(pid, pver) " +
+          "  ON a.package_id = dep.pid AND a.package_version = dep.pver " +
+          "WHERE a.resource_type = 'ConceptMap'",
+        [pids, pvers],
+        20,
+      );
       return rows.map((r) => jsonValue(r.raw_json));
     });
     const needle = (text || "").trim().toLowerCase();

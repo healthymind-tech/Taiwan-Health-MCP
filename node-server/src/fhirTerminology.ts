@@ -692,9 +692,11 @@ export async function loadThoCurrentIndex(canonical: string): Promise<CodeSystem
   const key = `tho-current|${canonical}`;
   const cached = csCache.get(key);
   if (cached !== undefined) return cached;
+  // metadata only to rank (same FROM / WHERE as when the JSON came along, so the same row order behind `ord`); then the
+  // chosen copy is indexed from rows (csRows.ts) — every THO copy's JSON was fetched and parsed per lookup (v22 G6)
   const rows = (
-    await query<{ raw_json: any; package_id: string; package_version: string; fhir_version: string | null }>(
-      "SELECT a.raw_json, a.package_id, a.package_version, p.fhir_version FROM fhir.artifacts a " +
+    await query<{ raw_null: boolean; content: string | null; package_id: string; package_version: string; fhir_version: string | null }>(
+      "SELECT (a.raw_json IS NULL) AS raw_null, a.raw_json->>'content' AS content, a.package_id, a.package_version, p.fhir_version FROM fhir.artifacts a " +
         "JOIN fhir.ig_packages p ON p.package_id = a.package_id AND p.version = a.package_version " +
         "WHERE a.resource_type = 'CodeSystem' AND a.canonical_url = $1 AND a.package_id LIKE 'hl7.terminology%'",
       [canonical],
@@ -702,8 +704,16 @@ export async function loadThoCurrentIndex(canonical: string): Promise<CodeSystem
   ).rows;
   const cands = rows.map((r, i) => ({ ...r, packageId: r.package_id, packageVersion: r.package_version, fhirVersion: r.fhir_version, ord: i }));
   const best = rankCandidates(canonical, cands)[0];
-  const cs = best ? jsonOf(best.raw_json) : null;
-  const idx = cs && cs.content === "complete" ? sharedCodeSystemIndex(cs) : null;
+  let idx: CodeSystemIndex | null = null;
+  if (best && !best.raw_null && best.content === "complete") {
+    const built = await indexFromRows({ packageId: best.package_id, packageVersion: best.package_version, canonical });
+    if (built) idx = built.index;
+    else {
+      const raw = (await query<{ raw_json: any }>("SELECT raw_json FROM fhir.artifacts WHERE resource_type = 'CodeSystem' AND package_id = $1 AND package_version = $2 AND canonical_url = $3 LIMIT 1", [best.package_id, best.package_version, canonical])).rows[0];
+      const cs = raw ? jsonOf(raw.raw_json) : null;
+      idx = cs && cs.content === "complete" ? sharedCodeSystemIndex(cs) : null;
+    }
+  }
   csCache.set(key, idx, 64 + (idx ? await indexBytes(idx) : 0));
   return idx;
 }

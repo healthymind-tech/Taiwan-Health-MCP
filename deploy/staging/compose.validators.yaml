@@ -29,6 +29,25 @@ x-validator: &validator
     retries: 3
 
 services:
+  # Postgres sized like production (6 GB / 2.5 GB shared buffers there) within what this shared host leaves: 4 GB,
+  # 1 GB shared buffers, no CPU cap below the host. compose.limits.yaml's 1.25 GB / 384 MB / 1.5 CPUs (made for the small
+  # staging) made IG queries take 10-97 s under the 16-IG soak (v22 G6).
+  postgres:
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_prewarm
+      - -c
+      - pg_prewarm.autoprewarm=false
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - effective_cache_size=3GB
+    mem_limit: 4g
+    memswap_limit: 4g
+    cpus: 4
   hl7-validator-twcore:
     <<: *validator
     environment: { VALIDATOR_IG: "tw.gov.mohw.twcore#1.0.0", JAVA_XMX: 2048m }

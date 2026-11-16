@@ -37,14 +37,14 @@ export async function codeSystemHead(where: string, params: unknown[]): Promise<
  * transaction mode keeps it). The rows come in the query's order.
  */
 export const PAGE_ROWS = 2000;
-export async function queryInPages<T>(text: string, params: unknown[]): Promise<T[]> {
+export async function queryInPages<T>(text: string, params: unknown[], pageRows = PAGE_ROWS): Promise<T[]> {
   return withTransaction(async (client) => {
     await client.query(`DECLARE big_rows NO SCROLL CURSOR FOR ${text}`, params as never[]);
     const out: T[] = [];
     for (;;) {
-      const page = await client.query(`FETCH ${PAGE_ROWS} FROM big_rows`);
+      const page = await client.query(`FETCH ${pageRows} FROM big_rows`);
       for (const r of page.rows) out.push(r as T);
-      if (page.rows.length < PAGE_ROWS) break;
+      if (page.rows.length < pageRows) break;
       await yieldToLoop();
     }
     await client.query("CLOSE big_rows");
