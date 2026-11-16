@@ -14,7 +14,7 @@
  *                           with their display (for such systems the only local names).
  */
 
-import { query } from "./db.js";
+import { Slicer, queryInPages } from "./csRows.js";
 import type { PackageRow } from "./fhirIg.js";
 import * as terminology from "./fhirTerminology.js";
 import type { CodeCheck } from "./fhirValidator.js";
@@ -56,20 +56,23 @@ const enumMemo = new TtlMemo<Map<string, EnumeratedCode>>(ENUM_TTL_MS, 200);
 export function enumeratedCodes(system: string, pkg: PackageRow): Promise<Map<string, EnumeratedCode>> {
   return enumMemo.get(`${terminology.closureKey(pkg)}|${system}`, async () => {
     const [pids, pvers] = terminology.closureArrays(pkg);
-    const rows = (
-      await query<{ url: string | null; inc: unknown }>(
-        "SELECT a.canonical_url AS url, a.raw_json -> 'compose' -> 'include' AS inc FROM fhir.artifacts a " +
-          "JOIN unnest($1::text[], $2::text[]) AS dep(pid, pver) ON a.package_id = dep.pid AND a.package_version = dep.pver " +
-          "WHERE a.resource_type = 'ValueSet' AND a.raw_json -> 'compose' -> 'include' @> jsonb_build_array(jsonb_build_object('system', $3::text))",
-        [pids, pvers, system],
-      )
-    ).rows;
+    // the includes of large enumerated ValueSets (tens of thousands of drug codes) are megabytes: a few per page through a
+    // cursor, and the map built in time slices — rebuilt every ENUM_TTL_MS, it stalled the event loop for seconds (v22 G6)
+    const rows = await queryInPages<{ url: string | null; inc: unknown }>(
+      "SELECT a.canonical_url AS url, a.raw_json -> 'compose' -> 'include' AS inc FROM fhir.artifacts a " +
+        "JOIN unnest($1::text[], $2::text[]) AS dep(pid, pver) ON a.package_id = dep.pid AND a.package_version = dep.pver " +
+        "WHERE a.resource_type = 'ValueSet' AND a.raw_json -> 'compose' -> 'include' @> jsonb_build_array(jsonb_build_object('system', $3::text))",
+      [pids, pvers, system],
+      5,
+    );
     const out = new Map<string, EnumeratedCode>();
+    const slice = new Slicer();
     for (const r of rows) {
       const incs: any[] = Array.isArray(r.inc) ? r.inc : [];
       for (const inc of incs) {
         if (!inc || inc.system !== system || !Array.isArray(inc.concept)) continue;
         for (const c of inc.concept) {
+          await slice.tick();
           if (!c || typeof c.code !== "string" || !c.code) continue;
           const cur: EnumeratedCode = out.get(c.code) ?? { display: typeof c.display === "string" && c.display ? c.display : null, valueSets: [] };
           if (r.url && !cur.valueSets.includes(r.url)) cur.valueSets.push(r.url);
@@ -84,18 +87,19 @@ export function enumeratedCodes(system: string, pkg: PackageRow): Promise<Map<st
 /** The display a ValueSet of any installed package lists for (system, code); the validator's server serves those editions too. */
 export async function installedEnumeratedDisplay(system: string, code: string): Promise<string | null> {
   const all = await enumMemo.get(`installed|${system}`, async () => {
-    const rows = (
-      await query<{ inc: unknown }>(
-        "SELECT a.raw_json -> 'compose' -> 'include' AS inc FROM fhir.artifacts a " +
-          "WHERE a.resource_type = 'ValueSet' AND a.raw_json -> 'compose' -> 'include' @> jsonb_build_array(jsonb_build_object('system', $1::text))",
-        [system],
-      )
-    ).rows;
+    const rows = await queryInPages<{ inc: unknown }>(
+      "SELECT a.raw_json -> 'compose' -> 'include' AS inc FROM fhir.artifacts a " +
+        "WHERE a.resource_type = 'ValueSet' AND a.raw_json -> 'compose' -> 'include' @> jsonb_build_array(jsonb_build_object('system', $1::text))",
+      [system],
+      5,
+    );
     const out = new Map<string, EnumeratedCode>();
+    const slice = new Slicer();
     for (const r of rows) {
       for (const inc of Array.isArray(r.inc) ? (r.inc as any[]) : []) {
         if (!inc || inc.system !== system || !Array.isArray(inc.concept)) continue;
         for (const c of inc.concept) {
+          await slice.tick();
           if (c && typeof c.code === "string" && typeof c.display === "string" && c.display && !out.has(c.code)) out.set(c.code, { display: c.display, valueSets: [] });
         }
       }

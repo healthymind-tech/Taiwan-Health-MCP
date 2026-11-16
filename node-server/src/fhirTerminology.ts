@@ -737,7 +737,7 @@ export async function loadValueSet(url: string, pkg: PackageRow): Promise<Record
   const cached = vsCache.get(key);
   if (cached !== undefined) return cached;
   const vs = (await loadByCanonical("ValueSet", url, pkg)) ?? (await implicitLoincAnswerList(url.split("|")[0]));
-  vsCache.set(key, vs, 64 + (vs ? estimateBytes(vs) : 0));
+  vsCache.set(key, vs, 64 + (vs ? await estimateBytesAsync(vs) : 0));
   return vs;
 }
 

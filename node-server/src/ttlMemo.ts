@@ -14,7 +14,7 @@
  * the value it saw first, whatever the shared memo evicts. A rejected lookup is unpinned too.
  */
 import { cacheLimits, currentSnapshot } from "./fhirValidationSnapshot.js";
-import { estimateBytes, trackCache } from "./memSize.js";
+import { estimateBytesAsync, trackCache } from "./memSize.js";
 
 interface Entry<V> {
   at: number;
@@ -62,10 +62,13 @@ export class TtlMemo<V> {
     if (max <= 0) return;
     this.map.set(key, entry);
     if (this.maxBytes !== Infinity) {
+      // measured in time slices (estimateBytesAsync): a large settled value is a long walk (v22 G6)
       entry.value.then(
-        (v) => {
+        async (v) => {
           if (this.map.get(key) !== entry) return; // replaced or evicted meanwhile
-          entry.bytes = 64 + estimateBytes(v);
+          const bytes = 64 + (await estimateBytesAsync(v));
+          if (this.map.get(key) !== entry) return;
+          entry.bytes = bytes;
           this.bytes += entry.bytes;
           this.shrink(key);
         },
