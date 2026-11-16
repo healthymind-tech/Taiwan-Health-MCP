@@ -12,7 +12,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import pg from "pg";
 import { config } from "./config.js";
-import { logError } from "./logger.js";
+import { logError, logWarning } from "./logger.js";
 
 const { Pool } = pg;
 
@@ -65,6 +65,22 @@ export function queryCount(): number {
 }
 
 /**
+ * A result of this many rows is parsed by the driver on the event loop (rows × columns, in large socket chunks): logged,
+ * SQL text only (never parameters), at most once per statement per 10 minutes — the queries that should page through a
+ * cursor (csRows.queryInPages) show up here (v22 G6).
+ */
+const LARGE_RESULT_ROWS = 5000;
+const largeNoted = new Map<string, number>();
+function noteLargeResult(text: string, rows: number, ms: number): void {
+  const key = text.slice(0, 140);
+  const now = Date.now();
+  if ((largeNoted.get(key) ?? 0) > now - 600_000) return;
+  if (largeNoted.size > 500) largeNoted.clear();
+  largeNoted.set(key, now);
+  logWarning("large query result", { rows, ms: Math.round(ms), sql: key.replace(/\s+/g, " ") });
+}
+
+/**
  * Run a query against the pool.
  *
  * @param text  SQL text (unnamed; never pass a `name`).
@@ -79,7 +95,10 @@ export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
 ): Promise<pg.QueryResult<T>> {
   queriesIssued++;
   try {
-    return await getPool().query<T>(text, params as never[]);
+    const t0 = performance.now();
+    const res = await getPool().query<T>(text, params as never[]);
+    if (res.rows.length >= LARGE_RESULT_ROWS) noteLargeResult(text, res.rows.length, performance.now() - t0);
+    return res;
   } catch (err) {
     recordQueryFailure(err);
     throw err;
