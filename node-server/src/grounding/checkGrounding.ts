@@ -2169,6 +2169,8 @@ function* groundingSteps(
     const profTails = profileTails(res);
     const fixedCode = profTails.some((t) => FIXED_CODE_PROFILES.has(t));
     for (const u of units) {
+      // a step per unit: one entry with many codings against a long record was seconds of name matching (staging G6)
+      yield;
       stats.units_total += 1;
       let cls = u.cls;
       if (cls === "exempt" || cls === "site") {
