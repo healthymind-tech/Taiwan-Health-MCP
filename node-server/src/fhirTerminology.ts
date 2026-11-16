@@ -412,36 +412,50 @@ export function isCorePackage(id: string): boolean {
 }
 
 /** Load a conformance/terminology resource by canonical across the package closure (best candidate). */
+/** The closure's copies of a canonical artifact, best first (as loadArtifactByCanonical picks), metadata only. */
+async function rankedArtifacts(resourceType: string, url: string, pkg: PackageRow, hl7Current: boolean): Promise<Array<{ package_id: string; package_version: string }>> {
+  const [pids, pvers] = closureArrays(pkg);
+  const canonical = url.split("|")[0];
+  // version / derivation straight from the stored JSON (string values only, as the code reads them): the ranking needs
+  // nothing else, so no copy's JSON is fetched to rank (v22 G6: every copy of a large StructureDefinition / ValueSet /
+  // CodeSystem was fetched and parsed on the event loop to keep the first)
+  const rows = (
+    await query<{ ord: number; package_id: string; package_version: string; fhir_version: string | null; version: string | null; derivation: string | null }>(
+      "SELECT dep.ord, a.package_id, a.package_version, p.fhir_version, " +
+        "CASE WHEN jsonb_typeof(a.raw_json->'version') = 'string' THEN a.raw_json->>'version' END AS version, " +
+        "a.raw_json->>'derivation' AS derivation FROM fhir.artifacts a " +
+        "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) " +
+        "  ON a.package_id = dep.pid AND a.package_version = dep.pver " +
+        "JOIN fhir.ig_packages p ON p.package_id = a.package_id AND p.version = a.package_version " +
+        "WHERE a.resource_type = $3 AND a.canonical_url = $4 AND a.raw_json IS NOT NULL",
+      [pids, pvers, resourceType, canonical],
+    )
+  ).rows;
+  const cands = rows.map((r) => ({ ...r, packageId: r.package_id, packageVersion: r.package_version, fhirVersion: r.fhir_version, ord: Number(r.ord) }));
+  if (hl7Current) return rankHl7Current(canonical, cands, (r) => ({ resourceType, derivation: r.derivation }));
+  return rankCandidates(canonical, cands);
+}
+
+/** Does the closure hold this canonical artifact at all? (metadata only — never fetches the resource) */
+export async function hasArtifactByCanonical(resourceType: string, url: string, pkg: PackageRow): Promise<boolean> {
+  return (await rankedArtifacts(resourceType, url, pkg, false)).length > 0;
+}
+
 export async function loadArtifactByCanonical(
   resourceType: string,
   url: string,
   pkg: PackageRow,
   opts: { hl7Current?: boolean; packageFix?: (json: Record<string, any>, packageId: string) => Record<string, any> } = {},
 ): Promise<Record<string, any> | null> {
-  const [pids, pvers] = closureArrays(pkg);
   const canonical = url.split("|")[0];
-  const rows = (
-    await query<{ raw_json: any; ord: number; package_id: string; package_version: string; fhir_version: string | null }>(
-      "SELECT a.raw_json, dep.ord, a.package_id, a.package_version, p.fhir_version FROM fhir.artifacts a " +
-        "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) " +
-        "  ON a.package_id = dep.pid AND a.package_version = dep.pver " +
-        "JOIN fhir.ig_packages p ON p.package_id = a.package_id AND p.version = a.package_version " +
-        "WHERE a.resource_type = $3 AND a.canonical_url = $4",
-      [pids, pvers, resourceType, canonical],
-    )
-  ).rows;
-  const cands = rows.map((r) => ({ ...r, packageId: r.package_id, packageVersion: r.package_version, fhirVersion: r.fhir_version, ord: Number(r.ord) }));
-  if (opts.hl7Current) {
-    const parsed = cands
-      .map((r) => ({ ...r, json: jsonOf(r.raw_json) }))
-      .filter((r) => r.json)
-      .map((r) => ({ ...r, version: typeof r.json!.version === "string" ? (r.json!.version as string) : null }));
-    const best = rankHl7Current(canonical, parsed, (r) => r.json)[0];
-    return best ? (opts.packageFix ? opts.packageFix(best.json!, best.package_id) : best.json!) : null;
-  }
-  const ranked = rankCandidates(canonical, cands);
-  for (const r of ranked) {
-    const json = jsonOf(r.raw_json);
+  for (const r of await rankedArtifacts(resourceType, url, pkg, !!opts.hl7Current)) {
+    const row = (
+      await query<{ raw_json: any }>(
+        "SELECT raw_json FROM fhir.artifacts WHERE resource_type = $1 AND package_id = $2 AND package_version = $3 AND canonical_url = $4 AND raw_json IS NOT NULL LIMIT 1",
+        [resourceType, r.package_id, r.package_version, canonical],
+      )
+    ).rows[0];
+    const json = row ? jsonOf(row.raw_json) : null;
     if (json) return opts.packageFix ? opts.packageFix(json, r.package_id) : json;
   }
   return null;
@@ -1504,5 +1518,5 @@ export async function valueSetMembership(
 
 /** Does the package closure hold a CodeSystem with exactly this canonical (any content mode)? */
 export async function codeSystemInClosure(url: string, pkg: PackageRow): Promise<boolean> {
-  return (await loadArtifactByCanonical("CodeSystem", url, pkg)) !== null;
+  return hasArtifactByCanonical("CodeSystem", url, pkg);
 }

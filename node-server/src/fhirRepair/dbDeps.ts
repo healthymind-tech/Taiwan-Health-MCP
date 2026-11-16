@@ -134,7 +134,7 @@ export function repairDepsFor(
     resolveSystem: async (url, code): Promise<SystemResolution> => {
       const u = url.split("|")[0];
       if (!/^[a-z][a-z0-9+.-]*:/i.test(u)) return { kind: "other" };
-      if (await terminology.loadArtifactByCanonical("CodeSystem", u, pkg)) return { kind: "codesystem" };
+      if (await terminology.hasArtifactByCanonical("CodeSystem", u, pkg)) return { kind: "codesystem" };
       if (await loadValueSetAnywhere(pkg, u)) return { kind: "valueset", valueSet: u };
       const vsTwin = twinUrl(u, "/CodeSystem/", "/ValueSet/");
       if (vsTwin && (await loadValueSetAnywhere(pkg, vsTwin))) return { kind: "valueset", valueSet: vsTwin };
@@ -147,7 +147,7 @@ export function repairDepsFor(
       // HL7 spaces: only what the HL7 validator itself rejects ("No definition could be found for URL value").
       if (isKnownSpace(u) && !hl7UrlMustResolve(u)) return { kind: "other" };
       const csTwin = twinUrl(u, "/ValueSet/", "/CodeSystem/");
-      const twinHeld = csTwin ? await terminology.loadArtifactByCanonical("CodeSystem", csTwin, pkg) : null;
+      const twinHeld = csTwin ? await terminology.hasArtifactByCanonical("CodeSystem", csTwin, pkg) : false;
       return { kind: "unknown", codeSystemTwin: twinHeld ? csTwin : null };
     },
     valueSetSystems: async (url) => {
