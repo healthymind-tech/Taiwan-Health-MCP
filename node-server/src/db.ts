@@ -70,6 +70,8 @@ export function queryCount(): number {
  * cursor (csRows.queryInPages) show up here (v22 G6).
  */
 const LARGE_RESULT_ROWS = 5000;
+/** …and a query taking this long (a few rows of large JSON parse as long as many small ones). */
+const SLOW_QUERY_MS = 1000;
 const largeNoted = new Map<string, number>();
 function noteLargeResult(text: string, rows: number, ms: number): void {
   const key = text.slice(0, 140);
@@ -97,7 +99,8 @@ export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
   try {
     const t0 = performance.now();
     const res = await getPool().query<T>(text, params as never[]);
-    if (res.rows.length >= LARGE_RESULT_ROWS) noteLargeResult(text, res.rows.length, performance.now() - t0);
+    const ms = performance.now() - t0;
+    if (res.rows.length >= LARGE_RESULT_ROWS || ms >= SLOW_QUERY_MS) noteLargeResult(text, res.rows.length, ms);
     return res;
   } catch (err) {
     recordQueryFailure(err);
