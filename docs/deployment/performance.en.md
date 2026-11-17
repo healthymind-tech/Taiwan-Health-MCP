@@ -56,8 +56,13 @@ The app's memory figure is always the live heap after the last major GC ÷ the h
 | `MCP_SESSION_IDLE_MS` / `MCP_MAX_SESSIONS` | `3600000` / `500` | Idle MCP sessions are closed; an unknown session id answers 404 and the client initialises again |
 | `OFFICIAL_VALIDATOR_RECYCLE_HOURS` | `24` | Each resident validator is drained and restarted after this much service (`0` = never) |
 | `OFFICIAL_VALIDATOR_KEEPALIVE_MS` | `1200000` | How often each validator sends a tiny request that needs the terminology server: tx.fhir.org closes a session idle for 30 minutes, and a validator answering from its local cache never contacts it, so the session expires anyway (`0` = off) |
+| `MCP_EVENT_LOOP_ALERT_MS` | `10000` | Every 30 s the longest event-loop delay is checked; above this a warning line and `mcp_event_loop_lag_alert = 1` (a monitored metric, no restart; `0` = off) |
 
 Clients should retry a 503 after `Retry-After`; a rotation can last until the longest call in flight ends (about 5 minutes). The validator JVM defaults to `-Xmx2048m` (`VALIDATOR_JAVA_XMX`, 3 GB container: under load the JVM commits its whole heap and needs ~0.6 GB more); its GC log is `/tmp/gc.log` in the container. `app` and `admin-worker` run with `init: true` (tini) and write no core dumps.
+
+### Event loop (v22)
+
+Large terminology data is never loaded in one go on the main thread: a CodeSystem's concepts are flattened into rows by Postgres (`csRows.ts`), read in pages through a server-side cursor, and the index is built in 15 ms slices; canonical lookups compare metadata first and fetch only the chosen copy's JSON; ConceptMaps and enumerated ValueSet codes also come through a cursor. **Do not put a CPU cap on the `app` container**: V8's GC and the libuv threads share its CPU quota with the event loop — on staging with 1 CPU, 80 % of scheduling periods were throttled and the event loop stalled for 10–16 s. The heavy tools themselves (validation, grounding) still run on the main thread, so under extreme load a single stall can reach seconds; `MCP_EVENT_LOOP_ALERT_MS` monitors it.
 
 ## Background jobs
 

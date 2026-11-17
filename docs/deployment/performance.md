@@ -56,8 +56,13 @@ MCP 伺服器以 Node.js（Express + `@modelcontextprotocol/sdk`）實作。若�
 | `MCP_SESSION_IDLE_MS` / `MCP_MAX_SESSIONS` | `3600000` / `500` | 閒置的 MCP session 自動關閉；未知的 session id 回 404，用戶端重新 initialize |
 | `OFFICIAL_VALIDATOR_RECYCLE_HOURS` | `24` | 每個常駐驗證器服務這麼久後先排空再重啟（`0` = 不回收） |
 | `OFFICIAL_VALIDATOR_KEEPALIVE_MS` | `1200000` | 每隔這麼久讓每個驗證器送一個需要術語伺服器的小請求：tx.fhir.org 會關閉閒置 30 分鐘的 session，驗證器多半用本機快取回答而不連線，session 仍會過期（`0` = 關閉） |
+| `MCP_EVENT_LOOP_ALERT_MS` | `10000` | 每 30 秒檢查一次事件迴圈最長的延遲；超過時寫一行 warning，`mcp_event_loop_lag_alert = 1`（監控指標，不會重啟；`0` = 關閉） |
 
 用戶端收到 503 時請依 `Retry-After` 重試，輪替期間最久可能持續到最長的進行中呼叫結束（約 5 分鐘）。驗證器 JVM 預設 `-Xmx2048m`（`VALIDATOR_JAVA_XMX`，3 GB 容器：JVM 在負載下會把整個 heap 撐滿，另外還需要約 0.6 GB），GC log 在容器內 `/tmp/gc.log`。`app` 與 `admin-worker` 以 `init: true`（tini）執行、不產生 core dump。
+
+### 事件迴圈（v22）
+
+大型術語資料不會在主執行緒一次載入：CodeSystem 的概念由 Postgres 攤平成 row（`csRows.ts`），經 server-side cursor 分頁讀取，索引以 15 ms 為一段分段建構；canonical 查詢先比對 metadata，只取選中的那一份 JSON；ConceptMap、ValueSet 列舉代碼也走 cursor。`app` 容器**不要設 CPU 上限**：V8 的 GC 與 libuv 執行緒會和事件迴圈搶同一份 CPU 配額，staging 在 1 顆 CPU 下有 80% 的排程週期被節流，事件迴圈停頓 10–16 秒。重負載工具（驗證、grounding）本身仍在主執行緒執行，負載極高時單次停頓可達數秒，以 `MCP_EVENT_LOOP_ALERT_MS` 監控。
 
 ## 背景工作
 
