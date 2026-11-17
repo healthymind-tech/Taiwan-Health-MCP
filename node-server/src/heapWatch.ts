@@ -17,6 +17,7 @@
  * Pure over its clock and sampler (tests); the server wires `onRotate`.
  */
 
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import { logError, logInfo, logWarning } from "./logger.js";
 
 export const ROTATE_EXIT_CODE = 75; // EX_TEMPFAIL: a planned restart, not a crash
@@ -97,6 +98,45 @@ export class HeapWatch {
 
 function round3(x: number): number {
   return Math.round(x * 1000) / 1000;
+}
+
+/**
+ * Event-loop lag alert (v22 G6, a monitored metric, not a gate): the longest event-loop delay of each watch interval;
+ * above MCP_EVENT_LOOP_ALERT_MS (10 s; 0 = off) a warning line and gauge mcp_event_loop_lag_alert = 1 for that interval.
+ * Below EVENT_LOOP_STALL_SECONDS (the watchdog that kills a hung loop) by design: slow, not hung.
+ */
+export class LagWatch {
+  private readonly h = monitorEventLoopDelay({ resolution: 20 });
+  private alerting = false;
+
+  constructor(private readonly alertMs: number) {
+    if (alertMs > 0) this.h.enable();
+  }
+
+  get alert(): number {
+    return this.alerting ? 1 : 0;
+  }
+
+  /** The longest delay since the last sample (ms), checked against the alert threshold; the histogram restarts. */
+  sample(): number {
+    if (this.alertMs <= 0) return 0;
+    const maxMs = this.h.max / 1e6;
+    this.h.reset();
+    this.check(maxMs);
+    return maxMs;
+  }
+
+  /** (tests) one interval's longest delay */
+  check(maxMs: number): void {
+    const was = this.alerting;
+    this.alerting = maxMs > this.alertMs;
+    if (this.alerting) logWarning("event loop lag alert: the event loop was blocked longer than the alert threshold", { lag_max_ms: Math.round(maxMs), alert_ms: this.alertMs });
+    else if (was) logInfo("event loop lag alert cleared", { lag_max_ms: Math.round(maxMs) });
+  }
+}
+
+export function lagAlertMsFromEnv(): number {
+  return envNum("MCP_EVENT_LOOP_ALERT_MS", 10_000);
 }
 
 /**

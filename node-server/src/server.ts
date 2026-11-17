@@ -24,7 +24,7 @@ import { initBroadcast, startWsRelay, handleAdminWsConnection } from "./admin/ad
 import { initPool, getPool, closePool } from "./db.js";
 import { monitor as dbHealthMonitor } from "./dbHealth.js";
 import { initClient, closeClient } from "./cache.js";
-import { countOpenSessionsWith, reportHeapAlertWith, startDbStatsCollector, startMetricsServer } from "./metrics.js";
+import { countOpenSessionsWith, reportHeapAlertWith, reportLagAlertWith, startDbStatsCollector, startMetricsServer } from "./metrics.js";
 import { buildMcpServer, buildOpenApiSpec, invokeRegisteredTool, toolRegistryReady } from "./mcp.js";
 import { toolErrorFields } from "./toolErrors.js";
 import { seedIfEmpty } from "./admin/adminSettings.js";
@@ -40,7 +40,7 @@ import * as minioService from "./minioService.js";
 import { allowedCorsOrigin, bearerTokenMatches, publicOrigin } from "./publicToolsSecurity.js";
 import { runWithRawRequest } from "./requestContext.js";
 import { SessionRegistry, sessionLimitsFromEnv } from "./mcpSessions.js";
-import { Drain, HeapWatch, ROTATE_EXIT_CODE, heapWatchOptionsFromEnv } from "./heapWatch.js";
+import { Drain, HeapWatch, LagWatch, ROTATE_EXIT_CODE, heapWatchOptionsFromEnv, lagAlertMsFromEnv } from "./heapWatch.js";
 import { heapUsedRatio, onMajorGc } from "./toolConcurrency.js";
 import { officialValidator } from "./officialValidator.js";
 import { shedTrackedCaches } from "./memSize.js";
@@ -557,6 +557,9 @@ async function main(): Promise<void> {
     void exitAfterDrain("heap rotation", envMs("MCP_ROTATE_DRAIN_MS", 330_000), ROTATE_EXIT_CODE);
   });
   reportHeapAlertWith(() => watch.alert);
+  const lag = new LagWatch(lagAlertMsFromEnv());
+  reportLagAlertWith(() => lag.alert);
+  setInterval(() => lag.sample(), envMs("MCP_HEAP_WATCH_INTERVAL_MS", 30_000)).unref();
   officialValidator().startKeepalive();
   onMajorGc((ratio) => watch.sample(ratio, Date.now()));
   setInterval(() => watch.sample(heapUsedRatio(), Date.now()), envMs("MCP_HEAP_WATCH_INTERVAL_MS", 30_000)).unref();

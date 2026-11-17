@@ -65,6 +65,20 @@ export function reportHeapAlertWith(fn: () => number): void {
   heapAlert = fn;
 }
 
+let lagAlert: () => number = () => 0;
+/** server.ts registers the event-loop lag alert state. */
+export function reportLagAlertWith(fn: () => number): void {
+  lagAlert = fn;
+}
+
+export const lagAlertGauge = new Gauge({
+  name: "mcp_event_loop_lag_alert",
+  help: "1 while the last watch interval's longest event-loop delay was above MCP_EVENT_LOOP_ALERT_MS (heapWatch.ts)",
+  collect() {
+    this.set(lagAlert());
+  },
+});
+
 export const heapAlertGauge = new Gauge({
   name: "mcp_heap_alert",
   help: "1 while the live heap has stayed above MCP_HEAP_ALERT_RATIO for MCP_HEAP_ALERT_MINUTES (heapWatch.ts)",

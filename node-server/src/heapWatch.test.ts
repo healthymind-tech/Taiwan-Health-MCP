@@ -90,3 +90,19 @@ test("options from env: defaults 0.75 / 10 min, 0.85 / 5 min", () => {
     keys.forEach((k, i) => (saved[i] === undefined ? delete process.env[k] : (process.env[k] = saved[i])));
   }
 });
+
+test("event-loop lag alert: on above the threshold for an interval, cleared below; 0 = off", async () => {
+  const { LagWatch, lagAlertMsFromEnv } = await import("./heapWatch.js");
+  const w = new LagWatch(10_000);
+  w.check(3_000);
+  assert.equal(w.alert, 0);
+  w.check(12_000);
+  assert.equal(w.alert, 1);
+  w.check(800);
+  assert.equal(w.alert, 0);
+  assert.equal(new LagWatch(0).sample(), 0, "off");
+  const saved = process.env.MCP_EVENT_LOOP_ALERT_MS;
+  delete process.env.MCP_EVENT_LOOP_ALERT_MS;
+  assert.equal(lagAlertMsFromEnv(), 10_000);
+  if (saved !== undefined) process.env.MCP_EVENT_LOOP_ALERT_MS = saved;
+});
