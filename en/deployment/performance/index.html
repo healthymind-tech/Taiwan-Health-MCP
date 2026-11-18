@@ -29,7 +29,7 @@
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -2003,6 +2003,56 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Concurrency">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#concurrency-cap-for-heavy-tools-ops-v1-o4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concurrency cap for heavy tools (ops-v1 O4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memory-caps-ops-v1-o3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory caps (ops-v1 O3)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memory-safety-net-v22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory safety net (v22)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#event-loop-v22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Event loop (v22)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2432,6 +2482,56 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Concurrency">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#concurrency-cap-for-heavy-tools-ops-v1-o4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concurrency cap for heavy tools (ops-v1 O4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memory-caps-ops-v1-o3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory caps (ops-v1 O3)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memory-safety-net-v22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory safety net (v22)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#event-loop-v22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Event loop (v22)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2500,6 +2600,98 @@
 <li>Watch pool usage through Prometheus (<code>mcp_db_pool_size</code> / <code>mcp_db_pool_checked_out</code>).</li>
 <li>Multiple container instances can share one PostgreSQL and one Redis.</li>
 </ol>
+<h3 id="concurrency-cap-for-heavy-tools-ops-v1-o4">Concurrency cap for heavy tools (ops-v1 O4)<a class="headerlink" href="#concurrency-cap-for-heavy-tools-ops-v1-o4" title="Permanent link">&para;</a></h3>
+<p><code>fhir_validate_bundle</code>, <code>fhir_validate_resource</code>, <code>fhir_finalize_bundle</code>, <code>fhir_finalize_resource</code>, <code>fhir_author_resources</code>, <code>fhir_assemble_bundle</code>, <code>fhir_check_grounding</code> and <code>fhir_check_completeness</code> share one in-process concurrency gate (<code>node-server/src/toolConcurrency.ts</code>; MCP, <code>POST /tools/&lt;name&gt;</code> and the admin playground all pass through it):</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MCP_HEAVY_TOOL_CONCURRENCY</code></td>
+<td><code>4</code></td>
+<td>Heavy calls running at once; <code>0</code> = no cap</td>
+</tr>
+<tr>
+<td><code>MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS</code></td>
+<td><code>60000</code></td>
+<td>Calls over the cap wait in FIFO order for at most this long</td>
+</tr>
+<tr>
+<td><code>MCP_HEAVY_TOOL_MAX_QUEUE</code></td>
+<td><code>32</code></td>
+<td>Waiting calls; beyond it a call is answered at once</td>
+</tr>
+</tbody>
+</table>
+<p>A call that cannot start in time gets an <code>isError</code> result with <code>error.code = "BUSY"</code>, <code>retry_after_s</code> and <code>concurrency_limit</code> instead of dragging the whole service down; other tools never wait. Clients (e.g. evaluation harnesses) should keep at most <code>MCP_HEAVY_TOOL_CONCURRENCY</code> such calls in flight. Prometheus <code>mcp_heavy_tools_running</code> / <code>mcp_heavy_tools_queued</code> show the gate's state.</p>
+<h3 id="memory-caps-ops-v1-o3">Memory caps (ops-v1 O3)<a class="headerlink" href="#memory-caps-ops-v1-o3" title="Permanent link">&para;</a></h3>
+<p>Every container has a <code>mem_limit</code> (with an equal <code>memswap_limit</code> — no swap use), overridable by environment: Postgres <code>PG_MEM_LIMIT</code> (6g; <code>PG_SHARED_BUFFERS</code> 2560MB, <code>PG_MAINTENANCE_WORK_MEM</code> 512MB, <code>PG_EFFECTIVE_CACHE_SIZE</code> 6GB, set with <code>-c</code> on the <code>command</code>, which wins over <code>postgresql.auto.conf</code>), <code>app</code> <code>APP_MEM_LIMIT</code> (5g, V8 heap <code>APP_MAX_OLD_SPACE_MB</code> 3584), <code>admin-worker</code> <code>WORKER_MEM_LIMIT</code> (9g, heap <code>WORKER_MAX_OLD_SPACE_MB</code> 8192), Redis 768m, MinIO 1g, pgBouncer / nginx / web-v2 256m, ocr-indra 2g. A container over its cap is OOM-killed alone and <code>restart: unless-stopped</code> brings it back, instead of the whole host stalling. A Node heap limit must stay below its container's cap.</p>
+<h3 id="memory-safety-net-v22">Memory safety net (v22)<a class="headerlink" href="#memory-safety-net-v22" title="Permanent link">&para;</a></h3>
+<p>The app's memory figure is always the live heap after the last major GC ÷ the heap limit (Prometheus <code>mcp_heap_live_ratio</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MCP_HEAVY_TOOL_HEAP_RATIO</code> / <code>MCP_TOOL_HEAP_RATIO</code></td>
+<td><code>0.8</code> / <code>0.9</code></td>
+<td>Above it heavy / other tools do not start and answer <code>BUSY</code> (<code>reason: "memory"</code>)</td>
+</tr>
+<tr>
+<td><code>MCP_CACHE_SHED_RATIO</code></td>
+<td><code>0.7</code></td>
+<td>Above it every cross-request cache drops its least recently used half (at most once a minute)</td>
+</tr>
+<tr>
+<td><code>MCP_BUILD_ADMIT_RATIO</code></td>
+<td><code>0.85</code></td>
+<td>A large in-memory build (the concept index of a big IG CodeSystem) states its need first; if it does not fit the caches are emptied, and if it still does not fit it is refused and the whole tool call answers <code>BUSY</code> (memory)</td>
+</tr>
+<tr>
+<td><code>MCP_HEAP_ALERT_RATIO</code> / <code>MCP_HEAP_ALERT_MINUTES</code></td>
+<td><code>0.75</code> / <code>10</code></td>
+<td>Sustained above it: one error log line, <code>mcp_heap_alert = 1</code></td>
+</tr>
+<tr>
+<td><code>MCP_HEAP_ROTATE_RATIO</code> / <code>MCP_HEAP_ROTATE_MINUTES</code> / <code>MCP_HEAP_EMERGENCY_RATIO</code></td>
+<td><code>0.85</code> / <code>5</code> / <code>0.95</code></td>
+<td>Self-rotation: caches emptied, new connections and calls get 503 + <code>Retry-After</code>, calls in flight finish (at most <code>MCP_ROTATE_DRAIN_MS</code> 330 s), the process exits 75 and the restart policy starts a fresh one</td>
+</tr>
+<tr>
+<td><code>MCP_SESSION_IDLE_MS</code> / <code>MCP_MAX_SESSIONS</code></td>
+<td><code>3600000</code> / <code>500</code></td>
+<td>Idle MCP sessions are closed; an unknown session id answers 404 and the client initialises again</td>
+</tr>
+<tr>
+<td><code>OFFICIAL_VALIDATOR_RECYCLE_HOURS</code></td>
+<td><code>24</code></td>
+<td>Each resident validator is drained and restarted after this much service (<code>0</code> = never)</td>
+</tr>
+<tr>
+<td><code>OFFICIAL_VALIDATOR_KEEPALIVE_MS</code></td>
+<td><code>1200000</code></td>
+<td>How often each validator sends a tiny request that needs the terminology server: tx.fhir.org closes a session idle for 30 minutes, and a validator answering from its local cache never contacts it, so the session expires anyway (<code>0</code> = off)</td>
+</tr>
+<tr>
+<td><code>MCP_EVENT_LOOP_ALERT_MS</code></td>
+<td><code>10000</code></td>
+<td>Every 30 s the longest event-loop delay is checked; above this a warning line and <code>mcp_event_loop_lag_alert = 1</code> (a monitored metric, no restart; <code>0</code> = off)</td>
+</tr>
+</tbody>
+</table>
+<p>Clients should retry a 503 after <code>Retry-After</code>; a rotation can last until the longest call in flight ends (about 5 minutes). The validator JVM defaults to <code>-Xmx2048m</code> (<code>VALIDATOR_JAVA_XMX</code>, 3 GB container: under load the JVM commits its whole heap and needs ~0.6 GB more); its GC log is <code>/tmp/gc.log</code> in the container. <code>app</code> and <code>admin-worker</code> run with <code>init: true</code> (tini) and write no core dumps.</p>
+<h3 id="event-loop-v22">Event loop (v22)<a class="headerlink" href="#event-loop-v22" title="Permanent link">&para;</a></h3>
+<p>Large terminology data is never loaded in one go on the main thread: a CodeSystem's concepts are flattened into rows by Postgres (<code>csRows.ts</code>), read in pages through a server-side cursor, and the index is built in 15 ms slices; canonical lookups compare metadata first and fetch only the chosen copy's JSON; ConceptMaps and enumerated ValueSet codes also come through a cursor. <strong>Do not put a CPU cap on the <code>app</code> container</strong>: V8's GC and the libuv threads share its CPU quota with the event loop — on staging with 1 CPU, 80 % of scheduling periods were throttled and the event loop stalled for 10–16 s. The heavy tools themselves (validation, grounding) still run on the main thread, so under extreme load a single stall can reach seconds; <code>MCP_EVENT_LOOP_ALERT_MS</code> monitors it.</p>
 <h2 id="background-jobs">Background jobs<a class="headerlink" href="#background-jobs" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>ADMIN_MAX_CONCURRENT_JOBS</code> bounds how many jobs <code>admin-worker</code> runs at once (4 by default in compose); per-module resource slots additionally prevent parallel imports of the same module.</li>
@@ -2526,6 +2718,16 @@
 <td><code>mcp_tool_requests_total{tool,status}</code> / <code>mcp_tool_duration_seconds{tool}</code></td>
 <td>Counter / Histogram</td>
 <td>Recorded on every tool call (MCP, <code>POST /tools/&lt;name&gt;</code> and the admin playground share one dispatch point, <code>withToolMetrics</code> in <code>mcp.ts</code>). Labels are only the tool name and <code>status</code> (<code>success</code> / <code>error</code>; a throw or an <code>isError</code> result counts as <code>error</code>) — arguments are never recorded; calls rejected by argument validation before reaching the handler are not counted</td>
+</tr>
+<tr>
+<td><code>mcp_heavy_tools_running</code> / <code>mcp_heavy_tools_queued</code></td>
+<td>Gauge</td>
+<td>Heavy-tool gate: calls running / waiting (ops-v1)</td>
+</tr>
+<tr>
+<td><code>nodejs_heap_size_used_bytes</code>, <code>process_resident_memory_bytes</code>, …</td>
+<td>Gauge</td>
+<td>prom-client default process metrics (memory, CPU, event-loop lag, GC; ops-v1)</td>
 </tr>
 <tr>
 <td><code>mcp_cache_operations_total{prefix,result}</code></td>
@@ -2590,7 +2792,7 @@
       <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": [], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      <script src="../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../../javascripts/lang-switch.js"></script>
       

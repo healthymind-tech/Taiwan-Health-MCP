@@ -29,7 +29,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -2528,7 +2528,7 @@ FHIR-IG toolset),把<strong>一整包扁平 JSON</strong>(多個 list、每個 l
 - 讀回傳的 `unresolved`:**必須是空的**。若有未解析的參照,代表某個 `&quot;&lt;Type&gt;/&lt;key&gt;&quot;` 沒對到任何 entry → 回去修(通常是 key 拼錯或漏轉某筆),再重組。
 
 **Step 6 — 驗證整包**
-- `fhir_validate_bundle(bundle=&lt;上一步的bundle&gt;)`。讀每個 entry 的 `valid`、`referenceIssues` 與 `checked_fully`。
+- `fhir_validate_bundle(bundle=&lt;上一步的bundle&gt;)`。讀每個 entry 的 `valid`、`referenceIssues` 與 `checked_fully`，以及 `extended_findings`（有 `severity: &quot;error&quot;` 的項目要依 `fix` 修正，它不在 `issues` 裡）。
   - 全 valid 且無 referenceIssues → 完成。若 `checked_fully: false`,在交付說明中列出 `profiles_unchecked` / `valuesets_unchecked`(沒能檢查的 Profile / ValueSet),不要宣稱已完整驗證。
   - 否則只修有問題的那幾筆(回階段二對該筆 finalize),再重新 build + validate。
 
@@ -2614,7 +2614,7 @@ FHIR-IG toolset),把<strong>一整包扁平 JSON</strong>(多個 list、每個 l
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u8907\u88fd", "clipboard.copy": "\u8907\u88fd", "search.result.more.one": "\u6b64\u9801\u5c1a\u6709 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.more.other": "\u6b64\u9801\u5c1a\u6709 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.none": "\u6c92\u6709\u7b26\u5408\u7684\u9805\u76ee", "search.result.one": "\u627e\u5230 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.other": "\u627e\u5230 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.placeholder": "\u6253\u5b57\u9032\u884c\u641c\u5c0b", "search.result.term.missing": "\u7f3a\u5c11\u5b57\u8a5e", "select.version": "\u9078\u64c7\u7248\u672c"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      <script src="../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../javascripts/lang-switch.js"></script>
       

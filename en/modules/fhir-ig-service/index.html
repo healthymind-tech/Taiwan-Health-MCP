@@ -29,7 +29,7 @@
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -814,6 +814,17 @@
     <span class="md-ellipsis">
       
         Suggested authoring workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-an-ig-from-install-to-use-v17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding an IG: from install to use (v17)
       
     </span>
   </a>
@@ -2602,6 +2613,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#adding-an-ig-from-install-to-use-v17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding an IG: from install to use (v17)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#key-limitations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2650,7 +2672,7 @@
 <h2 id="tool-groups">Tool groups<a class="headerlink" href="#tool-groups" title="Permanent link">&para;</a></h2>
 <h3 id="1-ig-discovery">1. IG discovery<a class="headerlink" href="#1-ig-discovery" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong><code>fhir_list_igs</code></strong>: lists installed IG packages with <code>packageId</code>, <code>version</code>, <code>title</code>, <code>canonical</code>, <code>fhirVersion</code>, <code>status</code>, <code>isDefault</code>, and declared dependencies. Use this first to pick an IG when several coexist.</li>
+<li><strong><code>fhir_list_igs</code></strong>: lists installed IG packages with <code>packageId</code>, <code>version</code>, <code>title</code>, <code>canonical</code>, <code>fhirVersion</code>, <code>status</code>, <code>isDefault</code>, and declared dependencies. Use this first to pick an IG when several coexist. With <code>query</code> (v17), a conversion target or IG name (Chinese, English or a short name, e.g. "轉為健保事前審查 Bundle", "TWCM", "IPS") is matched against the installed IGs' titles, the short names in their brackets, package-id segments and the ImplementationGuide name / title / description: ranked <code>matches</code>, each with its Bundle profiles (<code>bundle_profiles</code>) — use it when you do not know which <code>package_id</code> / <code>bundle_profile</code> a task means.</li>
 <li><strong><code>fhir_get_ig</code></strong>: details for a single IG, including identity, dependencies, and artifact counts per resource type.</li>
 <li><strong><code>fhir_list_artifacts</code></strong>: lists an IG's conformance artifacts in summary form (StructureDefinition / ValueSet / CodeSystem / examples…), filterable by <code>resource_type</code> or <code>grouping_id</code>.</li>
 <li><strong><code>fhir_search_artifacts</code></strong>: full-text search over artifacts by id, canonical URL, name, title, or description.</li>
@@ -2680,6 +2702,7 @@
 <li><strong><code>fhir_validate_resource</code></strong>: validate a single resource against the profile named in <code>meta.profile</code> (structure + terminology bindings).</li>
 <li><strong><code>fhir_validate_bundle</code></strong>: validate a whole Bundle (each entry against its <code>meta.profile</code>, plus reference integrity inside the Bundle).</li>
 <li>Both validation tools report how complete the check was: <code>checked_fully</code>, <code>profiles_unchecked</code>, <code>valuesets_unchecked</code> (<code>valid</code> keeps the HL7 meaning; a profile or ValueSet that could not be checked is flagged rather than silently passed). The optional <code>source_text</code> / <code>site_config</code> / <code>evidence_map</code> parameters add grounding issues; without them the output is identical to the output before grounding existed.</li>
+<li><code>checked_fully</code> means "every check HL7 validator_cli would do was done"; where it only warns itself (no CodeSystem found, an unknown profile) it stays <code>true</code>. What the local data can prove goes to the separate <code>extended_findings</code>, never to <code>issues</code>: see the <a href="../../tools/fhir-ig-tools/#extended-findings">tool reference</a>.</li>
 </ul>
 <h3 id="5-record-faithfulness-grounding-deterministic-no-llm">5. Record faithfulness (grounding — deterministic, no LLM)<a class="headerlink" href="#5-record-faithfulness-grounding-deterministic-no-llm" title="Permanent link">&para;</a></h3>
 <ul>
@@ -2704,6 +2727,63 @@
 <li><code>fhir_finalize_resource</code> → finalise; assemble multiple resources with <code>fhir_resolve_reference</code> + <code>fhir_build_bundle</code>.</li>
 <li><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code> → validate (pass <code>source_text</code> when the source record is available, or call <code>fhir_check_grounding</code> / <code>fhir_check_completeness</code>).</li>
 </ol>
+<h2 id="adding-an-ig-from-install-to-use-v17">Adding an IG: from install to use (v17)<a class="headerlink" href="#adding-an-ig-from-install-to-use-v17" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Install</strong>: admin console → IG 套件庫 (IG gallery) → add. Two sources:</li>
+<li>a FHIR package registry <code>package id</code> + <code>version</code> (e.g. <code>tw.gov.mohw.nhi.empd</code> <code>0.2.1</code>);</li>
+<li>the IG's published <code>package.tgz</code> (a version the registry lacks, or a ci-build such as <code>…/package.tgz</code> on build.fhir.org).
+   Dependencies are downloaded from the registry automatically; after the import the concept-search index (incl. the bundled CodeSystem supplements) is rebuilt and vectorisation is queued.</li>
+<li><strong>Use</strong>: no code change — every tool finds the new IG by <code>package_id</code> (or the resources' <code>meta.profile</code>): <code>fhir_get_bundle_blueprint</code>, <code>fhir_get_minimal_skeleton</code>, <code>fhir_get_authoring_fields</code>, <code>fhir_finalize_*</code>, <code>fhir_validate_*</code>, grounding / completeness, <code>fhir_author_resources</code> / <code>fhir_assemble_bundle</code>. Short profile ids resolve in the IG and its dependencies. To make calls without <code>package_id</code> use it, set it as the default IG in the gallery.</li>
+<li><strong>Find it</strong>: <code>fhir_list_igs(query="&lt;conversion target or IG name&gt;")</code> returns the matching IGs and their Bundle profiles.</li>
+<li><strong>Self-check</strong>: <code>node-server/scripts/ig-selfcheck/selfcheck.ts &lt;package#version&gt;</code> runs <code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code> on each of the IG's own examples and calls <code>fhir_get_minimal_skeleton</code>, <code>fhir_get_authoring_fields</code> (and <code>fhir_get_bundle_blueprint</code> for Bundle profiles) for every profile; <code>--out</code> also writes the corpus for the validator_cli comparison (<code>compare_cli.py</code>). On a host shared with production run it inside <code>scripts/dev/run-limited.sh</code>.</li>
+<li><strong>Time</strong>: measured 2026-10-30 on a staging stack capped at 1.5 CPU — one IG imports in about 2–7 minutes (index rebuilds take most of it); see the table.</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>IG</th>
+<th>Source</th>
+<th>Import time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tw.gov.mohw.nhi.base 1.0.0</code></td>
+<td>registry</td>
+<td>250 s</td>
+</tr>
+<tr>
+<td><code>tw.gov.mohw.emr 0.2.0</code></td>
+<td>registry</td>
+<td>130 s</td>
+</tr>
+<tr>
+<td><code>tw.gov.mohw.cdc.twidir 0.1.1</code></td>
+<td>registry</td>
+<td>420 s</td>
+</tr>
+<tr>
+<td><code>tw.gov.mohw.nhi.ci 1.0.2</code></td>
+<td>registry</td>
+<td>340 s</td>
+</tr>
+<tr>
+<td><code>tw.gov.mohw.nhi.ngs 1.0.0</code></td>
+<td>registry</td>
+<td>170 s</td>
+</tr>
+<tr>
+<td><code>tw.gov.mohw.nhi.empd 0.2.1</code></td>
+<td>registry</td>
+<td>200 s</td>
+</tr>
+<tr>
+<td><code>hl7.fhir.uv.ips 2.0.1</code></td>
+<td>registry</td>
+<td>240 s</td>
+</tr>
+</tbody>
+</table>
 <h2 id="key-limitations">Key limitations<a class="headerlink" href="#key-limitations" title="Permanent link">&para;</a></h2>
 <ul>
 <li>In-process validation is based on profile snapshots and terminology bindings. Although it is benchmarked against HL7 validator_cli 7.0.1, it is <strong>not</strong> equivalent to conformance certification by the official HL7 FHIR Validator.</li>
@@ -2768,7 +2848,7 @@
       <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": [], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      <script src="../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../../javascripts/lang-switch.js"></script>
       

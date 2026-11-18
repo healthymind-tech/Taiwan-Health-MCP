@@ -29,7 +29,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -2619,7 +2619,7 @@ curl -X POST http://localhost:8080/tools/search_medical_codes \
   -d '{&quot;keyword&quot;: &quot;diabetes&quot;, &quot;limit&quot;: 3}'
 </code></pre>
 <p>工具清單會隨各模組的資料載入狀態動態增減（門檻為 <code>moduleStatus.ts</code> 的 <code>REQUIREMENTS</code>，以 <code>MODULE_REQUIREMENTS</code> 匯出），
-因此 <code>/openapi.json</code> 的內容會依部署的資料狀態而不同。<code>mcp.ts</code> 共定義 <strong>70 個工具</strong>、12 個群組；其中 FHIR Servers、
+因此 <code>/openapi.json</code> 的內容會依部署的資料狀態而不同。<code>mcp.ts</code> 共定義 <strong>73 個工具</strong>、12 個群組；其中 FHIR Servers、
 Clinical Calculators 與 System 三組（15 個工具）永遠註冊。管理後台的 <strong>MCP 工具</strong>頁（<code>/admin/mcp</code>）會列出完整目錄、
 每個未註冊工具缺少的條件，並提供可直接呼叫已註冊工具的 playground。</p>
 <p>工具已註冊只代表必要的來源資料存在，<strong>不代表 semantic embedding 已完整回填</strong>。
@@ -2940,7 +2940,7 @@ Drug / TFDA 與 FHIR Medication → <code>drug</code>；Lab / LOINC → <code>lo
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u8907\u88fd", "clipboard.copy": "\u8907\u88fd", "search.result.more.one": "\u6b64\u9801\u5c1a\u6709 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.more.other": "\u6b64\u9801\u5c1a\u6709 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.none": "\u6c92\u6709\u7b26\u5408\u7684\u9805\u76ee", "search.result.one": "\u627e\u5230 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.other": "\u627e\u5230 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.placeholder": "\u6253\u5b57\u9032\u884c\u641c\u5c0b", "search.result.term.missing": "\u7f3a\u5c11\u5b57\u8a5e", "select.version": "\u9078\u64c7\u7248\u672c"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      <script src="../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../javascripts/lang-switch.js"></script>
       

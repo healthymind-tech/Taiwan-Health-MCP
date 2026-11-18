@@ -29,7 +29,7 @@
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -1078,6 +1078,50 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#ig-known-defects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IG known defects (v17.3)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parity-v1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parity with the official validator (parity v1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#document-parity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Document Bundle parity (v17.5)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#document-completion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Document Bundle completion (v17.1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#bundle-finalize" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1093,6 +1137,45 @@
     <span class="md-ellipsis">
       
         Content repair (repair="content")
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#official-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The official HL7 validator as the judge (v18 R1)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The official HL7 validator as the judge (v18 R1)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#invariant-literals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failed invariants: literal values and root causes (release v1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#auto-fix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auto-fix, ambiguous and "no new errors" (v19 R1)
       
     </span>
   </a>
@@ -1121,6 +1204,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#v19-pointers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directly applicable fixes (pointer / patches, v19 R3)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1134,6 +1228,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="IG structure: Bundle blueprint and minimal skeleton">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bundle-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prefilled form (fhir_get_bundle_form, v19)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1174,6 +1285,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Checking against the source record (grounding / completeness)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ig-defined-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Values the IG defines are not record facts (v17.2)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1181,6 +1309,84 @@
     <span class="md-ellipsis">
       
         Does the record actually provide it? (record checks)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Does the record actually provide it? (record checks)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#content-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Content gates: blocking and advisory (v20.1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fact coverage and the release gate
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fact coverage and the release gate">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#content-gates-v202" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v20.2: only decidable conditions stop a release (evaluator decision)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fact-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fhir_check_fact_coverage (v18 R3 = v20 R4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#release-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fhir_release_check (v18 R4 + v20 R1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extended-findings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two layers of results: issues and extended_findings
       
     </span>
   </a>
@@ -2614,6 +2820,50 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#ig-known-defects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IG known defects (v17.3)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parity-v1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parity with the official validator (parity v1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#document-parity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Document Bundle parity (v17.5)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#document-completion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Document Bundle completion (v17.1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#bundle-finalize" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2629,6 +2879,45 @@
     <span class="md-ellipsis">
       
         Content repair (repair="content")
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#official-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The official HL7 validator as the judge (v18 R1)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The official HL7 validator as the judge (v18 R1)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#invariant-literals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failed invariants: literal values and root causes (release v1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#auto-fix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auto-fix, ambiguous and "no new errors" (v19 R1)
       
     </span>
   </a>
@@ -2657,6 +2946,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#v19-pointers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directly applicable fixes (pointer / patches, v19 R3)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2670,6 +2970,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="IG structure: Bundle blueprint and minimal skeleton">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bundle-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prefilled form (fhir_get_bundle_form, v19)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2710,6 +3027,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Checking against the source record (grounding / completeness)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ig-defined-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Values the IG defines are not record facts (v17.2)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2717,6 +3051,84 @@
     <span class="md-ellipsis">
       
         Does the record actually provide it? (record checks)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Does the record actually provide it? (record checks)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#content-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Content gates: blocking and advisory (v20.1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fact coverage and the release gate
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fact coverage and the release gate">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#content-gates-v202" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v20.2: only decidable conditions stop a release (evaluator decision)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fact-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fhir_check_fact_coverage (v18 R3 = v20 R4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#release-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fhir_release_check (v18 R4 + v20 R1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extended-findings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two layers of results: issues and extended_findings
       
     </span>
   </a>
@@ -2918,7 +3330,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_normalize_code</code></td>
-<td style="text-align: left;">1.9.0 (v15.2: <code>accepted_by_validator</code> / <code>reason</code>, related accepted candidates first, <code>alternatives</code>); Free text (Chinese or English, abbreviations, chart wording) → candidate codes: SNOMED CT / LOINC / ICD-10 and any CodeSystem of an installed IG (e.g. the NHI payment codes <code>medical-service-payment-tw</code>, see <a href="../../modules/ig-concept-search/">IG Concept Search</a>). IG candidates carry <code>matched_term</code>, <code>matched_language</code>, <code>group</code>/<code>siblings</code> and <code>linked</code> (codes of other systems the concept links to, e.g. a drug's ATC code); <code>system</code> may be a canonical, id or alias (<code>nhi_payment</code>). <strong>Drugs</strong>: Taiwan NHI drug codes are supported — <code>system="medication-nhi-tw"</code> (TW Core) or <code>"nhi-medication"</code> (TWPAS), text = brand or generic name in English or Chinese (<code>Glucophage 500mg</code>, <code>脈優錠 5mg</code>); when the default IG ships only an excerpt of a CodeSystem (TW Core 1.0.0 <code>medication-nhi-tw</code>: 35 codes) and another installed package holds the full list (TW Core 0.3.2: 44,709 codes), the full copy is searched unless <code>package_id</code> / <code>version</code> is given (noted in <code>warnings</code> and <code>data.codesystem_copies</code>). <strong>ATC</strong>: no searchable WHO ATC is held (TW Core <code>medcation-atc-tw</code> has only 27 Taiwan-specific codes) — look up the NHI drug; its candidate's <code>linked</code> is its ATC code (from the bundled NHI medication supplement) <strong>Search and validation agree (v15.2)</strong>: every candidate carries <code>accepted_by_validator</code> (+ <code>reason</code> when false), decided by the validator's own code check for the resolved package; codes only the full copy has are still listed (they identify the drug) but flagged <code>false</code>. When the best candidate is not accepted, accepted candidates related to it (same linked code, a shared rare word, same strength) move to the front (unrelated codes never do), and <code>data.alternatives</code> lists the codings of other systems those candidates link to that the validator accepts (e.g. <code>{system: "http://www.whocc.no/atc", code: "C08CA01", display: "amlodipine", accepted_by_validator: true, value_sets: [...medcation-atc-tw]}</code>, matching the MedicationRequest <code>atc-medication-code</code> slice); keep the drug name in <code>CodeableConcept.text</code></td>
+<td style="text-align: left;">1.10.0 (v16.1 R4: with <code>value_set</code>, SNOMED CT candidates are limited to the ValueSet's <strong>enumerated concepts</strong> as well as its is-a / descendent-of filters — an enumerated-only ValueSet such as a department list was searched over all of SNOMED CT; an include naming the whole system, or a filter that cannot be scoped, lifts the limit); 1.9.0 (v15.2: <code>accepted_by_validator</code> / <code>reason</code>, related accepted candidates first, <code>alternatives</code>); Free text (Chinese or English, abbreviations, chart wording) → candidate codes: SNOMED CT / LOINC / ICD-10 and any CodeSystem of an installed IG (e.g. the NHI payment codes <code>medical-service-payment-tw</code>, see <a href="../../modules/ig-concept-search/">IG Concept Search</a>). IG candidates carry <code>matched_term</code>, <code>matched_language</code>, <code>group</code>/<code>siblings</code> and <code>linked</code> (codes of other systems the concept links to, e.g. a drug's ATC code); <code>system</code> may be a canonical, id or alias (<code>nhi_payment</code>). <strong>Drugs</strong>: Taiwan NHI drug codes are supported — <code>system="medication-nhi-tw"</code> (TW Core) or <code>"nhi-medication"</code> (TWPAS), text = brand or generic name in English or Chinese (<code>Glucophage 500mg</code>, <code>脈優錠 5mg</code>); when the default IG ships only an excerpt of a CodeSystem (TW Core 1.0.0 <code>medication-nhi-tw</code>: 35 codes) and another installed package holds the full list (TW Core 0.3.2: 44,709 codes), the full copy is searched unless <code>package_id</code> / <code>version</code> is given (noted in <code>warnings</code> and <code>data.codesystem_copies</code>). <strong>ATC</strong>: no searchable WHO ATC is held (TW Core <code>medcation-atc-tw</code> has only 27 Taiwan-specific codes) — look up the NHI drug; its candidate's <code>linked</code> is its ATC code (from the bundled NHI medication supplement) <strong>Search and validation agree (v15.2)</strong>: every candidate carries <code>accepted_by_validator</code> (+ <code>reason</code> when false), decided by the validator's own code check for the resolved package; codes only the full copy has are still listed (they identify the drug) but flagged <code>false</code>. When the best candidate is not accepted, accepted candidates related to it (same linked code, a shared rare word, same strength) move to the front (unrelated codes never do), and <code>data.alternatives</code> lists the codings of other systems those candidates link to that the validator accepts (e.g. <code>{system: "http://www.whocc.no/atc", code: "C08CA01", display: "amlodipine", accepted_by_validator: true, value_sets: [...medcation-atc-tw]}</code>, matching the MedicationRequest <code>atc-medication-code</code> slice); keep the drug name in <code>CodeableConcept.text</code></td>
 <td style="text-align: left;"><code>text</code>, <code>value_set</code>, <code>system</code>, <code>limit</code> (10 by default)</td>
 </tr>
 </tbody>
@@ -2955,22 +3367,22 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
-<td style="text-align: left;">1.8.0 (v16 R4: <a href="#content-repair">structure repairs</a> completed — empty arrays (ele-1) removed, a missing <code>resourceType</code> inferred also from a <code>meta.profile</code> string, lossless reshapes (string → array, single ↔ array, one level up / down) no longer withdrawn when they only expose errors the bad shape hid; an inferred <code>resourceType</code> is withdrawn only by an unknown top-level property); 1.7.0 (v15.4: <code>record_issues</code> as the record checks of <code>fhir_validate_bundle</code> 1.16.0 — empty shells); 1.6.0 (v15.3: <code>record_issues</code> as the record checks of <code>fhir_validate_bundle</code> 1.15.0 — absence statements in text fields, text results where a number is needed, a provisional primary diagnosis); 1.5.1 (v15.2.1: <code>alt-coding</code> also for resources without <code>meta.profile</code>); 1.5.0 (v15.2: content repair rule <code>alt-coding</code>); <strong>Call before emitting the final Bundle</strong>: it normalises <code>fullUrl</code>, <code>reference</code> and <code>id</code> (see "Bundle finalisation" below) and, with <code>repair="content"</code> (default), corrects content errors whose fix is uniquely determined — never guessing, undecidable ones reported with candidates (see "<a href="#content-repair">Content repair</a>"; <code>repair="ids"</code> = ids only); numbers keep the caller's spelling (<code>10.0</code> stays <code>10.0</code>). Returns the finalised <code>bundle</code>, every change as <code>changes[{path, from, to, rule}]</code>, the references it could not decide as <code>unresolved[{path, reference, candidates}]</code>, <code>notes</code> and <code>id_map</code>. <code>bundle_type</code> sets <code>Bundle.type</code> (a profile-fixed type is never overridden)</td>
+<td style="text-align: left;">1.17.0 (release v1: a missing fixed / pattern value is filled, an existing different one is never overwritten but reported ambiguous; no no-op changes; ambiguous <code>pointer_out</code> / <code>patch_out</code> — see <a href="#auto-fix">auto-fix</a>); 1.12.0 (v17.5: dead narrative links, <code>system|version</code>, section displays, emptyReason sections — see <a href="#document-completion">document completion</a>); 1.11.0 (v17.1 / v17.3: <a href="#document-completion">document Bundle completion and narrative repair</a>; strings for complex elements, STU3 renames, unknown codes whose display names exactly one code — see <a href="#content-repair">content repair</a>); 1.8.0 (v16 R4: <a href="#content-repair">structure repairs</a> completed — empty arrays (ele-1) removed, a missing <code>resourceType</code> inferred also from a <code>meta.profile</code> string, lossless reshapes (string → array, single ↔ array, one level up / down) no longer withdrawn when they only expose errors the bad shape hid; an inferred <code>resourceType</code> is withdrawn only by an unknown top-level property); 1.7.0 (v15.4: <code>record_issues</code> as the record checks of <code>fhir_validate_bundle</code> 1.16.0 — empty shells); 1.6.0 (v15.3: <code>record_issues</code> as the record checks of <code>fhir_validate_bundle</code> 1.15.0 — absence statements in text fields, text results where a number is needed, a provisional primary diagnosis); 1.5.1 (v15.2.1: <code>alt-coding</code> also for resources without <code>meta.profile</code>); 1.5.0 (v15.2: content repair rule <code>alt-coding</code>); <strong>Call before emitting the final Bundle</strong>: it normalises <code>fullUrl</code>, <code>reference</code> and <code>id</code> (see "Bundle finalisation" below) and, with <code>repair="content"</code> (default), corrects content errors whose fix is uniquely determined — never guessing, undecidable ones reported with candidates (see "<a href="#content-repair">Content repair</a>"; <code>repair="ids"</code> = ids only); numbers keep the caller's spelling (<code>10.0</code> stays <code>10.0</code>). Returns the finalised <code>bundle</code>, every change as <code>changes[{path, from, to, rule}]</code>, the references it could not decide as <code>unresolved[{path, reference, candidates}]</code>, <code>notes</code> and <code>id_map</code>. <code>bundle_type</code> sets <code>Bundle.type</code> (a profile-fixed type is never overridden)</td>
 <td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code> (canonical or id of the target Bundle profile; defaults to <code>meta.profile</code>), <code>bundle_type</code> (R4 bundle-type code), <code>repair</code> (<code>content</code> default / <code>ids</code>), <code>timezone</code> (the site timezone: a UTC offset or an IANA name), <code>site_config</code> (facility settings text; a <code>timezone:</code> line gives the timezone)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
-<td style="text-align: left;">1.14.0 (v16 R3, the <a href="#slice-match">slice / profile mismatch explanations</a> of <code>fhir_validate_bundle</code> 1.17.0); 1.13.1 (v15.4 verification fixes, as <code>fhir_validate_bundle</code> 1.16.1); 1.13.0 (v15.4, as <code>fhir_validate_bundle</code> 1.16.0); 1.12.0 (v15.3, as <code>fhir_validate_bundle</code> 1.15.0); 1.11.1 (v15.2.1, as <code>fhir_validate_bundle</code> 1.14.1); 1.11.0 (v15.2, as <code>fhir_validate_bundle</code> 1.14.0); Validate a single resource (structure + terminology bindings); falls back to <code>meta.profile</code> when <code>profile</code> is omitted. An optional <code>source_text</code> adds a grounding check (see below)</td>
+<td style="text-align: left;">1.22.0 (v19 R3: issues carry <a href="#v19-pointers">pointer and patches</a>, as <code>fhir_validate_bundle</code> 1.25.0); 1.21.0 (parity v1, as <code>fhir_validate_bundle</code> 1.24.0); 1.20.0 (v17.5, as <code>fhir_validate_bundle</code> 1.23.0); 1.19.0 (v17.3, the <a href="#ig-known-defects">IG known defect</a> notes of <code>fhir_validate_bundle</code> 1.22.0); 1.18.0 (v17.2, the <a href="#ig-defined-values">IG-defined value exemption</a> of <code>fhir_validate_bundle</code> 1.21.0); 1.17.0 (v17, the R6 content coverage of <code>fhir_validate_bundle</code> 1.20.0); 1.16.0 (v16.2, the <code>invariant</code> explanations of <code>fhir_validate_bundle</code> 1.19.0); 1.15.0 (v16.1, the <code>options</code> / <code>literals</code> of <code>fhir_validate_bundle</code> 1.18.0); 1.14.0 (v16 R3, the <a href="#slice-match">slice / profile mismatch explanations</a> of <code>fhir_validate_bundle</code> 1.17.0); 1.13.1 (v15.4 verification fixes, as <code>fhir_validate_bundle</code> 1.16.1); 1.13.0 (v15.4, as <code>fhir_validate_bundle</code> 1.16.0); 1.12.0 (v15.3, as <code>fhir_validate_bundle</code> 1.15.0); 1.11.1 (v15.2.1, as <code>fhir_validate_bundle</code> 1.14.1); 1.11.0 (v15.2, as <code>fhir_validate_bundle</code> 1.14.0); Validate a single resource (structure + terminology bindings); falls back to <code>meta.profile</code> when <code>profile</code> is omitted. An optional <code>source_text</code> adds a grounding check (see below)</td>
 <td style="text-align: left;"><code>resource</code>, <code>profile</code>, <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">1.17.0 (v16 R3: <a href="#slice-match">slice / profile mismatch explanations</a> — <code>slice_match</code> / <code>profile_match</code>: the closest slice / profile, the discriminator that failed and how, <code>blocking</code> (the first 5 errors that stop the match), plus <code>set_profile</code> / <code>add_resource</code> suggestions); 1.16.1 (v15.4 verification fixes: SNOMED Chinese-name comparison uses complete noun phrases only, a diagnosis that is an ancestor / descendant of the coded concept is never "something else" (a Chinese name with no exact ICD name relates through its head-final tail, e.g. 社區型肺炎 → 肺炎, to broader concepts only), the IG Chinese-name table loads in the background at startup; without <code>source_text</code> the "result-slot note says no result" rule is a warning); 1.16.0 (v15.4 <a href="#record-checks">record checks</a>: empty shells — an Observation without value, a medication without structured dose / timing, a Condition without a code, whose side fields say not out / undecided / rejected / cannot tell apart: <code>information-absent</code> error when the record confirms it, else warning); 1.15.1 (v15.3 R3 follow-up: SNOMED codes compared with a Chinese diagnosis slot through data-derived Chinese names, see <a href="#record-checks">record checks</a>); 1.15.0 (v15.3 <a href="#record-checks">record checks</a>: <code>information-absent</code> also for text fields — <code>CodeableConcept.text</code> without / with placeholder codings, <code>Dosage.text</code>, <code>valueString</code> / <code>note</code> where the code needs a quantitative result; a provisional / differential / text-only primary Condition standing in for the primary diagnosis the record leaves unestablished → error "the record has no established primary diagnosis"; coded-element <code>G-UNGROUNDED</code> / <code>G-VALUE-MISMATCH</code> say what was compared, carry <code>closest_record_phrase</code> and become warnings without clear counter-evidence); 1.14.1 (v15.2.1: alternative-coding suggestions also for resources that declare no profile); 1.14.0 (v15.2: relatedness gate on Unknown-code suggestions, <code>replace_coding</code> / <code>remove_coding</code> alternative codings, ATC checked against the bundled tx.fhir.org table); Validate an entire Bundle (each entry against its <code>meta.profile</code>, plus reference integrity inside the Bundle). ID-class errors (<code>UUIDs must be valid…</code>, unresolved references, missing fullUrl, bdl-7, invalid id) carry <code>suggestions</code> and a Bundle-level <code>id_map</code> / <code>id_changes</code>; with <code>normalize_ids=true</code> the Bundle is finalised first and validated as <code>normalized_bundle</code> (see "Bundle finalisation" below). An optional <code>source_text</code> adds a grounding check and merges the results (see further below)</td>
+<td style="text-align: left;">1.25.0 (v19 R3: every issue carries <code>pointer</code>, a JSON Pointer into the Bundle <strong>as sent</strong>, and errors carry verified JSON Patch candidates <code>patches</code> — see <a href="#v19-pointers">directly applicable fixes</a>); 1.24.0 (parity v1: new argument <code>bundle_profile</code>, as validator_cli <code>-profile</code>; the parser stage, choice types, fixed / pattern, value sets and displays, and document rules ported from the official 7.0.1 source — see <a href="#parity-v1">parity with the official validator</a>); 1.23.0 (v17.5: document Bundles judged as validator_cli judges them — see <a href="#document-parity">document Bundle parity</a>); 1.22.0 (v17.3: errors the IG's own examples also have carry an <a href="#ig-known-defects">IG known defect</a> note; rename suggestions for STU3 elements); 1.21.0 (v17.2: grounding and the record checks exempt <a href="#ig-defined-values">values the IG defines</a>; dose quotes from a line listing several medicines no longer raise <code>G-CONTEXT-LABEL</code>); 1.20.0 (v17 R2: <a href="#record-checks">R6 content coverage</a> — <code>negated-item-present</code>, <code>duplicate-entry</code>, <code>text-only-fact</code>; new argument <code>content_checks_severity</code>); 1.19.0 (v16.2 R3: a failed profile invariant (<code>Constraint failed: &lt;key&gt;</code>) carries <code>invariant</code> — <code>need</code> (<code>all</code> / <code>one_of</code>), <code>applies_because</code> (the guard of <code>guard implies …</code> that holds), <code>failed</code> (the false parts with the missing path; an extension test also gives its URL, value type and the JSON to add as <code>write</code>) and <code>hint</code>; also on the <code>blocking</code> errors of <code>slice_match</code> / <code>profile_match</code> — in a Bundle an entry's broken rule is often reported only there); 1.18.0 (v16.1 R2 / R3: <a href="#slice-match">slice_match</a> carries <code>options</code> — every allowed slice with its discriminator values — when no slice is close (<code>closest: null</code>) or several are about as close; IG fixed values that look like placeholders (<code>NNxxx</code>, <code>*</code>, <code>&lt;…&gt;</code>) are marked "literal value required by the IG; copy as is" and listed in <code>literals</code>); 1.17.0 (v16 R3: <a href="#slice-match">slice / profile mismatch explanations</a> — <code>slice_match</code> / <code>profile_match</code>: the closest slice / profile, the discriminator that failed and how, <code>blocking</code> (the first 5 errors that stop the match), plus <code>set_profile</code> / <code>add_resource</code> suggestions); 1.16.1 (v15.4 verification fixes: SNOMED Chinese-name comparison uses complete noun phrases only, a diagnosis that is an ancestor / descendant of the coded concept is never "something else" (a Chinese name with no exact ICD name relates through its head-final tail, e.g. 社區型肺炎 → 肺炎, to broader concepts only), the IG Chinese-name table loads in the background at startup; without <code>source_text</code> the "result-slot note says no result" rule is a warning); 1.16.0 (v15.4 <a href="#record-checks">record checks</a>: empty shells — an Observation without value, a medication without structured dose / timing, a Condition without a code, whose side fields say not out / undecided / rejected / cannot tell apart: <code>information-absent</code> error when the record confirms it, else warning); 1.15.1 (v15.3 R3 follow-up: SNOMED codes compared with a Chinese diagnosis slot through data-derived Chinese names, see <a href="#record-checks">record checks</a>); 1.15.0 (v15.3 <a href="#record-checks">record checks</a>: <code>information-absent</code> also for text fields — <code>CodeableConcept.text</code> without / with placeholder codings, <code>Dosage.text</code>, <code>valueString</code> / <code>note</code> where the code needs a quantitative result; a provisional / differential / text-only primary Condition standing in for the primary diagnosis the record leaves unestablished → error "the record has no established primary diagnosis"; coded-element <code>G-UNGROUNDED</code> / <code>G-VALUE-MISMATCH</code> say what was compared, carry <code>closest_record_phrase</code> and become warnings without clear counter-evidence); 1.14.1 (v15.2.1: alternative-coding suggestions also for resources that declare no profile); 1.14.0 (v15.2: relatedness gate on Unknown-code suggestions, <code>replace_coding</code> / <code>remove_coding</code> alternative codings, ATC checked against the bundled tx.fhir.org table); Validate an entire Bundle (each entry against its <code>meta.profile</code>, plus reference integrity inside the Bundle). ID-class errors (<code>UUIDs must be valid…</code>, unresolved references, missing fullUrl, bdl-7, invalid id) carry <code>suggestions</code> and a Bundle-level <code>id_map</code> / <code>id_changes</code>; with <code>normalize_ids=true</code> the Bundle is finalised first and validated as <code>normalized_bundle</code> (see "Bundle finalisation" below). An optional <code>source_text</code> adds a grounding check and merges the results (see further below)</td>
 <td style="text-align: left;"><code>bundle</code>, <code>normalize_ids</code> (<code>false</code> by default), <code>repair</code> (<code>ids</code> default / <code>content</code>, with <code>normalize_ids</code>), <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 </tbody>
 </table>
-<p><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code> also report whether validation was complete: <code>checked_fully</code> (<code>true</code> when every profile and ValueSet was checked and the dependency closure is complete), <code>profiles_unchecked</code>, <code>valuesets_unchecked</code>. <code>valid</code> keeps HL7 semantics (an unresolvable profile is only a warning), so <code>valid: true</code> with <code>checked_fully: false</code> means part of the content was not checked. When definition / terminology lookups failed during the run because of database trouble, <code>lookups_failed</code> (the count) is added; such a run always carries an error issue with <code>code: "exception"</code> and <code>valid</code> is <code>false</code> (1.6.1). <code>|version</code> canonicals (<code>meta.profile</code>, binding, targetProfile, type profile, extension url) are resolved like HL7 validator_cli 7.0.1.</p>
+<p><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code> also report whether validation was complete: <code>checked_fully</code> (<code>true</code> when every check HL7 validator_cli would do was done here), <code>profiles_unchecked</code>, <code>valuesets_unchecked</code>. <code>valid</code> keeps HL7 semantics, so <code>valid: true</code> with <code>checked_fully: false</code> means some check validator_cli would do was not done here (for example a code system it asks its terminology server about and that has no local data). Where validator_cli itself only warns (no CodeSystem found, an unknown profile) the same warning is returned and <code>checked_fully</code> stays <code>true</code>; those cases are judged by <a href="#extended-findings"><code>extended_findings</code></a>. When definition / terminology lookups failed during the run because of database trouble, <code>lookups_failed</code> (the count) is added; such a run always carries an error issue with <code>code: "exception"</code> and <code>valid</code> is <code>false</code> (1.6.1). <code>|version</code> canonicals (<code>meta.profile</code>, binding, targetProfile, type profile, extension url) are resolved like HL7 validator_cli 7.0.1.</p>
 <p>The builtin validator also checks, like HL7 validator_cli 7.0.1 (same release, 1.6.0):</p>
 <ul>
 <li><strong>Where an extension may be used</strong>: the extension definition's <code>context</code> (element / extension types; contexts restricted to other FHIR versions by <code>version-specific-use</code> are skipped) and <code>contextInvariant</code>. A violation is an error at the host element: <code>The extension &lt;url&gt; v&lt;version&gt; is not allowed to be used at this point (this element is [...]; allowed for this version = e:...)</code> or <code>... (based on context invariant '...')</code>. fhirpath contexts are not evaluated locally (never an error).</li>
@@ -2994,6 +3406,44 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <li><strong>An RxNorm display naming another drug</strong>: when the display shares no drug-name word with any known name of the RXCUI (preferred name + alt_names; strengths, units, dose forms, routes, salts and function words are stripped first, a ≥5-letter common prefix counts as the same word), or contains no Latin letters at all (a Chinese brand name), it is an <strong>error</strong> even when only the preferred name is held locally: <code>Wrong Display Name '…' for …#&lt;code&gt;. Valid display is '…'; the display denotes a different concept: …</code>. Another wording of the same drug (synonym, salt, form) stays a warning until <code>rxnorm_import</code> has loaded alt_names, after which it is an error as at tx.fhir.org. SNOMED / LOINC / ICD / CVX displays were already errors (validator_cli too) and are unchanged.</li>
 <li><strong>Failed lookups are never a pass</strong>: when any definition / terminology lookup fails during a validation because of database trouble (connection lost, recovery mode, timeouts; missing tables / columns excepted), the result carries an extra error issue (<code>code: "exception"</code>, <code>Validation incomplete: N … lookups failed …</code>), <code>valid: false</code>, <code>checked_fully: false</code> and <code>lookups_failed</code>; an exception inside the validator itself now returns a normal result with a fatal <code>exception</code> issue instead of a failed tool call.</li>
 <li><code>fhir_validate_bundle</code>: an entry without a usable resource (written as an array, no <code>resourceType</code>) has no <code>entries</code> row; its issues (e.g. <code>must be a simple value, not an Array</code>) are now listed in the Bundle-level <code>issues</code> instead of being lost.</li>
+</ul>
+<h3 id="ig-known-defects">IG known defects (v17.3)<a class="headerlink" href="#ig-known-defects" title="Permanent link">&para;</a></h3>
+<p>Some profiles cannot be met even by the IG's own examples. For example, TWPAS <code>Condition-twpas</code> slices <code>Condition.code.coding</code> by <code>pattern $this</code>, but its slices carry only bindings and no pattern, so no coding matches a slice — and the slicing is closed. No instance written like the examples can ever be valid.</p>
+<ul>
+<li><strong>Detection</strong>: the background job <code>ig_selfcheck</code> (admin "IG 範例自我檢查") runs after every IG import, and when the worker starts for packages not yet checked. It validates every example of a package (the entries of its example Bundles included) against the package's own profiles they declare, using the local validator. An error at the same element under the same <strong>structural</strong> rule (slicing, cardinality, unknown elements, fixed / pattern) in <strong>every</strong> example of a profile is a known defect of that profile (<code>known_invalid</code>). These are not counted: errors caused by the examples' own values (example.org identifiers, formats, date invariants), errors that depend on local terminology or references, and entries an example Bundle happens to hold. Results are stored in <code>fhir.ig_known_defects</code>.</li>
+<li><strong><code>fhir_get_bundle_blueprint</code></strong>: <code>known_invalid</code> lists such slices with the reason, the example files, and where the information goes instead — a CodeableConcept of another slice's profile bound to the same ValueSet, e.g. <code>claim: diagnosis.diagnosisCodeableConcept</code> — and asks you to leave out the references to it too.</li>
+<li><strong><code>fhir_get_minimal_skeleton</code> / <code>fhir_get_authoring_fields</code></strong>: the same note in <code>warnings</code>.</li>
+<li><strong><code>fhir_validate_*</code></strong>: a matching error gets <code>ig_known_defect</code>, plus a note at the end of its message (the entry is likely optional; where its information goes). Severity, the issue set and <code>valid</code> are unchanged.</li>
+</ul>
+<h3 id="parity-v1">Parity with the official validator (parity v1)<a class="headerlink" href="#parity-v1" title="Permanent link">&para;</a></h3>
+<p><code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code> judge as HL7 validator_cli 7.0.1 (with tx.fhir.org) does. The rules below are ported from the official source (<code>org.hl7.fhir.core</code> 7.0.1):</p>
+<ul>
+<li><strong><code>bundle_profile</code> argument</strong> (<code>fhir_validate_bundle</code>): as validator_cli <code>-profile</code>, the Bundle is validated against it as well as its <code>meta.profile</code>. Pass the conversion target's Bundle profile; without it only <code>meta.profile</code> is checked, and MCP does not guess one.</li>
+<li><strong>Parser stage</strong> (<code>JsonParser</code>): unknown properties and JSON shape errors (array / object / primitive) are reported once, judged by the base definition, with the official messages. Later profile matching — slices by profile, reference target profiles — does not see them. An element left with only unknown properties fails ele-1.</li>
+<li><strong>Choice types</strong>: a type the base element does not allow is an <code>Unrecognized property</code>. A type the base allows but a profile that fixes another single type does not gives <code>Extension_PROF_Type</code> (<code>Extension_EXT_Type</code> for an extension), and the value is validated as the profile's type. When a profile defines children for a multi-type choice, the actual type's children apply too.</li>
+<li><strong>Value sets</strong>: a required-bound code whose CodeSystem cannot be inferred gives <code>The System URI could not be determined …</code>. A member with a wrong display fails the binding, as tx <code>$validate-code</code> does.</li>
+<li><strong>fixed / pattern</strong>: compared field by field as the official <code>checkFixedValue</code> does, with its messages.</li>
+<li><strong>Other</strong>: the same rule from different profiles is reported once per profile. A document whose first entry is not a Composition gets <code>The first entry in a document must be a composition</code>, and reachability is still checked.</li>
+</ul>
+<p><strong>Regression</strong>: on the evaluator's 92 reproducible Bundles (PAS + IPS), the error classes agree with the official validator <strong>100%</strong> (0 missed, 0 extra); the 28-Bundle IPS set and the 4 language variants agree as well. What needs a terminology server (SNOMED is-a value sets, all-LOINC value sets, tx display candidates) is left to the v18 official final check.</p>
+<h3 id="document-parity">Document Bundle parity (v17.5)<a class="headerlink" href="#document-parity" title="Permanent link">&para;</a></h3>
+<p>In production there is no official validator: what MCP calls valid is sent. Document Bundles must therefore be judged as HL7 validator_cli 7.0.1 + tx.fhir.org judge them. v17.5 adds these rules:</p>
+<ul>
+<li><strong>References inside the Bundle</strong>: in a document / message Bundle, every reference of every entry other than the Composition must resolve inside the Bundle (the HL7 fullUrl rules, with no type/id fallback). An unresolved one is an error on <code>Bundle</code>, "Can't find '…' in the bundle (Bundle.entry[n].resource.…)", with the fullUrl to use when a resource of that type and id is there under another fullUrl. Such an entry is then also unreachable from the Composition (an error).</li>
+<li><strong>Local narrative links</strong>: an <code>&lt;a href="#x"&gt;</code> with no matching anchor is an error. An anchor can be an <code>id</code> / <code>name</code> in any narrative of the Bundle, or a resource id. The resource then also fails its profile — and so any slice matched by profile — as with the official validator.</li>
+<li><strong><code>url|version</code> uris</strong> (e.g. <code>Coding.system = http://…/v2-0360|2.7</code>): the version must resolve, else an error.</li>
+<li><strong>Displays in non-English resources</strong>: when a resource's <code>language</code> is not English (e.g. <code>zh-TW</code>) and a coding is bound to a ValueSet that <strong>enumerates</strong> its codes (SNOMED CT, LOINC), tx.fhir.org accepts only the display the ValueSet lists (e.g. "Pertussis (disorder)" in IPS <code>target-diseases-uv-ips</code>), and any other display is an error. Probed with validator_cli: <code>zh-TW</code> / <code>fr-LU</code> give errors, <code>en-US</code> or no language do not.</li>
+<li><strong>LOINC displays</strong>: tx.fhir.org uses LOINC 2.83. While the local LOINC is older, the bundled <code>data/terminology/loinc-tx-display.json.gz</code> is used instead — 2,264 renamed codes, e.g. 30954-2 "…Narrative" → "…note", plus LOINC's DisplayName — for validation and the display repair. Once LOINC 2.83 or newer is imported, the local data is the source again.</li>
+</ul>
+<p><strong>Comparison</strong>: on the 4 IPS 1.1.0 examples and their variants (wrong section displays, entries not referenced from a section, urn:uuid fullUrls with relative references), the same after <code>fhir_finalize_bundle</code> (28 Bundles in all), plus 4 language variants, MCP and validator_cli report <strong>exactly the same errors</strong>: 0 missed by MCP, 0 extra.</p>
+<h3 id="document-completion">Document Bundle completion (v17.1)<a class="headerlink" href="#document-completion" title="Permanent link">&para;</a></h3>
+<p>When <code>fhir_finalize_bundle</code> runs with <code>repair="content"</code> (as <code>fhir_assemble_bundle</code> always does), and Bundle.type is document or the Bundle profile fixes it, the Bundle is completed deterministically from the Composition profile:</p>
+<ul>
+<li><code>Bundle.identifier</code>: added when absent (<code>urn:ietf:rfc:3986</code> + a UUID v5 of the Composition; the same document gets the same id). <code>Bundle.timestamp</code>: added only when Composition.date has a time with a UTC offset; otherwise reported — the time is never invented.</li>
+<li><code>Composition.subject</code> / <code>author</code>: added when absent and the Bundle holds exactly one candidate (a Patient; a Practitioner, else an Organization). When the Composition declares no profile, <code>meta.profile</code> is taken from the Bundle profile's composition slice.</li>
+<li><strong>Sections</strong>: the Composition profile's section slices are read (code pattern, title / text minimums, entry target profiles). Every entry not reachable from the Composition is placed into the one section that takes it. The decision goes, in order: its declared profile; the codes the target profile pins and its required code binding; the resource type. A required section with no entry yet comes first. A missing section is created, with the code display from the pattern or the terminology, the title from that display, and a text generated from its entries' names. A missing required section, or an entry several sections could take, is reported — no empty section is created, because an emptyReason is a record fact.</li>
+<li><strong>Narratives</strong> (every resource and section): a text without a div gets one from the string it carries; a div without the XHTML namespace gains it; an invalid status (such as <code>final</code>) becomes <code>generated</code>; a local link to no anchor loses its <code>&lt;a&gt;</code> tag and keeps its text (v17.5).</li>
+<li><strong>v17.5</strong>: a section code pinned by the Composition profile gets the terminology's display; a section with an emptyReason takes no entries (reported instead); a <code>Coding.system</code> written as <code>url|version</code> has the version moved to <code>Coding.version</code>.</li>
 </ul>
 <h3 id="bundle-finalize">Bundle finalisation (fhir_finalize_bundle / normalize_ids)<a class="headerlink" href="#bundle-finalize" title="Permanent link">&para;</a></h3>
 <p>Models — weaker ones especially — write readable but malformed identities: <code>fullUrl: "urn:uuid:patient-1"</code>, references as <code>Patient/patient-1</code> or a bare id, <code>Bundle.id</code> as a urn. None of this is clinical content, yet the official validator rejects the whole Bundle. <code>fhir_finalize_bundle</code> hands that numbering-and-wiring work to the tool. Every rule comes from the FHIR R4 core specification or from the package's StructureDefinitions — <strong>nothing is special-cased per IG</strong>:</p>
@@ -3093,7 +3543,96 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tbody>
 </table>
 <p><strong>Never adds an error</strong>: each resource is validated before and after; when the repaired resource has an error it did not have (a display error revealed by a corrected <code>system</code>, profile rules that apply once <code>meta.profile</code> is moved in), the responsible changes are withdrawn and explained in <code>repair_issues</code> (warning, <code>not applied: …</code>). Exception (evaluator decision): when the only new error after a <code>system</code> correction is the display check of <strong>that same Coding</strong> (<code>Wrong Display Name … for &lt;new system&gt;#&lt;code&gt;</code>), the error existed semantically before — the <code>system</code> correction is kept and listed in <code>changes</code>, and the display error stays reported by the <code>display</code> rule with the candidates the model's display denotes; any other new error still withdraws the change. Since v14.1 the whole Bundle is validated before and after as well: an error only the Bundle context shows (reference targets, entry slices, document rules) also withdraws the change behind it (traced by the error's path and the entries / fullUrls its message names; when it cannot be traced, nothing is applied). The Bundle envelope repairs (resourceType, the rebuilt <code>entry</code> array) make the Bundle readable by the validator at all and are the baseline of that comparison. The same input always gives the same output, a repaired Bundle repaired again yields <code>changes: []</code>, and numbers keep their spelling.</p>
+<p><strong>v17.3 / v17.1 additions (any IG)</strong>:
+- <code>shape</code>: a string written for a complex element becomes the datatype's one string element. <code>dosageInstruction: "500 mg BID"</code> → <code>[{text}]</code>, and likewise Annotation / CodeableConcept / HumanName …; a Narrative becomes <code>{status: "generated", div}</code> with the text XHTML-escaped and the namespace set. A misplaced string (<code>Dosage.note</code>) moves to the one element that defines it, as an Annotation where needed.
+- <code>shape</code>: STU3 elements that R4 renamed are renamed (<code>Immunization.vaccineProtocol</code> → <code>protocolApplied</code>, with <code>doseSequence</code> → <code>doseNumberPositiveInt</code> inside; <code>date</code> → <code>occurrenceDateTime</code>; <code>Observation.comment</code> → <code>note</code>), from the FHIR R4 version changes. Elements R4 removed (<code>notGiven</code>, <code>doseStatus</code>) are reported with how to write them instead, never deleted.
+- <code>code</code>: a Coding whose code is not in its CodeSystem (e.g. <code>4548-5</code>, wrong check digit) while its display is exactly the name of one code of that system → that code. Several codes with that name → unchanged.</p>
 <p><strong>v16 structure repairs (any IG, any depth)</strong>: the max of every element is read from the declared profile's StructureDefinition (else core) — a repeating element given a single value → a one-item array, a max-1 element given a one-item array → the item, a <code>meta.profile</code> string → an array; an entry without <code>resourceType</code> whose <code>meta.profile</code> (array or string) names profiles of one resource type → that type; empty elements (<code>{}</code>, <code>[]</code>, <code>""</code>, <code>null</code>, ele-1) removed; an <code>Unrecognized property</code> moved only when exactly one level up / down defines it. These are lossless reshapes: an error that appears after the repair only because the value can now be read (under the reshaped element, or the resource now validated against the <code>meta.profile</code> it declares, and profile-match errors of references to it) was hidden, not added, so the repair is kept; an inferred <code>resourceType</code> is withdrawn only by an unknown top-level property (a wrong type). On the example Bundles of the TWPAS 1.2.7 and TW Core 1.0.0 packages with these corruptions applied to every entry, the repaired Bundles are back to the examples' own error counts (<code>node-server/scripts/v16-structure-eval/evalRepairs.ts</code>).</p>
+<h3 id="official-engine">The official HL7 validator as the judge (v18 R1)<a class="headerlink" href="#official-engine" title="Permanent link">&para;</a></h3>
+<p>Production runs one resident official validator_cli 7.0.1 per main IG (TW Core 1.0.0, TWPAS 1.2.7, IPS 1.1.0, EMPD 0.2.1; compose services <code>hl7-validator-*</code>, <code>services/hl7-validator/</code>). With <code>OFFICIAL_VALIDATOR_URLS</code> set, the structure, slicing, profile, invariant / FHIRPath, document and terminology errors of <code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code> (and the "no new errors" guard of <code>fhir_finalize_*</code>) <strong>come straight from the official engine's OperationOutcome</strong>; MCP only adds <code>suggestions</code>, <code>slice_match</code>, <code>pointer</code> / <code>patches</code> and the content checks (grounding, record checks).</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>data.source</code></td>
+<td><code>hl7-validator_cli-7.0.1</code> (official) or <code>builtin</code></td>
+</tr>
+<tr>
+<td><code>data.engine</code></td>
+<td><code>hl7-official</code>; <code>mcp-fallback</code> while the official service is unavailable, with a warning that the result comes from the built-in validator and may differ from validator_cli</td>
+</tr>
+<tr>
+<td>issue <code>message_id</code></td>
+<td>the official message id (e.g. <code>Unrecognized_property</code>)</td>
+</tr>
+<tr>
+<td><code>data.official_verdict</code></td>
+<td><code>true</code>: the complete official verdict; <code>false</code>: a fallback, or codes that could not be verified</td>
+</tr>
+<tr>
+<td><code>data.checked_fully</code></td>
+<td>always <code>false</code> for a fallback (<code>mcp-fallback</code>) or with <code>unverified</code> items</td>
+</tr>
+<tr>
+<td><code>data.fallback_reason</code></td>
+<td>why it fell back (e.g. the official service did not answer within 120 s)</td>
+</tr>
+<tr>
+<td><code>data.unverified</code></td>
+<td>items the terminology server could not check this time (timeout, unreachable) — <strong>not verified</strong>; not errors and not part of <code>valid</code>, but the result is incomplete: validate again later</td>
+</tr>
+<tr>
+<td>issue <code>location_path</code></td>
+<td>validator_cli names the wrong entry (index one too high) in <code>isn't reachable</code> / <code>Can't find … in the bundle</code>; MCP finds the element through the quoted fullUrl / reference, and <code>pointer</code> and the entry the issue belongs to follow it (the official <code>path</code> is kept)</td>
+</tr>
+</tbody>
+</table>
+<p>The official HTTP service handles one request at a time: MCP sends one at a time per validator (queueing on its side) and falls back, saying why, when no answer comes within 120 s of sending. validator_cli keeps terminology-server failures in its in-memory cache; MCP restarts that validator when it sees one (at most every 10 minutes) to clear it. <code>OFFICIAL_VALIDATOR_MODE</code>: <code>prefer</code> (default; falls back to the built-in validator when the official one is unavailable), <code>require</code> (no fallback: an error "could not be validated"), <code>off</code>. IGs without a resident validator are still judged by the built-in validator, with unchanged output (no <code>engine</code> field). Terminology is judged by tx.fhir.org by default (codes and displays only, no patient data).</p>
+<h4 id="invariant-literals">Failed invariants: literal values and root causes (release v1)<a class="headerlink" href="#invariant-literals" title="Permanent link">&para;</a></h4>
+<p>Every <code>Constraint failed: &lt;key&gt;</code> issue (official or built-in validator) carries <code>invariant</code>:
+- <code>expression</code>: the invariant's FHIRPath in the profile; <code>human</code>: its text as written (often Chinese).
+- <code>literals</code>: the literal values the expression names — <code>systems</code>, <code>codes</code> (with their system and the CodeSystem's display, telling which situation each code is for), <code>values</code>, <code>formats</code> (<code>matches()</code> regexes).
+- <code>hint</code>: the accepted values and the rule.
+- When the instance has a coding of that system with a code the rule does not accept, <code>replace_code</code> (or <code>replace_system</code>) suggestions become JSON patches; several candidates are ranked by how close their display is to the current code's meaning, and only the coding the rule is about gets them (e.g. the national-ID identifier, not the medical-record number). A coding the instance lacks is never invented.
+- v20.1: a <code>replace_code</code> patch also sets the display — replace / add <code>display</code> with the new code's display when it is known, else remove the old code's display; an accepted code under another (or no) system gets the rule's system (and its display when the coding has none); when the rule tests the identifier's own system (<code>identifier.where(system = 'http://www.moi.gov.tw' …)</code>) and accepts exactly one, the identifier whose type code the rule accepts gets a <code>replace_system</code> (patch on <code>identifier.system</code>).</p>
+<p>Cascades (<code>Unable to find a profile match</code>, an entry / reference slice not found) carry <code>caused_by</code> and <code>root_causes</code>: the errors at the end of the chain that are not cascades themselves (e.g. Composition → Encounter → Patient → <code>pat-id-1</code>).</p>
+<h3 id="auto-fix">Auto-fix, ambiguous and "no new errors" (v19 R1)<a class="headerlink" href="#auto-fix" title="Permanent link">&para;</a></h3>
+<p>From <code>fhir_finalize_bundle</code> 1.14.0 (<code>repair="content"</code>, the default) every structural error with <strong>exactly one correct fix</strong> is fixed by the tool itself, the rest is reported as <code>ambiguous</code>, and <strong>the errors after finalize are a subset of the errors before</strong>. Every rule comes from the StructureDefinitions / snapshots, the FHIR R4 specification and the validator's own messages — nothing IG-specific:</p>
+<ul>
+<li><strong>property renames</strong> (only when exactly one legal element matches and the value reads losslessly as its type): a choice suffix that is not an allowed type (<code>doseNumberPositiveInteger</code> → <code>doseNumberPositiveInt</code>, <code>"1"</code> read as <code>1</code>), a choice stem without suffix (<code>item</code> → the one type the value's shape fits, <code>itemCodeableConcept</code>), singular / plural (<code>periodUnits</code> → <code>periodUnit</code>), <code>MedicationStatement.dosageInstruction</code> → <code>dosage</code>, STU3 children inside the R4 <code>protocolApplied</code> (<code>doseSequence</code> → <code>doseNumberPositiveInt</code>); several candidates → unchanged, reported ambiguous;</li>
+<li><strong>an entry written at Bundle level</strong>: <code>fullUrl</code> / <code>resource</code> on the Bundle itself (Bundle defines neither) → moved into a new last entry;</li>
+<li><strong>fixed / pattern (from 1.17.0, release v1)</strong>: <strong>a missing fixed / pattern value may be filled in; an existing value that differs is never overwritten</strong> (by any fix category: fixed_pattern, shape, display, system_code …). A required element the profile fixes / patterns that the instance omits (<code>Observation.status: minimum required = 1</code> with <code>fixedCode: final</code>) → that value is filled; for the validator's <code>Value is 'A' but is fixed to 'B'</code>, A is the record's value (a <code>preliminary</code> result is not a final one): <strong>not changed</strong>, reported in <code>ambiguous</code> (category <code>fixed_pattern</code>, a message saying the record's value differs from what the profile requires; candidates are descriptions only — no automatic patch; a status element adds the hint that an unfinished result means the conversion should report <code>insufficient_information</code>), and the validator's error stays. The only exception is a pure representation difference — the same value in another JSON shape (<code>["x"]</code> / <code>"x"</code>, surrounding whitespace) or another URI of the same code system (<code>urn:oid:2.16.840.1.113883.6.1</code> / a trailing <code>/</code> for <code>http://loinc.org</code>), which is rewritten. The content repairs follow the same rule (<code>fhir_validate_bundle</code> with <code>repair="content"</code>, the repairs author / assemble share): a coding slice the profile requires is not added when the same CodeableConcept already holds a coding of that system with another code that no other slice of the element takes (that is the record's concept) — it is reported instead. <code>Bundle.type</code> is the Bundle envelope, not a record value, and is still set to a profile-fixed type (see <a href="#bundle-finalize">Bundle finalisation</a>);</li>
+<li><strong>display</strong>: a code the profile pins by fixed / pattern (e.g. <code>Composition.type</code>, a section slice's code) → the valid display the validator names; an unpinned code whose display names another concept is not changed (whether the code or the display is wrong is not decidable) — ambiguous with both patches;</li>
+<li><strong>choice type</strong>: the profile allows one type and the value reads losslessly as it (<code>valueString: "true"</code> → <code>valueBoolean: true</code>) → renamed;</li>
+<li><strong>section narrative</strong>: the profile requires <code>Composition.section.text</code> and the section has entries → generated from those entries' names in the Bundle (no record content added);</li>
+<li>the existing array / single value, narrative, system / code, id / reference (v9) and document completion repairs still apply.</li>
+</ul>
+<p>1.15.0 (v19 R1 round 2) adds these rules, again applied only when the fix is unique:</p>
+<ul>
+<li><strong>display (determined code)</strong>: the code exists in its CodeSystem (the validator lists its valid displays), no other code of that CodeSystem is named exactly so (its display, or a designation <code>fhir_normalize_code</code> matches exactly), the written display shares at least half of its words with one of the code's names (or some words and the search ranks this code first), and no required binding rejects the code → the code's display, the written wording kept as <code>CodeableConcept.text</code> (when there is none). A display that shares (almost) nothing (<code>ECOG performance status</code> on the NYHA code) means the code itself is in doubt: not changed, ambiguous;</li>
+<li><strong>system (from the bound ValueSet)</strong>: the element's bound ValueSet does not hold <code>system#code</code> but holds the same code with exactly the written display under <strong>one other</strong> CodeSystem (<code>v3-ActCode#L 'Low'</code> → <code>v3-ObservationInterpretation</code>) → that system;</li>
+<li><strong>a code in the wrong element</strong>: the code is not in its own element's required ValueSet and exactly one sibling element's required ValueSet holds it (<code>AllergyIntolerance.type = 'medication'</code> → <code>category</code>, <code>criticality = 'unconfirmed'</code> → <code>verificationStatus</code>) → moved there (as code / Coding / CodeableConcept per the target type, system and display from the ValueSet, an array when the target repeats); when the target already carries the code only the misplaced copy is removed; a target holding something else, or several fitting siblings → unchanged;</li>
+<li><strong>a string element written as an object</strong>: a <code>string</code> / <code>markdown</code> element given as an object with one string property (<code>series: {text: "Tdap"}</code>) → that string;</li>
+<li><strong>a code element written as a CodeableConcept</strong>: a Coding system that is the THO / core twin of the ValueSet's CodeSystem (<code>terminology.hl7.org/CodeSystem/allergy-intolerance-category</code> ↔ <code>hl7.org/fhir/allergy-intolerance-category</code>) counts as that CodeSystem;</li>
+<li><strong>a Reference one level down</strong>: a <code>reference</code> on a backbone with exactly one Reference child (<code>Immunization.performer.reference</code> → <code>performer.actor.reference</code>) → moved in; two candidates (<code>Procedure.performer</code> <code>actor</code> / <code>onBehalfOf</code>) → unchanged;</li>
+<li><strong>STU3 renames</strong>: also <code>Composition.class</code> → <code>category</code>;</li>
+<li><strong>duplicates</strong>: an STU3 name / wrong suffix (<code>doseSequencePositiveInteger</code>) whose one R4 element already holds the same value → the duplicate is removed; a different value → unchanged;</li>
+<li><strong>section entries of the wrong type</strong>: a resource type the section slice does not take (a MedicationStatement under Results) → moved to the one existing section that takes it; a type no section takes (the Medication itself under Medications) that another entry of the Bundle references (it stays reachable) → removed from the section; a section's last entry never moves (an empty section needs an emptyReason, a record fact).</li>
+</ul>
+<p><strong><code>exposed_errors</code></strong> (finalize argument, default <code>"strict"</code>): after a rename / move, content the validator could not check while it was an unknown property is checked and may show errors. <code>"strict"</code> counts them as new and withdraws the rename; <code>"allow_under_moved"</code> treats errors located at / under the renamed or moved value's new location as hidden, not added: the rename is kept and those errors are listed in <code>ambiguous</code>. <code>summary.exposed_errors</code> reports the mode used.</p>
+<p><strong>Response fields</strong>:</p>
+<ul>
+<li><code>changes[]</code> keep <code>path</code> / <code>from</code> / <code>to</code> / <code>rule</code> / <code>reason</code> and add <code>pointer</code> (RFC 6901, rooted at the <strong>Bundle as sent</strong> — a document reorder, dropped duplicate entries and entries moved in from Bundle level are mapped back to their sent positions), <code>before</code>, <code>after</code>, <code>category</code> (<code>shape</code> / <code>narrative</code> / <code>display</code> / <code>unrecognized_property</code> / <code>system_code</code> / <code>ids_references</code> / <code>document_structure</code> / <code>fixed_pattern</code>); moves / renames also carry <code>moved_to</code> (where the value is now); from 1.17.0 there is no no-op change (the same value at the same place);</li>
+<li><code>ambiguous[{pointer, pointer_out?, pointer_note?, message, category, candidates[{description, patch?, patch_out?}]}]</code>: what has several fixes or needs the record — withdrawn changes (with the change's patch), repair issues that could not be decided (display / code candidates, rename candidates, record values that conflict with a fixed / pattern value), references with no / several matching entries, and every R1-category error left after the fixes; <code>patch</code> is RFC 6902 that <strong>applies to the Bundle as sent</strong> (verified). From 1.17.0: <code>pointer</code> always resolves in the sent Bundle; <code>pointer_out</code> points into the <strong>returned (finalized) Bundle</strong> (only when it differs from <code>pointer</code>, e.g. an entry a document reorder moved) and resolves there too; an element that does not exist in that Bundle is named by its nearest existing ancestor and <code>pointer_note</code> says so; a candidate's <code>patch_out</code> is the same fix for the returned Bundle (only when paths or values differ; verified with <code>patchApplies</code>);</li>
+<li><code>summary</code> adds <code>categories</code> (changes per category), <code>ambiguous</code>, <code>withdrawn</code>, <code>errors_before</code> / <code>errors_after</code> (validator errors).</li>
+</ul>
+<p><strong>No new errors</strong>: finalize validates the Bundle as sent and the finalized one (against the Bundle profile; by message, ignoring entry order and minted UUIDs). An error the finalized Bundle adds is traced to the change it is owed to (same location / same entry / Bundle level), that change is withdrawn and the pipeline runs again (≤ 3 rounds; not attributable → nothing is applied); withdrawn changes are listed in <code>ambiguous</code>. So a fix that makes previously unreadable content validated and thereby shows a new error (e.g. Dosage errors only visible after <code>dosageInstruction</code> → <code>dosage</code>) is not applied; the model gets it as a patch.</p>
+<p><strong>Measured</strong> (<code>node-server/scripts/parity/finalize-eval.ts</code>, the 92 parity_v1 repro Bundles, structural errors without content checks): 1.14.0 1384 → 1104 (-20.2%); 1.15.0 (<code>exposed_errors="strict"</code>) 1384 → 945 (<strong>-31.7%, 0 added</strong>): fixed_pattern 10 → 0, system_code 84 → 18, unrecognized_property 198 → 105, display 76 → 48, shape 60 → 35, ids_references 37 → 30, document_structure 42 → 42. What is left has no unique fix and is listed in <code>ambiguous</code>: document_structure is mostly a document without any Composition, or entries no section takes; ids_references are references to entries that are not in the Bundle; display is a written name that denotes another concept (the code itself is in doubt); unrecognized_property has several possible places or is an STU3 element R4 removed (<code>vaccineProtocol</code>, <code>doseStatus</code>). <code>exposed_errors="allow_under_moved"</code>: 1384 → 965 (-30.3%), 45 of them errors under a renamed value's new location that the rename makes visible (new errors by the strict definition). 1.17.0 (release v1): 1384 → 956 (-30.9%, 0 added): existing different values are no longer overwritten (1.16.0 overwrote 10: 4 <code>Observation.status</code> preliminary → final, 6 category system / code) — those 10 fixed_pattern errors stay and are all listed in <code>ambiguous</code>; no-op changes 8 → 0; unresolvable <code>ambiguous</code> pointers 2 → 0.</p>
 <h3 id="validation-suggestions">Fix suggestions (suggestions / caused_by)<a class="headerlink" href="#validation-suggestions" title="Permanent link">&para;</a></h3>
 <p>Besides saying what is wrong, validation issues carry, where possible, "what to change it to": <code>suggestions</code> is a list of candidates ordered by <code>confidence</code> (at most 5 per issue; up to 12 for a binding error on a small ValueSet), and reference-chain errors get <code>caused_by</code>. Both are <strong>additive</strong> — the set of issues, their severity and message, and <code>valid</code> are unchanged; the field is absent when there is no suggestion.</p>
 <pre><code class="language-json">{&quot;severity&quot;: &quot;error&quot;, &quot;path&quot;: &quot;MedicationRequest.dosageInstruction[0].timing.repeat&quot;, &quot;message&quot;: &quot;Unrecognized property 'periodUnits'&quot;,
@@ -3201,9 +3740,26 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <td><code>profile_match</code></td>
 <td><code>target</code> (the referenced resource, its declared meta.profile), the <code>closest</code> profile, <code>failed</code>, <code>blocking</code></td>
 </tr>
+<tr>
+<td><code>Constraint failed: &lt;key&gt;: …</code> (profile invariant)</td>
+<td><code>invariant</code></td>
+<td>v16.2: the parts that are false and the missing path; an extension test gives its URL, value type and <code>write</code> (the JSON to add); a <code>guard implies …</code> rule is explained only when its guard holds</td>
+</tr>
 </tbody>
 </table>
 <p><code>blocking</code> comes from the resource's own reported errors when it declares that profile, otherwise from one stand-alone validation against the closest profile (at most 12 per call, planned in issue order before anything runs — reproducible). When meta.profile gives no signal and several same-type slices score alike, each is validated and the one with the fewest errors (differing fixed / pattern values weigh extra) wins. When the closest profile is unique and the resource does not declare it correctly, a <code>set_profile</code> suggestion is added (<code>patch</code> sets <code>meta.profile</code>; <code>confidence</code> 0.9 = no other error, 0.6 = <code>blocking</code> still to fix). Evaluated on the TWPAS example Bundles with one entry corrupted (a required element dropped, optionally meta.profile removed or misspelled): all 1,752 related errors explained; of the 426 about that entry, 421 (98.8%) name the right closest profile and all 426 have <code>blocking</code> naming the dropped element (<code>node-server/scripts/v16-structure-eval/evalSlices.ts</code>).</p>
+<!-- v19 R3 -->
+<h3 id="v19-pointers">Directly applicable fixes (pointer / patches, v19 R3)<a class="headerlink" href="#v19-pointers" title="Permanent link">&para;</a></h3>
+<p>Every issue of <code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code> (<code>issues</code> and <code>entries[i].issues</code>, record checks included) also carries:</p>
+<ul>
+<li><strong><code>pointer</code></strong>: an RFC 6901 JSON Pointer rooted at the Bundle / resource <strong>exactly as the caller sent it</strong>, e.g. <code>/entry/3/resource/code/coding/0/display</code>. Converted from the validator's <code>path</code> (<code>Bundle.entry[3].resource.code.coding[0].display</code>); <code>.value.ofType(string)</code> → <code>valueString</code>, <code>value[x]</code>, <code>[url='…']</code>, <code>extension('…')</code>, <code>/*Type/id*/</code> comments and a stand-alone resource's root type are understood.</li>
+<li><strong><code>pointer_kind</code></strong>: <code>element</code> (the element the issue is about) or <code>ancestor</code> (the element does not exist — e.g. a missing required element — and the pointer is the parent to add it to).</li>
+<li><strong><code>patches</code></strong> (errors / fatals with at least one candidate): <code>[{ops, reason, kind, confidence}]</code>; <code>ops</code> is an RFC 6902 JSON Patch whose every path is a JSON Pointer into the sent Bundle (correct array indices, <code>/-</code> to append). Sources: <code>suggestions[].patch</code> (rename / move → <code>move</code>, replace → <code>replace</code>, add → <code>add</code>, remove → <code>remove</code>; a <code>replace_fullurl</code> also rewrites every reference that names the fullUrl), shape errors with one correct fix (wrap a single value in an array, unwrap a one-item array, remove an empty array / null / empty string / empty object, a profile-fixed string), the fixes of other issues (a misspelt / misplaced property renamed into a required element; an element empty only because none of its properties is recognised (ele-1); a slice / profile match blocked only by fixable errors), and closed-slice discriminator values (e.g. a Coding.system — from the IG, never from the record). <strong>Every candidate is applied to a deep copy of the sent Bundle before it is returned</strong>; one that does not apply is dropped. Candidates are alternatives — apply one. Record values are never invented: missing clinical content gets a pointer, not a patch.</li>
+<li><strong><code>entries[i].pointer</code></strong>: the entry's position in the sent Bundle (<code>/entry/&lt;index&gt;</code>).</li>
+</ul>
+<p>With <code>normalize_ids=true</code> the verdict is about <code>normalized_bundle</code>, whose document entries may be reordered (Composition first); pointers and patches are mapped back through the finalizer's entry permutation to the sent positions and checked against the entry's fullUrl (renamed fullUrls followed back through <code>id_changes</code>). In default mode the ID-class <code>suggestions</code> paths now also name the sent positions (previously the reordered ones). Existing fields (<code>path</code>, <code>suggestions</code>, severities, messages, <code>valid</code>) are unchanged.</p>
+<!-- end v19 R3 -->
+
 <h2 id="ig-structure">IG structure: Bundle blueprint and minimal skeleton<a class="headerlink" href="#ig-structure" title="Permanent link">&para;</a></h2>
 <p>Before writing a Bundle that must conform to a Bundle profile (a prior-authorization request, a document Bundle …), get the IG's <strong>structural knowledge</strong> from these two tools, then write the resources. Both read only StructureDefinition snapshots, the IG's ValueSets and the IG's own examples, and work for any installed IG (no IG-specific rules).</p>
 <table>
@@ -3222,7 +3778,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_minimal_skeleton</code></td>
-<td style="text-align: left;">A profile's <strong>minimal legal instance</strong> and <strong>where each required value comes from</strong> (whole response ≤ 6,000 characters): <code>skeleton</code> (every required element recursively: required slices, extensions expanded from their definitions (url + value), fixed / pattern values filled in, <code>meta.profile</code>; replace each <code>&lt;...&gt;</code>) and <code>table</code> rows <code>[path, value_source, how]</code>; <code>conditional</code> (required when a profile invariant <code>&lt;guard&gt; implies (a.exists() and …)</code> applies; the rule texts in <code>conditions</code>), <code>rules</code> / <code>more_rules</code> (other invariants), <code>examples</code> (example instances / distinct), <code>omitted</code></td>
+<td style="text-align: left;">A profile's <strong>minimal legal instance</strong> and <strong>where each required value comes from</strong> (whole response ≤ 6,000 characters): <code>skeleton</code> (every required element recursively: required slices, extensions expanded from their definitions (url + value), fixed / pattern values filled in, <code>meta.profile</code>; replace each <code>&lt;...&gt;</code>) and <code>table</code> rows <code>[path, value_source, how]</code>; <code>conditional</code> (required when a profile invariant <code>&lt;guard&gt; implies (a.exists() and …)</code> applies; the rule texts in <code>conditions</code>), <code>rules</code> / <code>more_rules</code> (other invariants), <code>examples</code> (example instances / distinct), <code>omitted</code> ; <code>slices</code> (v16.1: every sliced element of the skeleton — CLOSED, or OPEN with a required slice — with its discriminators and each allowed slice as <code>[name, min..max, template]</code>, the template being the slice's fixed / pattern values plus the <code>&lt;...&gt;</code> to fill; a required CLOSED element without a required slice holds the first slice's template instead of a generic item that matches no slice), <code>literals</code> (values that look like placeholders but the IG requires verbatim, e.g. <code>NNxxx</code>)</td>
 <td style="text-align: left;"><code>profile</code>, <code>package_id</code>, <code>version</code></td>
 </tr>
 </tbody>
@@ -3238,7 +3794,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <tbody>
 <tr>
 <td style="text-align: left;"><code>ig-constant</code></td>
-<td style="text-align: left;">A fixed / pattern value of the profile (incl. extension urls; already in the skeleton), or a value <strong>identical</strong> in <strong>every</strong> one of the IG's own example instances (at least 2; a value that varies never counts). Eligible elements depend on the resource kind: an administrative entity (Organization, Location, HealthcareService, Endpoint, OrganizationAffiliation — not persons) that the IG reuses in every example — any element (e.g. the payer agency's identifier; its optional identifier / name go into the skeleton too); any other resource — only workflow / derived codes (status-like elements with a required / extensible binding, booleans) over at least 2 <strong>distinct</strong> instances; record facts (dates, values, names, identifiers, gender) and primary clinical codes never</td>
+<td style="text-align: left;">A fixed / pattern value of the profile (incl. extension urls; already in the skeleton), or a value <strong>identical</strong> in <strong>every</strong> one of the IG's own example instances (at least 2; a value that varies never counts). Eligible elements depend on the resource kind (since 1.6.0, v17.4): identity resources (Organization, Location, Practitioner, PractitionerRole, Patient, RelatedPerson, Person, Group) and the name / telecom / address / identifier / contact … elements of any resource <strong>never</strong> take a value from the examples (an example hospital, clinic, lab, doctor or patient is one of many — copying it is fabrication); they are <code>record</code>. The one exception is a <strong>national payer / authority</strong> Organization profile, derived from the profiles with no organization name or URL hard-coded: (a) the profile pins <code>Organization.type</code> (fixed / pattern) to organization-type <code>govt</code> / <code>pay</code> / <code>ins</code>, or (b) the IG's own profiles target it only from payer / authority references (<code>*.payor</code>, <code>*.insurer</code>, <code>*.payer</code>, <code>*.authority</code>, e.g. <code>Coverage.payor</code>, <code>ClaimResponse.insurer</code>) and from no other element (a generic organization profile that custodian / performer / assigner … also target does not count), or (c) it derives from such a profile. When the IG reuses the same such agency in every example, any element qualifies (e.g. TWPAS's NHI agency: <code>Coverage-twpas</code> <code>Coverage.payor</code> and <code>ClaimResponse-twpas</code> <code>ClaimResponse.insurer</code> target only TW Core <code>Organization-govt-twcore</code>, whose type is also pinned to <code>govt</code>); <code>how</code> names the basis. Non-identity elements of HealthcareService, Endpoint and OrganizationAffiliation are unchanged; any other resource — only workflow / derived codes (status-like elements with a required / extensible binding, booleans) over at least 2 <strong>distinct</strong> instances; record facts (dates, values, names, identifiers, gender) and primary clinical codes never</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>code-lookup</code></td>
@@ -3250,7 +3806,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>derivable</code></td>
-<td style="text-align: left;">Computable without a record fact: references (the target entry's fullUrl), <code>sequence</code> / <code>rank</code> numbering, workflow defaults, the curated derivation rules, the system of a bound Quantity, <code>insurance.focal</code>, writing dates (<code>Claim.created</code>, <code>authoredOn</code>, <code>recordedDate</code>, extensions named like a recorded date …: the record's date for it, else the visit / document date)</td>
+<td style="text-align: left;">Computable without a record fact: references (the target entry's fullUrl), <code>sequence</code> / <code>rank</code> numbering, workflow defaults, the curated derivation rules, the system of a bound Quantity, <code>insurance.focal</code>, writing dates (<code>Claim.created</code>, <code>authoredOn</code>, <code>recordedDate</code>, extensions named like a recorded date …: the record's date for it, else the visit / document date); and (v20 R5) the <strong>record-derivable</strong> elements — the record determines them without writing the code: <code>Condition.verificationStatus</code> (the diagnosis field Dx / Impression / A: / 診斷 states it unhedged → confirmed, 疑似 → provisional, r/o / 待排除 → differential), <code>Observation.interpretation</code> (the H / L / HH / LL / ↑ / ↓ flag after the value, or the record's reference range: outside → H / L, inside → N), <code>MedicationRequest.category</code> (出院帶藥 → discharge, 門診 → outpatient, 住院 → inpatient; only when the binding holds such a code). Their <code>how</code> is <code>derive from the record: &lt;rule&gt; (record cue: &lt;cue&gt;)</code>: a record fact, write it from the cue; they win over example constants and workflow defaults</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>record</code></td>
@@ -3259,6 +3815,120 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tbody>
 </table>
 <p>Only <code>record</code> rows need the record; a missing <code>ig-constant</code>, <code>code-lookup</code>, <code>text-allowed</code> or <code>derivable</code> value is never a reason to refuse. Elements outside the skeleton are optional. Suggested flow: <code>fhir_get_bundle_blueprint</code> → <code>fhir_get_minimal_skeleton(profile, package_id)</code> per slice profile → write the resources (your own JSON, or <code>fhir_author_resources</code> + <code>fhir_assemble_bundle</code>) → <code>fhir_finalize_bundle</code> / <code>fhir_validate_bundle</code> with <code>bundle_profile</code>. Pass the <code>package_id</code> of the IG you write for — example constants come from its examples (from the profile's owning package only when that IG has no example of the profile).</p>
+<h3 id="bundle-form">Prefilled form (fhir_get_bundle_form, v19)<a class="headerlink" href="#bundle-form" title="Permanent link">&para;</a></h3>
+<p><code>fhir_get_bundle_form</code> returns a <strong>skeleton Bundle whose structure is already correct</strong>: the model only fills values and never decides structure.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>bundle_profile</code></td>
+<td style="text-align: left;">id or canonical of the Bundle profile (<code>|version</code> honoured)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>package_id</code>, <code>version</code></td>
+<td style="text-align: left;">pick the IG, as in the other <code>fhir_*</code> tools</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>entries</code></td>
+<td style="text-align: left;">optional: the entries the model plans to write, <code>[{profile, count?}]</code> (profile id / canonical, or a resource type name; <code>count</code> 1–5)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>bundle_type</code></td>
+<td style="text-align: left;">optional: used when the profile does not fix <code>Bundle.type</code> (default: <code>document</code> when the profile requires a Composition, else <code>collection</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>The skeleton holds every required entry slice of the Bundle profile (min times) and the planned entries (matched to the slice their profile conforms to; with CLOSED slicing and no matching slice an entry is not added and a warning says so), plus the targets that required references need but the Bundle lacks (the target's slice, or the target profile when the slicing is open); every entry's resource is the complete minimal skeleton of its profile (required elements, fixed / pattern values, <code>meta.profile</code>, required extensions and slices; a required element with CLOSED slicing takes the slice the IG's examples use most); <code>Bundle.meta.profile</code>, <code>Bundle.type</code>; reproducible <code>fullUrl</code>s (urn:uuid v5); every reference between entries wired (also inside extensions) — one candidate: its fullUrl; several: never guessed, a placeholder with the candidates in <code>allowed</code>; for a document Bundle the Composition as the first entry, the required sections (with the section code that discriminates them), the section each planned entry belongs to (an optional section is added and marked optional), <code>section.entry</code>, <code>identifier</code> / <code>timestamp</code>; <code>entry.request</code> for transaction / batch. The form's Bundle never holds an empty array (an empty array is itself an official error, ele-1): with no entries at all (no required slice, no <code>entries</code>) <code>entry</code> is omitted and a note in <code>notes</code> says to pass <code>entries</code> (1.0.1).</p>
+<p><strong>Placeholders</strong>: every value the record (or a code lookup) must provide is a string token <code>&lt;&lt;P&lt;n&gt;:&lt;value_source&gt;&gt;&gt;</code> in the skeleton, described by <code>placeholders[n]</code>:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>pointer</code></td>
+<td style="text-align: left;">JSON Pointer (RFC 6901) of the token in <code>bundle</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>type</code></td>
+<td style="text-align: left;">FHIR datatype: replace the token with a JSON value of it (primitive → string / number / boolean; <code>Reference</code> → <code>{"reference": "&lt;an entry fullUrl&gt;"}</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>what</code></td>
+<td style="text-align: left;">what to put there (one sentence)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>value_source</code></td>
+<td style="text-align: left;"><code>record</code> / <code>code-lookup</code> / <code>text-allowed</code> / <code>derivable</code>, as in <code>fhir_get_minimal_skeleton</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>required</code></td>
+<td style="text-align: left;"><code>false</code> = optional (conditionally required elements, an optional section added for a planned entry): <code>if_empty</code> says to delete it when there is no value</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>allowed</code></td>
+<td style="text-align: left;">optional: the codes of a small binding (<code>{system, code, display}</code>; a chosen code sets its system too) or the candidate fullUrls of a reference</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>target</code></td>
+<td style="text-align: left;">optional: target types of a reference</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>example</code></td>
+<td style="text-align: left;">optional: a value from the IG's examples or a code of the binding (shows the format; never a record fact); never given for identity resources / identity elements (see below)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>format</code></td>
+<td style="text-align: left;">optional: the regular expression a profile <code>matches('…')</code> invariant requires (from 1.2.0 also <code>x.all(code.matches('…'))</code> / <code>x.all(toString().matches('…'))</code>, with <code>format_rule</code> naming the rule <code>{key, human}</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>max_length</code></td>
+<td style="text-align: left;">optional: the value's <code>maxLength</code> (1.1.0)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>value_set</code></td>
+<td style="text-align: left;">optional: a required binding with too many codes to list (e.g. an institution code bound to a ValueSet): pick a code of this ValueSet (1.1.0)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rules</code></td>
+<td style="text-align: left;">optional: profile rules whose condition tests this value; codes in <code>allowed</code> with <code>triggers</code> make that rule require more content in the Bundle (listed last). 1.2.0: a rule that cannot be parsed confidently is attached as raw text (<code>key: human</code>) to the placeholder(s) it reads — never guessed</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>choose_one</code></td>
+<td style="text-align: left;">optional (1.2.0): this placeholder belongs to <strong>the one option the form placed</strong> for a rule that needs one of several: <code>{rule: {key, human}, options: [{path, what, chosen?}], note}</code>; to use another option replace the whole element — never fill several</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>required_if</code></td>
+<td style="text-align: left;">optional (1.2.0): required only when a condition holds (<code>required: false</code> then): <code>{rule: {key, human}, condition, when: {expression, context, depends_on}, element, placeholders}</code> — <code>when.expression</code> is FHIRPath evaluated on <code>when.context</code> (<code>""</code> = the Bundle, <code>/entry/&lt;i&gt;/resource</code> = that resource), <code>placeholders</code> are the placeholders the condition reads; when it is false, delete <code>element</code></td>
+</tr>
+</tbody>
+</table>
+<p>Also <code>entries</code> (index, fullUrl, resourceType, profile, slice and why each entry is there), <code>prefilled</code> (defaults already set — change them only when the record says otherwise), <code>references</code> (the wired references), <code>summary</code>, <code>notes</code>, <code>self_check</code>, <code>omitted</code> (the response stays ≤ 30,000 characters: <code>what</code> is shortened and examples / displays / <code>references</code> dropped first; <code>prefilled</code> is only compacted to pointer + value_source, never dropped; placeholders are never dropped). After filling, call <code>fhir_finalize_bundle</code> / <code>fhir_validate_bundle</code> with <code>bundle_profile</code>.</p>
+<p><strong>1.1.0 (evaluation feedback)</strong>:</p>
+<ul>
+<li><strong>No identity data from the IG's examples</strong>: no value of an identity resource (Organization, Location, Practitioner, PractitionerRole, Patient, RelatedPerson, Person, Group), and no identity / contact element of any resource (name, telecom, address, identifier, contact, alias, photo), is prefilled or given as <code>example</code> when it comes <strong>only from the IG's example instances</strong> — it is a <code>record</code> placeholder (a model copies an example clinic's name, phone and address, or a foreign organization identifier of an example: fabrication). Only values the profiles pin with fixed / pattern are prefilled; a "nationally unique organization" is therefore one whose identity (identifier system + value, or a reference) the profiles themselves give as fixed / pattern, never one inferred from examples. Workflow codes of other resources (status / intent …, the <code>fhir_get_minimal_skeleton</code> rule) are unchanged. Since 1.6.0 <code>fhir_get_minimal_skeleton</code> applies the same strict rule, with the one exception of a national payer / authority organization (see "<a href="#ig-structure">value sources</a>"); its ig-constants remain the basis of the grounding exemption.</li>
+<li><strong>Datatype rules</strong>: a ContactPoint with a <code>value</code> always has a <code>system</code> placeholder (cpt-2, <code>allowed</code> phone / fax / email …); Age / Duration / Distance / Count get a <code>code</code> placeholder and the <code>system</code> their datatype StructureDefinition constraint fixes (age-1, drt-1, dis-1, cnt-3: <code>http://unitsofmeasure.org</code>, listed in <code>prefilled</code>), with the time units in <code>allowed</code> (Age: age-units); a placeholder of a complex datatype is expanded to its minimal content (Ratio → numerator + denominator, rat-1; Quantity, Period, Identifier …); required children of a coded element (e.g. <code>Medication.form.text</code>) get placeholders; an any-of rule (org-1: name or identifier) with none present gets one of them.</li>
+<li><strong>Every entry is linked</strong>: every entry must be connected by references (forward or backward, validator_cli's document rule) to the root entry (document / message) or to the other entries (collection …). An unlinked entry, in order: takes an open reference that repeats and lists it (Composition.author open between Patient / Practitioner / Organization takes the Practitioner nothing references); or uses its own optional reference to the form's hub (the entry the others reference, e.g. Encounter.subject → the one Patient); or is referenced from the one element of the form that can reference it; otherwise it is left out with a note in <code>notes</code> (kept with a warning only for a required slice or a planned entry of a non-document Bundle). Never a guess between several places.</li>
+<li><strong><code>self_check</code></strong>: after building, the form itself is checked (placeholders count as values): no empty array / object / string, every reference points to an entry fullUrl, every entry linked, every ContactPoint has a system, every Quantity-like value has system + code. <code>{ok: true}</code> when clean, else <code>{ok: false, problems}</code> plus a warning.</li>
+</ul>
+<p><strong>1.2.0 (profile invariants → form structure)</strong>: the resource-level constraints of every entry's profile and of the Bundle profile become form structure and placeholder hints, <strong>derived from their FHIRPath alone</strong> (no IG-specific code):</p>
+<ul>
+<li><strong>Choose one</strong>: <code>a.exists() or b.exists() or …</code> with none in the form → only the <strong>first</strong> option is placed; <code>x.where(p).exists()</code> that several slices' patterns satisfy (e.g. "a national ID, passport or resident certificate number") → only the first (must-support first) slice. The placed option's placeholders carry <code>choose_one</code> listing every option.</li>
+<li><strong>Conditional required</strong>: <code>G implies (x.exists() and …)</code>, <code>A or (x.exists() and …)</code>, <code>X.where(C).all(y.exists())</code>: when the condition reads a placeholder the record fills (e.g. an order category code), the required elements are placed as placeholders marked <code>required_if</code> (<code>required: false</code>, <code>if_empty</code>); when the prefilled / fixed values decide the condition, they are plainly required (or not placed when it does not hold).</li>
+<li><strong>Format</strong>: <code>x.matches('re')</code>, <code>x.all(code.matches('re'))</code>, <code>x.all(toString().matches('re'))</code> → <code>format</code> + <code>format_rule</code> on the placeholder.</li>
+<li><strong>Bundle-level rules</strong> relating entries (<code>entry.resource.ofType(X).where(c).exists() implies entry.resource.ofType(Y).y.exists()</code>): the element is added to the Y entry (created when missing), with <code>required_if.when.context</code> <code>""</code> (evaluated on the whole Bundle).</li>
+<li>Added elements are built from the snapshot: the slice whose pattern satisfies the <code>where()</code> first (with its fixed / pattern / required children), else the <code>where()</code> equalities; on a copy, kept only when every step resolves (never half an element). A rule that cannot be parsed confidently is attached raw under <code>rules</code>.</li>
+</ul>
+<p>When the response is compacted (<code>omitted.level</code> ≥ 1) rules are cited by key (<code>rule: {key}</code>, <code>rules: [key]</code>) with their texts once in <code>rule_text</code>, and <code>required_if.when</code> becomes a key of the <code>conditions</code> table (each condition listed once). IG example values are dropped only after <code>what</code> is short.</p>
+<p>Acceptance (ISSUES_v19 (b), offline over a local package cache: <code>node-server/scripts/ig-blueprint/form-eval.mts</code>): the forms of TW Core <code>Bundle-twcore</code> (5 planned entries), TWPAS <code>Bundle-twpas</code> and <code>Bundle-immunologic-agent-twpas</code>, IPS <code>Bundle-uv-ips</code> (6 planned entries), EMPD <code>Bundle-EMPD</code> and <code>Bundle-DS</code>, filled with fake values of each placeholder's <code>type</code> (<code>allowed[0]</code> when listed, a value matching <code>format</code>, the <code>example</code> when given; <code>choose_one</code>: only the given option; <code>required_if</code>: <code>when</code> evaluated on the filled condition values, <code>element</code> deleted when false), validate with 0 non-terminology errors in the in-process validator.</p>
 <h2 id="authoring">Authoring from field values<a class="headerlink" href="#authoring" title="Permanent link">&para;</a></h2>
 <p>The model no longer writes FHIR JSON: it gives <strong>field values</strong>, the MCP composes the resource for the profile, validates it, keeps it in a per-task <strong>context</strong> and assembles the Bundle from a list of keys. Every rule comes from the resolved package's StructureDefinitions / ValueSets and FHIR R4 core — <strong>no IG-specific special cases</strong> (TW Core, TWPAS or any other installed IG alike).</p>
 <table>
@@ -3272,7 +3942,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_get_authoring_fields</code></td>
-<td style="text-align: left;">The profile's "writing form": <code>fields</code> (required / expected / commonly used in the IG's own examples, reason in <code>why</code>), <code>more</code> (the remaining mustSupport fields and record links) and <code>omitted</code> (dropped for size, never silent). <strong>Record links</strong>: an optional backbone the IG neither marks mustSupport nor uses in its examples, but whose required Reference child targets a profile of the same IG (same canonical base) of a non-entity type (not a person / organisation master-data type such as Patient, Practitioner, Organization, Location), e.g. <code>Encounter.diagnosis</code>, is listed in <code>fields</code> with all its children (<code>condition</code>, <code>use</code>, <code>rank</code>) and the example <code>{condition: {ref: "condition"}}</code>; a direct reference to such a profile (<code>Encounter.reasonReference</code>, <code>Condition.encounter</code>, <code>Procedure.reasonReference</code>, <code>Observation.hasMember</code> / <code>derivedFrom</code>) is in <code>more</code> with <code>targets</code>. The whole response (envelope, warnings, provenance; non-ASCII counted as <code>\uXXXX</code>) stays within 6,000 characters (150 kept as a margin); its length is <code>data.response_chars</code>. Each field has <code>kind</code> + <code>format</code> (how to write the value), <code>source</code> (record / facility / code / fixed / default / derived), small <code>binding.codes</code>, <code>targets</code> and <code>children</code>; fields with <code>auto: true</code> are filled by the MCP (<code>value</code> shows what), <code>pins</code> shows what the profile fixes inside a field you still fill (identifier system, component code, unit). A conventional default is <code>auto</code> only on a <strong>required</strong> element; an optional one (<code>Patient.active</code> …) is listed as a plain optional field whose <code>format</code> / <code>example</code> only hint at the conventional value</td>
+<td style="text-align: left;">The profile's "writing form": <code>fields</code> (required / expected / commonly used in the IG's own examples, reason in <code>why</code>), <code>more</code> (the remaining mustSupport fields and record links) and <code>omitted</code> (dropped for size, never silent). <strong>Record links</strong>: an optional backbone the IG neither marks mustSupport nor uses in its examples, but whose required Reference child targets a profile of the same IG (same canonical base) of a non-entity type (not a person / organisation master-data type such as Patient, Practitioner, Organization, Location), e.g. <code>Encounter.diagnosis</code>, is listed in <code>fields</code> with all its children (<code>condition</code>, <code>use</code>, <code>rank</code>) and the example <code>{condition: {ref: "condition"}}</code>; a direct reference to such a profile (<code>Encounter.reasonReference</code>, <code>Condition.encounter</code>, <code>Procedure.reasonReference</code>, <code>Observation.hasMember</code> / <code>derivedFrom</code>) is in <code>more</code> with <code>targets</code>. The whole response (envelope, warnings, provenance; non-ASCII counted as <code>\uXXXX</code>) stays within 6,000 characters (150 kept as a margin); its length is <code>data.response_chars</code>. Each field has <code>kind</code> + <code>format</code> (how to write the value), <code>source</code> (record / facility / code / fixed / default / derived), small <code>binding.codes</code>, <code>targets</code> and <code>children</code>; fields with <code>auto: true</code> are filled by the MCP (<code>value</code> shows what), <code>pins</code> shows what the profile fixes inside a field you still fill (identifier system, component code, unit). A conventional default is <code>auto</code> only on a <strong>required</strong> element; an optional one (<code>Patient.active</code> …) is listed as a plain optional field whose <code>format</code> / <code>example</code> only hint at the conventional value. <strong>Record-derivable fields</strong> (v20 R5: <code>Condition.verificationStatus</code>, <code>Observation.interpretation</code>, <code>MedicationRequest.category</code>, the rules of <code>fhir_get_minimal_skeleton</code>'s <code>derivable</code>) are <code>source: "derived"</code> <strong>without</strong> <code>auto</code>, with a <code>format</code> starting <code>derive from the record: …</code>: write them whenever the record carries the cue; they are listed in <code>fields</code> wherever the profile allows the element (any cardinality) and its binding holds the rule's codes (an IG ValueSet: matched by display); a required one keeps its workflow default as the fallback</td>
 <td style="text-align: left;"><code>profile</code>, <code>package_id</code>, <code>version</code>, <code>include_more</code> (<code>true</code> by default)</td>
 </tr>
 <tr>
@@ -3489,6 +4159,14 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 <li>Callers should check for <code>data.groundingValid</code> in the response; if it is absent the server does not support grounding and the result must not be treated as checked.</li>
 <li><code>fhir_validate_resource</code> checks the resource as the only entry of a Bundle and reports issue paths rooted at the resource (e.g. <code>Condition.code</code>); references cannot be followed, so rules that need other resources see no context.</li>
 </ul>
+<h3 id="ig-defined-values">Values the IG defines are not record facts (v17.2)<a class="headerlink" href="#ig-defined-values" title="Permanent link">&para;</a></h3>
+<p>A value the IG itself prescribes is not expected in the record, and will not be there. Grounding (<code>G-UNGROUNDED</code>, <code>G-CONTEXT-*</code>, <code>G-STATED-ABSENT</code>) and the record checks (<code>ungrounded-value</code>, <code>information-absent</code>, <code>value-from-other-event</code>, <code>incomplete-value</code>, <code>insufficient-precision</code>) exempt these values wherever they appear in a resource, and count them in <code>grounding.exempt</code>:</p>
+<ul>
+<li><code>fixed[x]</code> / <code>pattern[x]</code> of the declared profiles (<code>meta.profile</code>);</li>
+<li>every value <code>fhir_get_minimal_skeleton</code> marks <code>ig-constant</code>, computed by the same function the skeleton uses, so the two cannot disagree. When the Bundle holds an administrative entity (Organization …), the ig-constants of the profiles the IG's examples use for that type are included too, e.g. the payer agency's name and OID. Since v17.4 an example-derived identity value (name, identifier, phone, address) counts only for a <strong>national payer / authority organization</strong> (detected as described under <code>ig-constant</code> above); the IG's example hospitals, clinics, labs, practitioners and patients are never exempt — a Bundle that copies the IG example hospital's name / identifier while the record says 臺大醫院 is reported by grounding and the record checks as before;</li>
+<li>the answer literals a profile invariant allows for <code>value[x]</code> (e.g. <code>value.ofType(string) = 'class1'</code>). Only a <code>value[x]</code> string is exempt; a comparison on another element (such as <code>gender = 'male'</code>) does not count.</li>
+</ul>
+<p>Quantities and bare numbers are never exempt. When one record line lists several medicines, a dose / frequency evidence quote belongs to the closest medicine named before it on that line; when that is the resource's own medicine there is no <code>G-CONTEXT-LABEL</code>.</p>
 <p><strong>Versions and privacy</strong></p>
 <ul>
 <li><code>provenance</code> carries <code>tool</code>, <code>toolVersion</code>, <code>lexiconVersion</code> / <code>lexiconSha256</code>, <code>terminologyVersion</code> and <code>sourceSha256</code> (first 16 hex chars of the record's SHA-256). <code>health_check</code> reports <code>tools_version</code>, <code>lexicon_version</code> and <code>lexicon_sha256</code>.</li>
@@ -3498,6 +4176,9 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 <p>The rules and the lexicon (<code>tw-lexicon</code>) follow Taiwanese clinical writing; <code>fhir_check_completeness</code> needs the caller to read the conversion target and pass <code>targets</code> — it does not parse natural-language targets. Results support review; they do not replace a clinician.</p>
 </blockquote>
 <h2 id="record-checks">Does the record actually provide it? (record checks)<a class="headerlink" href="#record-checks" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p><strong>parity v2 (2026-11-01)</strong>: a content error needs <code>source_text</code>. A call without <code>source_text</code> is a pure validation: every record-check finding is kept, but always as a warning (its evidence says <code>no source_text</code>), so it never changes the verdict the official validator gives.</p>
+</blockquote>
 <p>When a record deliberately lacks a piece of information, models still tend to "fill something in": "number not yet assigned" as the MRN, a month-only date as <code>Encounter.period.start</code>, a "to be ruled out" diagnosis as an established Condition. Such values can be well-formed — the string may even appear in the record — so both the validator and grounding pass them. <strong>Record checks</strong> are a post-validation layer (<code>node-server/src/recordChecks/</code>; like the <a href="#validation-suggestions">fix suggestions</a> it runs after the validator and never touches InstanceValidator, so the validator parity audit is unaffected) that reports "the record does not actually provide this information".</p>
 <p><strong>Report only</strong>: no value is ever rewritten or removed; whether to answer <code>insufficient_information</code> instead is the model's decision.</p>
 <table>
@@ -3609,8 +4290,37 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 <td style="text-align: left;">error / warning</td>
 <td style="text-align: left;">The value is in the record but belongs to another time point, event or field: the record says the first reading failed ("機器錯誤、未得數值") and the second reading's value is written at the first reading's time → error; two readings' values and times swapped → warning; a date the record states only as a past event (上次 / 曾 / previous) or as the birth date → error; a number the record gives as another identifier (the admission number written as the MRN) → error. Reported only when determinable</td>
 </tr>
+<tr>
+<td style="text-align: left;">R5</td>
+<td style="text-align: left;"><code>stale-value</code> (v17.4)</td>
+<td style="text-align: left;">yes</td>
+<td style="text-align: left;">error</td>
+<td style="text-align: left;">The value is in the record, but <strong>every</strong> clause holding it (cut at commas, semicolons, full stops and brackets) marks it as not this time's value: 已不適用, 前次, 舊值, 移植前, 待補, 未測量, 作廢, not applicable, previous, pending … e.g. "體重 本次未測量（…112/10 移植前體重 63 kg 已不適用）" while the Bundle says 63 kg. The message quotes the record and asks to report insufficient_information. One current occurrence ("體重 65 kg（前次 63 kg）" written as 65) keeps it silent.</td>
+</tr>
+<tr>
+<td style="text-align: left;">R4</td>
+<td style="text-align: left;"><code>unconfirmed-as-confirmed</code> (required-element text, v17.4)</td>
+<td style="text-align: left;">no</td>
+<td style="text-align: left;">error</td>
+<td style="text-align: left;">A diagnosis element (<code>Claim.diagnosis.diagnosisCodeableConcept</code>, <code>Condition.code</code>, <code>reasonCode</code>) or a CodeableConcept the declared profile requires has, outside brackets, a not-established statement (尚未確立, 待病理, 待確認, pending, to be determined, 不明): reported whether coded or not. A hedge alone (疑, r/o, suspected, provisional) counts only when there is no real code and the resource cannot mark itself provisional (a Condition with verificationStatus provisional / differential is the right way). Diagnosis names with such words (不明原因發燒, unknown primary, undetermined significance) and bracketed asides about something else ("PSA 升高（未確立惡性腫瘤）") are not reported.</td>
+</tr>
+<tr>
+<td style="text-align: left;">R5</td>
+<td style="text-align: left;"><code>identifier-truncated</code> (v20)</td>
+<td style="text-align: left;">yes</td>
+<td style="text-align: left;">error</td>
+<td style="text-align: left;">An identifier the record states must be kept verbatim: every occurrence of the value in the record is only part of a longer identifier (tokens cut at whitespace / punctuation / CJK label punctuation such as ：:，、; a leading field label — 病歷號, 證號, ID, No. — is not part of it; only Latin letters / digits / hyphens around the value, or the license form 「…字第<value>號」). e.g. the record says 醫字第035190號 and the value is <code>035190</code>. <code>suggestions</code>: <code>replace_value</code> = the complete record fragment. Not reported when the declared profile restricts the identifier (slice) value to digits (regex / patternString / a <code>matches('^[0-9]+$')</code>-like invariant) and the value is the digit part, or when the identifier registry format accepts the value and not the fragment. Other CJK text next to the value (A123456789男) is undecidable — no finding.</td>
+</tr>
+<tr>
+<td style="text-align: left;">R7</td>
+<td style="text-align: left;"><code>code-meaning-mismatch</code> (v20)</td>
+<td style="text-align: left;">yes</td>
+<td style="text-align: left;">error</td>
+<td style="text-align: left;">A coding whose syntax and ValueSet membership are fine but whose meaning differs from the record. The coding's <strong>official names</strong> (local terminology: LOINC long / short / component / Chinese names, SNOMED descriptions + Chinese names, ICD-10-CM titles + Chinese names, NHI / TFDA drug names, IG CodeSystem designations — never the model's own display) are compared with the record phrase the element stands for: CodeableConcept.text or a model display the record states, the label before an Observation value (Hb 10.2 → Hb). Similarity: grounding's weighted name containment (both directions, abbreviations and the zh→en bridge expanded) plus data-derived abbreviation equivalence (<code>fhir.term_thesaurus</code>, <code>fhir.abbreviation_lexicon</code>: PEFR ↔ PEF). When unrelated (&lt; 0.2; ICD / LOINC partly related &lt; 0.7) <code>fhir_normalize_code</code> (the coding's system) is asked for the phrase: an error only when its candidates do not contain the code and one clearly names the phrase (an ICD parent / child does not count; for medicines no shared ingredient word with the coding), with <code>record_phrase</code>, <code>code_display</code> and <code>replace_code</code> candidates. Not comparable (another language the bridge does not translate, an abbreviation no table expands) or no candidates → no finding. v20.1 (<code>gate: "advisory"</code>: fed back to the model, never a release blocker): (1) like with like — a value label is used only when every occurrence of the value has one (the 24 of 「AST/ALT 30/24」 has none → no verdict), it does not name another coding carrying the same value (「BMI 24」 is the BMI's label, not the ALT's), and the resource's own stated text does not already agree; (2) generic codes are never judged by similarity — document / study / panel / note / report names (LOINC document ontology, Diagnostic imaging study, panels) and short class-word names (Cancer stage); (3) instrument tier: the item names an instrument / score acronym the code's names do not (ECOG, DAS28) while they name another one the record does not state (NYHA, KPS, VectraDA); (4) timing tier: the record states AC / 空腹 / 飯前 / fasting, PC / 飯後 / 餐後 / post meal or 隨機 / random and the code (LOINC component and long name) another timing (Fasting glucose, --2 hours post meal); a code without timing is never judged, and <code>fhir_normalize_code</code> is asked for the code's analyte + the English cue. (3) and (4) report only when a candidate of the record's instrument / timing exists (else no finding).</td>
+</tr>
 </tbody>
 </table>
+<p><strong>v20 content-check false positives (R6)</strong>: (1) measurement labels and coded names are matched through the data-derived abbreviation thesaurus (<code>fhir.term_thesaurus</code> + <code>fhir.abbreviation_lexicon</code>, prefetched once through the terminology provider) — "PEFR 410 L/min" and the LOINC short name "PEF Airway PFM" share the expansion "Peak expiratory flow rate", no <code>G-CONTEXT-LABEL</code>; (2) both ends of an ROC date range are dates (<code>114/06/02–115/08/31</code>, <code>114/06/02 08:00-115/08/31</code>, also <code>~</code> <code>至</code> <code>到</code>); (3) allergies: medication-stop words alone (停藥, 已停用, discontinued) no longer suggest <code>AllergyIntolerance.clinicalStatus</code> inactive — stopping a drug does not resolve an allergy; only explicit wording (已不過敏, tolerance test / challenge negative, resolved, no longer allergic) does. The false-positive rate is measured by <code>node-server/scripts/content-fp/run.ts</code>: IG examples (TW Core 1.0.0, TWPAS 1.2.7, IPS 1.1.0, EMPD 0.2.1; Bundles and every single-resource example) are rendered by a deterministic renderer into synthetic records that state every fact (Chinese / English labels, three date spellings incl. ROC ranges, abbreviations); every error is a false positive, counted per check code as a share of the facts.</p>
 <p><strong>How R1 avoids false positives</strong>: the value must consist ENTIRELY of absence predicates (lexicon <code>record-checks-lexicon</code>, Chinese and English, including the generated variants "尚未 / 還沒 / 待 / 無法 × 取號 / 建檔 / 提供 / 帶來 …" and "…中" / "…失敗"), field nouns (病歷號, 身分證, ID, date …), fillers (家屬說, 目前, yet …) and punctuation, with at least one predicate; any other content (another word, a run of three or more digits) means it is not absent. So 「家族史不詳」 only matters in the one field it is written into, and 「不明原因發燒」, "Hypertension, unspecified" or 「王不明」 are never read as absence. Codes of HL7 / FHIR code systems (<code>gender = unknown</code>, v3-NullFlavor <code>UNK</code> …) are real codes and are not checked. Nil words (無 / none / N/A / -) count only in identifier, date, quantity, name and reference fields.</p>
 <p><strong>R2 formats and check digits</strong> (system URLs from the identifier slices of TW Core IG v1.0.0 <code>Patient-twcore</code> / <code>Practitioner-twcore</code>)</p>
 <table>
@@ -3649,6 +4359,38 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 <p><strong>R4 scope</strong>: the Condition's names (<code>code.text</code>, displays, ICD-10 code) are located in the record and qualified per sentence (。；;): prefix cues (待排除, r/o, 鑑別診斷, 疑似 …) govern up to the next comma, postfix cues (尚未確立, not established, ? …) the same clause or a short clause right after it ("A、B、C，尚未確立"); a whole line of a <code>rule out</code> section counts as explicit. <strong>A cue inside a bracket qualifies only the concept inside the bracket</strong>: in "A：Elevated PSA（未確立惡性腫瘤）" 未確立 modifies the malignancy, so an Elevated PSA Condition is not reported (an established malignancy Condition is); a bracket holding only a cue ("肺炎（待排除）", "(r/o)", "(?)") qualifies the item before it.</p>
 <p><strong>How the primary diagnosis slot is read</strong>: the text after the heading (lexicon <code>diagnosisSlot</code>, Chinese + English; <code>次診斷 / comorbidities</code> are never primary) and its continuation lines (numbered items) are split into items at top-level separators (、 ； , ／ vs 或 …); a leading prefix cue (鑑別 A／B／C, 待排除 A、B, r/o A vs B) governs the items after it on the same line, a trailing cue-only item on a line (…，尚未確立) governs the items before it; a line saying 已排除 / ruled out / 不支持 lists excluded items (neither established nor open). An unqualified item of any primary slot that matches the Condition always counts as established.</p>
 <p><strong>R6 corrections for wrong ROC conversions (<code>recordChecks/dateSuggestions.ts</code>)</strong>: when a date is judged ungrounded (the record checks' <code>ungrounded-value</code>, and the grounding <code>G-UNGROUNDED</code> / <code>G-VALUE-MISMATCH</code> issues returned by <code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code> / <code>fhir_assemble_bundle</code>) and the record states the same month / day with another year — typically a wrong ROC ↔ Gregorian conversion (record 民國92年8月25日 written as 1983-08-25, correct 2003-08-25; 民國47年6月20日 as 1959-06-20, correct 1958-06-20; +1900 / +1910 / +1912, the ROC year written as Gregorian such as 0092-08-25; a year-only or year-month value only for these known mistakes and ±1 / ±11 years), or a Gregorian record date with that month / day — the issue gets <code>suggestions</code>: <code>kind: "replace_value"</code>, <code>patch: {op: "replace", path, value}</code>, the record's date as <code>value</code> (the original time part kept) and a <code>reason</code> quoting the record and stating the rule (ROC year N = Gregorian N+1911). One candidate: confidence 0.95, and the record-check message names the correct value; several: all listed, those written under this field's label (出生日期 for birthDate …) first. The issue's severity is unchanged (still an error) and nothing is applied. <code>fhir_check_grounding</code>'s own output is unchanged (it is compared byte for byte with the reference implementation).</p>
+<p><strong>R6 content coverage (ISSUES_v17 R2, <code>recordChecks/coverage.ts</code>, needs <code>source_text</code>)</strong> — record text, conversion target and Bundle compared deterministically (no LLM); every finding carries the entry path, the record quote (<code>located_quotes</code>) and a suggestion (<code>suggestions</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Severity</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>negated-item-present</code></td>
+<td>error</td>
+<td>The record mentions an item in a sentence that negates it (not prescribed this time, not done, cancelled, stopped, denied, to be scheduled …) while the Bundle states it as done or in force (<code>status</code> active / completed, <code>clinicalStatus</code> active …); or the 【轉換目標】 says an item is not to be converted / excluded (a whole category too, e.g. 過敏史不需轉換; "other X" and qualified categories exclude only what is not named) and it is in the Bundle. Item names come from the resource's own coding displays / texts; statuses are judged by base FHIR R4. An item also mentioned plainly elsewhere in the record (e.g. prescribed again) is not reported. The suggestion is to remove the entry or the status to use</td>
+</tr>
+<tr>
+<td><code>duplicate-entry</code></td>
+<td>error</td>
+<td>Entries with the same content apart from id, meta, narrative and identifier, or the same thing (Condition / AllergyIntolerance: same code; Observation: same code, time and value; medication resources: same medicine, dosage and intent; Procedure / Immunization: same code and time; Encounter: same period and class). Keep one</td>
+</tr>
+<tr>
+<td><code>text-only-fact</code></td>
+<td>warning (<code>content_checks_severity: "error"</code> makes it an error)</td>
+<td>A medication resource's <code>Dosage.text</code> states a dose, frequency (QD / BID / 每日兩次 …), route (PO / IV / 口服 …) or duration (共 28 天 …) while the structured element (<code>doseAndRate.doseQuantity</code>, <code>timing.code</code>, <code>route</code>, <code>dispenseRequest.expectedSupplyDuration</code>) is empty. The suggestion gives the structured value (its unit / code must still fit the profile's binding)</td>
+</tr>
+<tr>
+<td><code>record-fact-missing</code></td>
+<td>warning (<code>content_checks_severity: "error"</code> makes it an error)</td>
+<td>The record states it clearly but the element is empty: department → <code>Encounter.serviceType</code>; 共 28 天 → <code>dispenseRequest.expectedSupplyDuration</code>; dose / frequency / route on the drug's line; the patient's name — only elements the declared profile marks mustSupport / required, or that at least half of the IG's examples of the profile carry. <strong>Record-derivable facts</strong> (v20 R5, <code>fhir_validate_bundle</code> 1.31.0 / <code>fhir_validate_resource</code> 1.28.0): an item of the diagnosis field (Dx / Impression / A: / 診斷) → <code>Condition.verificationStatus</code> (unhedged confirmed, 疑似 provisional, r/o / 待排除 differential, read by the v15.3 diagnosis-slot parser); an H / L / HH / LL / ↑ / ↓ / * flag after the value or a reference range → <code>Observation.interpretation</code> (H / L / HH / LL, inside the range N, * alone A); a 出院帶藥 / 門診處方 / 住院醫囑 heading (else the record's only visit setting) → <code>MedicationRequest.category</code> (discharge / outpatient / inpatient) — reported wherever the profile has the element (any cardinality) and its binding holds the code (an IG ValueSet: the code whose display matches). The profile information is looked up by <code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code>; nothing is reported without <code>source_text</code></td>
+</tr>
+</tbody>
+</table>
 <p><strong>How R5 finds values (<code>recordChecks/recordValues.ts</code>)</strong>: only the record body (the 【轉換目標】 conversion target and the 院所設定 section never count); identifiers are also searched in the whole <code>site_config</code>.
 - Identifiers: NFKC, case-insensitive, without - _ . / spaces; whole tokens, contiguous joins of separator pieces, leading zeros, a label glued in front (MRN00775310). System-assigned identifiers (<code>urn:uuid</code>, Bundle / Composition / Claim identifiers) are not checked.
 - Dates: Gregorian, ROC (114/06/10, 民國114年6月10日), 年月日, slashes, month-day (with the record's years), English month names; times as HH:MM(:SS), 上午 / 下午 N 點 M 分, am / pm, HHMM right after a date; a value in another offset is also compared in the site timezone (<code>site_config</code> <code>timezone:</code>, default +08:00). Derivations: 入院第 N 天 / hospital day N / HD#N (admission + N−1), 術後第 N 天 / POD#N (operation + N), 第 N 天, N 天前 / 後, 昨天 / 前天 / 今天 / 隔天 / 次日 / yesterday / next day, N weeks / months before / after, a complaint duration (咳嗽 3 天 → 3 or 2 days before), a course on a treatment line (處方 … 7 天 → start + 6 or 7), N 年前 / N 年 (years), an age (54 歲 → birth year), "N minutes / hours later / before". Chinese numerals are read (入院第三天). Anchors are the record's own dates: the admission date for hospital-day expressions, the operation date for post-op ones, else a date on the same line, else the nearest preceding dated line (birth dates excluded); <code>Encounter.period.start</code> and <code>Patient.birthDate</code> must be dates the record states. Record-keeping times (<code>authoredOn</code>, <code>recordedDate</code>, <code>issued</code> …) only warn about an ungrounded date and their time is not checked; timestamps the tools / documents write themselves (<code>Bundle.timestamp</code>, <code>Composition.date</code>, <code>Provenance.recorded</code> …) are not checked.
@@ -3668,6 +4410,157 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 <li>The same rule holds for every tool above: without <code>source_text</code> and without findings the output is unchanged.</li>
 <li>When the layer reports, <code>provenance</code> gains <code>recordChecksVersion</code>, <code>recordChecksLexicon</code>, <code>recordChecksLexiconSha256</code>. The record text is never logged.</li>
 </ul>
+<h3 id="content-gates">Content gates: blocking and advisory (v20.1)<a class="headerlink" href="#content-gates" title="Permanent link">&para;</a></h3>
+<p>With <code>source_text</code>, every content finding (grounding <code>G-*</code> and record-check <code>code</code>) carries a <code>gate</code> field:</p>
+<ul>
+<li><code>blocking</code>: may stop <a href="#release-check"><code>fhir_release_check</code></a>, where it counts as a content error;</li>
+<li><code>advisory</code>: returned to the model as before (severity and message <strong>unchanged</strong> — <code>fhir_validate_*</code> keep it, and an advisory error still makes <code>valid</code> / <code>groundingValid</code> false), but it never stops the release.</li>
+</ul>
+<p>Rule (one registry, <code>node-server/src/recordChecks/contentGates.ts</code>): lexical / heuristic rules are advisory by default; a rule is blocking only with a precision ≥ 95% measured on <strong>realistic Chinese records</strong> over n ≥ 20 findings; warnings never block. Measured with <code>node-server/scripts/content-fp/gold.ts</code> (private gold Bundles with their records — every error there is a false positive — and negative cases with known findings: fabricated / changed values). Measurement of 2026-11-01 (17 gold Bundles, 97 negative cases):</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Rule</th>
+<th style="text-align: left;">gate</th>
+<th style="text-align: left;">precision (n)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>G-UNGROUNDED</code> (dates, numbers, quantities, identifiers)</td>
+<td style="text-align: left;">blocking</td>
+<td style="text-align: left;">100% (50)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>G-UNGROUNDED</code> (coded elements: name matching)</td>
+<td style="text-align: left;">advisory</td>
+<td style="text-align: left;">100% (12, too few)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>unconfirmed-as-confirmed</code> (error form)</td>
+<td style="text-align: left;">blocking (by decision, see below)</td>
+<td style="text-align: left;">0 false positives on gold</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ungrounded-value</code></td>
+<td style="text-align: left;">advisory</td>
+<td style="text-align: left;">91.8% (61)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>G-CONTEXT-LABEL</code>, <code>code-meaning-mismatch</code>, <code>G-STATED-ABSENT</code>, <code>identifier-format</code>, <code>G-CONTEXT-SECTION</code>, <code>information-absent</code>, <code>value-from-other-event</code>, <code>G-CONTEXT-INSTRUCTION</code>, <code>G-CONTEXT-HISTORICAL</code>, <code>G-DATA-ABSENT</code></td>
+<td style="text-align: left;">advisory</td>
+<td style="text-align: left;">100% (9 / 8 / 6 / 5 / 4 / 4 / 3 / 2 / 2 / 1, too few)</td>
+</tr>
+<tr>
+<td style="text-align: left;">every other rule (incl. <code>G-VALUE-MISMATCH</code>, <code>negated-item-present</code>, <code>stale-value</code>, <code>record-fact-missing</code>, <code>generic-code-for-unknown-item</code>)</td>
+<td style="text-align: left;">advisory</td>
+<td style="text-align: left;">not measured</td>
+</tr>
+</tbody>
+</table>
+<p>Gold Bundles stopped by a content error: 1/17 without gates, 0/17 with gates (blocking only).</p>
+<p><strong>Must block (v20.1 item 3)</strong>: the record's primary diagnosis slot says r/o, 待排除, 尚未確立, 疑, 疑似, 待確認, suspected or provisional, and the Bundle writes it as an established Condition (no verificationStatus, or confirmed) — <strong>coded-only Conditions included</strong> (their terminology names, Chinese ones too, are matched with the slot items; cancer ↔ malignant neoplasm; an r/o item written as established counts even when another item of the slot is established) → <code>unconfirmed-as-confirmed</code> error, gate blocking; only 可能 / possible stays a warning. Also: the record says the drug name is unknown and the Bundle codes a treatment class (Hormone therapy, Chemotherapy, Drug therapy …) instead of the item → <code>generic-code-for-unknown-item</code> (warning, advisory).</p>
+<p><strong>False positives fixed in v20.1</strong>: ROC year-months (113/08, 民國113年8月) are dates; a UCUM bracket unit is the unit inside (<code>[IU]/mL</code> = IU/mL, not uIU/mL); a hyphenated analyte name before a full-width colon is no time of day (<code>CA 15-3：12.4</code>); an unlabelled name + sex line (「張淑芬，女」) is the identity line; a 【診斷】 heading without a colon opens the diagnosis slot; without <code>fhir.abbreviation_lexicon</code> in the database (migration 20261027 not applied) the bundled LRABR file is used (<code>PEFR</code> ~ <code>PEF</code>); stop words (停藥 / 暫停) apply to medication resources only (a body-weight Observation is never told to become cancelled); an item any conversion-target line lists is never excluded by another line.</p>
+<h2 id="release-gate">Fact coverage and the release gate<a class="headerlink" href="#release-gate" title="Permanent link">&para;</a></h2>
+<p>Both tools are in the FHIR IG group (module gate <code>ig</code>, the same metrics / error boundary / heavy-tool concurrency cap as <code>fhir_validate_bundle</code>), fully deterministic (no LLM call), generic for every IG, and never log the record text, quotes or fact values.</p>
+<h4 id="content-gates-v202">v20.2: only decidable conditions stop a release (evaluator decision)<a class="headerlink" href="#content-gates-v202" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>No more lexical rules for meaning.</strong> Semantic checks (r/o, negation, stale values, code meaning, fact coverage) are the evaluator's model verifier's job; MCP reports these findings as <strong>advisory</strong> only.</li>
+<li><code>fhir_release_check</code> stops only on decidable conditions: the official validator's 0 errors (a complete official verdict), <code>targets</code> present, and <code>G-UNGROUNDED</code> on <strong>structured</strong> numbers / dates / identifiers (<code>*.identifier.value</code>, Quantity / integer / decimal values, range / ratio bounds, dates and periods). Free text (<code>valueString</code>, <code>text</code>, <code>note</code>, <code>conclusion</code>, names) does not count. Without <code>targets</code>: <code>incomplete-input</code> (facts are advice only).</li>
+<li><strong>Advisory informs, never instructs</strong>: an advisory error becomes <code>severity: "warning"</code> with <code>advisory_from: "error"</code> and no longer makes <code>valid</code> / <code>groundingValid</code> false; no remove suggestions or patches, and no message tells the model to delete content ("verify against the record" instead).</li>
+<li>New <code>fhir_release_check</code> field <code>advisories</code>: fact coverage (<code>fact-missing</code>, <code>quote-not-in-record</code>, <code>unusable-fact-written</code>) and <code>suspected-empty-bundle</code>, reported, never stopping a release.</li>
+<li><code>fhir_check_fact_coverage</code> 1.2.0: a value in another value element of the fact's own resource is covered (<code>reason_code: "found-in-other-element"</code>); counts / sequence numbers / reference ranges (sequence, rank, frequency, period, count, referenceRange) only when the <code>attribute</code> names them; <code>attribute</code> may be a FHIR path (with resource type and indexes).</li>
+<li>Every official-validator request carries <code>validationTimeout</code> (request timeout − 30 s): a validation that runs too long is stopped by the validator with a partial result, reported as <code>unverified</code> with <code>checked_fully: false</code>, instead of holding its single request thread.</li>
+</ul>
+<h3 id="fact-coverage">fhir_check_fact_coverage (v18 R3 = v20 R4)<a class="headerlink" href="#fact-coverage" title="Permanent link">&para;</a></h3>
+<p>Input <code>bundle</code>, <code>source_text</code>, <code>facts: [{item, attribute, value, quote, resource_type?}]</code>, <code>package_id?</code>, <code>version?</code>. Each fact is judged in order:</p>
+<ol>
+<li><strong>The quote is in the record</strong>: compared after NFKC (full-width → half-width, lower case) with whitespace collapsed, then after the grounding normalisation (whitespace and most punctuation dropped); found neither way → <code>quote_not_in_record</code> (a fabricated basis).</li>
+<li><strong>Usable</strong>: the clause around the quote (cut at ，,；;。, brackets and list enumerators) must not negate it (grounding <code>NEG_CUES</code>, prefix, within 10 characters), leave it not established (the record checks' <code>cuesIn</code>: 疑似, r/o, 待排除 …), mark it old / previous (<code>OBS_HIST_CUES</code> and the v17.4 stale vocabulary), pending / not applicable / not done (<code>clausesOf</code> absence classes) — else <code>not_usable</code>. Every cue is scoped (v20.1): a prefix cue governs only the value after it, a postfix cue only the value before it, never across a field label (<code>X：</code> / <code>X:</code>) — a cue in another field or inside a label does not count (the 疑 and 無 of 「處方疑義：無」 do not negate the drug after it); the "no" of <code>Chart No.</code>, <code>Lot No.</code>, <code>ID No.</code> abbreviates "number" and is no negation; when the value cannot be located in the quote, a cue in the middle of the quote (<code>without</code> in <code>Type 2 DM without complications</code>) qualifies another finding and does not negate the fact; <code>Label：待補</code>, where the value is the field label and the cue its content, still counts. A fact that is itself about that state (value 無 / negative / provisional / inactive …, or the cue in the value / attribute) stays usable. An unusable fact must not be written as a current value; when the conversion target needs it, answer insufficient_information.</li>
+<li><strong>In a structured element</strong>: only entries of the fact's resource type are searched (inferred from <code>item</code> / <code>attribute</code>, e.g. drug / dose / route → MedicationRequest and the other medication resources, temperature / lab → Observation, diagnosis → Condition, visit → Encounter; or given as <code>resource_type</code>). <code>text</code> (Narrative, the text of an uncoded CodeableConcept, Dosage.text), <code>note</code>, a lone <code>display</code>, <code>comment</code>, <code>patientInstruction</code> do not count; HumanName / Address <code>text</code> does (also a name / address written as <code>text</code> only, v20.1), and so does the <code>text</code> of a CodeableConcept with a coded Coding (the record wording of that code); a phrase element (<code>DiagnosticReport.conclusion</code>, <code>valueString</code> …) counts when it contains the value (at least 4 characters); <code>ContactPoint.value</code> (phone) compares by digits (<code>(02)2345-6789</code> = <code>02-2345-6789</code>). Terminology equivalence:</li>
+<li>route: PO / 口服 / oral ↔ a Coding whose code, display or terminology name names the route (SNOMED <code>26643006</code> or an IG route ValueSet code);</li>
+<li>frequency: BID / 一天兩次 / Q12H ↔ <code>Timing.repeat</code> with the same administrations per day (frequency 2 / period 1 / periodUnit d), or <code>timing.code</code>;</li>
+<li>dates: ROC (114/06/02, 114年6月2日) and Gregorian spellings ↔ FHIR date / dateTime / Period, at the fact's precision;</li>
+<li>quantities: value and unit compared separately — the same number, and the record unit compatible with the Quantity's UCUM <code>code</code> <strong>or</strong> its <code>unit</code> (<code>次/分</code>, <code>bpm</code> ↔ <code>/min</code>, <code>IU/mL</code> ↔ <code>[IU]/mL</code>), or converted (0.5 g = 500 mg, cm ↔ m), any number spelling (12.50, Chinese numerals, thousands separators); every number of a multi-number value (120/80 mmHg) must be found; a unit-only fact (attribute 單位, value <code>mg/dL</code>) matches a Quantity with a compatible unit; numbers with units inside a <code>valueString</code> count too;</li>
+<li>numbers and dates count only in elements of the class the attribute names (v20.1): dose → <code>doseAndRate</code> / <code>dose</code> / <code>doseQuantity</code>, value → <code>value[x]</code> / <code>component.value[x]</code>, start → <code>period.start</code> …; an attribute spelled as a FHIR element name (<code>valueQuantity</code>, <code>period.start</code>) means that element only. Counting / ordering / identifying integers (<code>Dosage.sequence</code>, <code>rank</code>, <code>Timing.repeat.frequency</code> / <code>period</code> …) are never a clinical value, and a <code>referenceRange</code> counts only when the attribute names a reference range. A value only in another element → <code>missing</code> with <code>reason_code: "found-in-other-element"</code> and <code>found_elsewhere</code>;</li>
+<li>encounter class and department: the ActCode aliases of <code>Encounter.class</code> (門診 ↔ AMB, 急診 ↔ EMER, 住院 ↔ IMP) and the department of <code>serviceType</code> (家醫科 ↔ Family practice); such lexicon equivalences count only when the attribute names that element (or gives no element at all);</li>
+<li>codes: <code>Coding.code</code>, or the Coding's display / terminology names (synonyms, Chinese names) equal or mostly overlapping;</li>
+<li>gender (男 / M ↔ male), booleans, other strings (equal after normalisation; HumanName also as family + given). Identifiers must be equal in full (<code>醫字第035190號</code> ≠ <code>035190</code>).</li>
+</ol>
+<p>Found → <code>covered</code> (<code>found_at</code>); else <code>missing</code>, with <code>reason_code: "found-in-other-resource"</code> and <code>found_elsewhere</code> when the value sits only in a resource of another type.
+4. <strong>Suggested paths</strong>: a <code>missing</code> fact gets <code>suggested_paths</code> (child fields joined relative to the resource, e.g. <code>Practitioner.name.text</code>, never doubled into <code>name.name.text</code>) from the authoring fields of the matching entry's <code>meta.profile</code> (<code>fhir_get_authoring_fields</code> <code>fields</code>, detail full), ranked by the element the attribute names (route → <code>dosageInstruction.route</code>, days → <code>dispenseRequest.expectedSupplyDuration</code> …) first, then by whether the field's kind can hold the value; without an entry or profile, FHIR R4 base element names.</p>
+<p>Output <code>data</code>:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>facts[]</code></td>
+<td style="text-align: left;"><code>index</code>, <code>status</code> (<code>covered</code> | <code>missing</code> | <code>quote_not_in_record</code> | <code>not_usable</code>), <code>reason_code</code> (<code>fact-covered</code> / <code>fact-missing</code> / <code>found-in-other-resource</code> / <code>quote-not-in-record</code> / <code>fact-not-usable</code>), <code>reason</code>, <code>resource_types</code>, <code>found_at?: [{pointer (RFC 6901), path, value, how}]</code>, <code>found_elsewhere?</code>, <code>suggested_paths?</code>, <code>markers?: [{cls, cue}]</code> (<code>negated</code> / <code>unconfirmed</code> / <code>stale</code> / <code>pending</code> / <code>not-applicable</code> / <code>not-done</code>), <code>clause?</code>, <code>quote_match?</code> (<code>exact</code> / <code>normalized</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>summary</code></td>
+<td style="text-align: left;"><code>total</code>, <code>covered</code>, <code>missing</code>, <code>quote_not_in_record</code>, <code>not_usable</code>, <code>coverage</code> (covered ÷ (total − not_usable), null when nothing is checkable), <code>complete</code> (no missing and no quote_not_in_record)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="release-check">fhir_release_check (v18 R4 + v20 R1)<a class="headerlink" href="#release-check" title="Permanent link">&para;</a></h3>
+<p>Input <code>bundle</code>, <code>source_text</code>, <code>facts?</code>, <code>targets?: [{resourceType?, profile?, what?, code?: {system?, code}, min?, facts?: [index]}]</code>, <code>site_config?</code>, <code>package_id?</code>, <code>version?</code>, <code>bundle_profile?</code>, <code>require_official?</code> (default true). <strong><code>release: true</code> only when all of these hold</strong>:</p>
+<ol>
+<li><strong>Official validation, 0 errors</strong>: validated through the same pipeline as <code>fhir_validate_bundle</code> (the official engine when configured, see "<a href="#official-engine">The official HL7 validator as the judge</a>"). The result must be <code>official_verdict: true</code> and not <code>checked_fully: false</code>; an MCP fallback, unverified codes or no official engine → <code>not-officially-verified</code>. <code>require_official=false</code> is for development only (the MCP verdict is accepted and <code>validation.note</code> says so), but <code>checked_fully: false</code> still stops the release (<code>not-fully-checked</code>).
+   <strong>Release condition</strong>: parity 0 errors, <code>checked_fully: true</code>, <a href="#extended-findings"><code>extended_findings</code></a> 0 errors. An extended error → <code>extended-error</code> (<code>check: "extended"</code>); <code>unverifiable</code> is only counted (<code>validation.extended</code>); a layer that did not finish → <code>extended-incomplete</code>.</li>
+<li><strong>Grounding and record checks, 0 blocking errors</strong>: the same validation with <code>source_text</code> (errors with <code>source: "grounding"</code> / <code>"record-checks"</code>). Since v20.1 only errors with <code>gate: "blocking"</code> stop the release and count in <code>content.grounding_errors</code> / <code>record_check_errors</code>; advisory errors count in <code>content.advisory_errors</code> (with <code>advisory_rules</code>) and are returned to the model, but do not stop the release — see "<a href="#content-gates">Content gates</a>".</li>
+<li><strong>Complete fact coverage</strong> (with <code>facts</code>): <code>missing</code> → <code>fact-missing</code> / <code>fact-in-other-resource</code>; <code>quote_not_in_record</code> → <code>quote-not-in-record</code>; an unusable fact written into the Bundle → <code>unusable-fact-written</code>.</li>
+<li><strong>Completeness (v20 R1)</strong>: with neither <code>targets</code> nor <code>facts</code> completeness cannot be judged → <code>incomplete-input</code>, never released (v20.1). each <code>targets</code> item is in the Bundle at least <code>min</code> times (default 1; matched by resourceType, meta.profile, code), else <code>missing-target</code>. When facts name the missing item (<code>facts</code> indices, default the facts naming its resource type) and the record makes all of them unusable (negated, not established, pending, not applicable), <code>insufficient-information</code> is reported instead (<code>next: insufficient_information</code>); when no fact names it, it is a model omission: still <code>missing-target</code>, <code>next: fix</code> (evaluator decision, 1.0.1). A case not released in the end is reported as not convertible automatically. Without <code>targets</code>: the Bundle profile's (<code>bundle_profile</code> or <code>meta.profile</code>) required entry slices must be present (<code>missing-entry-slice</code>), and a Bundle with ≤ 1 content entry (Composition / MessageHeader not counted) while the facts name ≥ 2 resource types → <code>suspected-empty-bundle</code>.</li>
+</ol>
+<p>Output <code>data</code>: <code>release</code>, <code>next</code> (<code>send</code> | <code>fix</code> | <code>insufficient_information</code>), <code>reasons: [{code, message, pointer?, count, check}]</code> (<code>check</code> = <code>validation</code> / <code>extended</code> / <code>content</code> / <code>facts</code> / <code>completeness</code>; at most 25 issues of a kind are listed, the rest merged into one reason with its <code>count</code>), <code>validation {completed, errors, warnings, source, engine, official_verdict, checked_fully, officially_verified, fallback_reason?, unverified?}</code>, <code>content {completed, source_text, grounding_errors, record_check_errors, warnings}</code>, <code>facts</code> (the <code>fhir_check_fact_coverage</code> <code>summary</code> plus <code>results</code>; null without facts), <code>completeness {entries, targets? | entry_slices?, fact_resource_types?, suspected_empty?}</code>.</p>
+<p>Reason codes: <code>validation-failed</code>, <code>validation-error</code>, <code>not-officially-verified</code>, <code>not-fully-checked</code>, <code>extended-error</code>, <code>extended-incomplete</code>, <code>grounding-error</code>, <code>record-check-error</code>, <code>no-source-text</code>, <code>fact-missing</code>, <code>fact-in-other-resource</code>, <code>quote-not-in-record</code>, <code>unusable-fact-written</code>, <code>missing-target</code>, <code>insufficient-information</code>, <code>missing-entry-slice</code>, <code>suspected-empty-bundle</code>, <code>incomplete-input</code>. With <code>next: insufficient_information</code> the Bundle must not be sent — the case becomes "cannot be converted automatically"; a Bundle with <code>release: false</code> is never sent.</p>
+<p><strong>Limitations</strong>: resource types and elements are inferred from zh / en keywords (<code>resource_type</code> overrides); a missing item that NO fact names is also taken as not provided by the record (insufficient_information), so a fact list that leaves it out is misread. Route / frequency equivalence rests on the grounding lexicon and the terminology names; an IG-specific code whose display does not name the route is not recognised.</p>
+<h2 id="extended-findings">Two layers of results: issues and extended_findings<a class="headerlink" href="#extended-findings" title="Permanent link">&para;</a></h2>
+<p>A validation result has two independent layers:</p>
+<ul>
+<li><strong>Parity layer</strong>: <code>issues</code> and <code>valid</code> reflect HL7 validator_cli 7.0.1 only, and never add an error it does not have. <code>checked_fully</code> means exactly "every check it would do was done".</li>
+<li><strong>Extended layer</strong>: <code>extended_findings</code> reports what the local data can prove where validator_cli only warns. It is never part of <code>issues</code>, does not affect <code>valid</code> or <code>checked_fully</code>, and the whole field is absent when there is nothing to report. <code>fhir_validate_bundle</code>, <code>fhir_validate_resource</code> (in <code>data</code>), <code>fhir_finalize_resource</code> (in <code>data.validation</code>) and <code>fhir_finalize_bundle</code> carry it.</li>
+</ul>
+<p>Shape: <code>extended_findings: {summary: {errors, unverifiable, incomplete?}, findings: [{kind, severity, path, message, system?, code?, held_as?, profile?, fix?: {action, replace_with?, candidates?}, reason?, count?}]}</code>. <code>incomplete: true</code> means the layer did not finish (a lookup failed, more than 5,000 Codings) and is not a pass.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"><code>kind</code></th>
+<th style="text-align: left;"><code>severity</code></th>
+<th style="text-align: left;">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>code-not-in-held-codesystem</code></td>
+<td style="text-align: left;"><code>error</code></td>
+<td style="text-align: left;"><code>Coding.system</code> is a spelling validator_cli does not know, the CodeSystem is held here under another spelling of the same canonical (<code>held_as</code>: http / https, a CodeSystem published under its <code>/ValueSet/</code> URL), and the complete copy does not have the code</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>unresolvable-profile</code></td>
+<td style="text-align: left;"><code>error</code></td>
+<td style="text-align: left;"><code>meta.profile</code> resolves to no StructureDefinition of the IG closure; carries a <code>fix</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>malformed-profile</code></td>
+<td style="text-align: left;"><code>error</code></td>
+<td style="text-align: left;"><code>meta.profile</code> is not a canonical at all; carries a <code>fix</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>no-local-data</code></td>
+<td style="text-align: left;"><code>unverifiable</code></td>
+<td style="text-align: left;">A system validator_cli cannot check either and with no local data (or only an incomplete copy, see <code>reason</code>). One finding per system, <code>count</code> = Codings; counted, does not block a release</td>
+</tr>
+</tbody>
+</table>
+<p>"Held locally" respects edition completeness: a <code>fragment</code>, an excerpt (a declared <code>count</code> above the concepts it carries, or a description saying it holds only part of the codes on a copy under 1,000 concepts; full copies carry that sentence too, so it is not believed on a large one), an older edition (<code>icd.editions.complete</code> etc.) or a copy outside the IG closure never yields "code not found", only <code>unverifiable</code>.</p>
+<p><strong>Where the terminology server ends and <code>unverifiable</code> begins</strong>: validator_cli sends a system to tx.fhir.org according to the server's published TerminologyCapabilities (<code>ValueSetValidator.preferServerSide</code> → <code>TerminologyClientManager.supportsSystem</code>). That URI list is bundled as <code>node-server/data/terminology/tx-codesystems.json.gz</code>. With no local data: a system <strong>on the list</strong> is checked by validator_cli and cannot be here → <code>checked_fully: false</code>; a system <strong>not on the list</strong> is only the <code>UNKNOWN_CODESYSTEM</code> warning there too → <code>checked_fully: true</code> plus a <code>no-local-data</code> finding. A ValueSet not found keeps <code>checked_fully: false</code>, because validator_cli asks the server for it (<code>BaseWorkerContext.findTxResource</code>) and the server's ValueSets are not known here.</p>
+<p><strong><code>meta.profile</code> repair</strong>: <code>fhir_finalize_bundle</code> (rule <code>meta-profile</code>, listed in <code>changes</code>, counted in <code>summary.meta_profile</code>) and <code>fhir_finalize_resource</code> (<code>profile_changes</code>) correct a value only when it maps to exactly one canonical among the closure's profiles of the same resource type: (1) it differs only by <code>|version</code>, case, scheme, a trailing slash or <code>.html</code>; (2) its last URL segment is a profile's id; (3) on the same base, the nearest id by edit distance (≤ 5 and at most half its length), strictly nearer than the runner-up. Several candidates at the same rank: no repair, only <code>fix.candidates</code>. Errors that appear once the right profile is checked were hidden before, not added by the repair: the repair stays and the errors are reported.</p>
 <h2 id="tool-versions">Tool versions<a class="headerlink" href="#tool-versions" title="Permanent link">&para;</a></h2>
 <p>Tools whose behaviour is pinned by fixtures carry their own version (<code>node-server/src/toolVersions.ts</code>), bumped whenever their output for the same input changes. <code>health_check</code> reports the current values under <code>tools_version</code>; every other tool uses the server version (<code>version</code>, currently <code>1.1.0</code>).</p>
 <table>
@@ -3680,7 +4573,7 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">1.13.0 (R6: correction suggestions for ungrounded dates with a wrong ROC conversion, also on the returned grounding issues); 1.12.0 (<a href="#record-checks">record checks</a> v15.1: with <code>source_text</code> every identifier / date / quantity value must be in the record (<code>ungrounded-value</code>), values of another time point / event / field (<code>value-from-other-event</code>), stated absences and identifiers without value, the primary diagnosis slot, bracket-scoped cues; output without <code>source_text</code> unchanged); 1.11.2 (<code>normalize_ids</code> + <code>repair="content"</code> as <code>fhir_finalize_bundle</code> 1.3.2); 1.11.1 (content repairs with <code>normalize_ids</code> + <code>repair="content"</code> as <code>fhir_finalize_bundle</code> 1.3.1); 1.11.0 (<a href="#record-checks">record checks</a>: information-absent / identifier-format always; with <code>source_text</code> also precision, values, free-text medicines and unconfirmed diagnoses; <code>data.record_checks</code>); 1.10.0 (<code>repair="content"</code> with <code>normalize_ids=true</code>: content repairs before validation, <code>content_changes</code> / <code>repair_issues</code>); 1.9.0 (validator v13: a ValueSet canonical as <code>Coding.system</code> is an error, LOINC property filters decide membership); 1.8.0 (<code>normalized_bundle</code> keeps number spellings; bdl-11 / bdl-12 on a document / message without its head resource carry <code>replace_value</code> / <code>add_resource</code> suggestions; 1.7.0: <code>normalize_ids</code>, ID-class <code>suggestions</code> and <code>id_map</code> / <code>id_changes</code>)</td>
+<td style="text-align: left;">1.33.0 (v20.1, with <code>source_text</code>: content findings carry <code>gate</code>; coded-only Conditions get <code>unconfirmed-as-confirmed</code> too, 疑似 / 待確認 is an error; <code>generic-code-for-unknown-item</code>; false-positive fixes, see "<a href="#content-gates">Content gates</a>"); 1.13.0 (R6: correction suggestions for ungrounded dates with a wrong ROC conversion, also on the returned grounding issues); 1.12.0 (<a href="#record-checks">record checks</a> v15.1: with <code>source_text</code> every identifier / date / quantity value must be in the record (<code>ungrounded-value</code>), values of another time point / event / field (<code>value-from-other-event</code>), stated absences and identifiers without value, the primary diagnosis slot, bracket-scoped cues; output without <code>source_text</code> unchanged); 1.11.2 (<code>normalize_ids</code> + <code>repair="content"</code> as <code>fhir_finalize_bundle</code> 1.3.2); 1.11.1 (content repairs with <code>normalize_ids</code> + <code>repair="content"</code> as <code>fhir_finalize_bundle</code> 1.3.1); 1.11.0 (<a href="#record-checks">record checks</a>: information-absent / identifier-format always; with <code>source_text</code> also precision, values, free-text medicines and unconfirmed diagnoses; <code>data.record_checks</code>); 1.10.0 (<code>repair="content"</code> with <code>normalize_ids=true</code>: content repairs before validation, <code>content_changes</code> / <code>repair_issues</code>); 1.9.0 (validator v13: a ValueSet canonical as <code>Coding.system</code> is an error, LOINC property filters decide membership); 1.8.0 (<code>normalized_bundle</code> keeps number spellings; bdl-11 / bdl-12 on a document / message without its head resource carry <code>replace_value</code> / <code>add_resource</code> suggestions; 1.7.0: <code>normalize_ids</code>, ID-class <code>suggestions</code> and <code>id_map</code> / <code>id_changes</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
@@ -3724,11 +4617,19 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_check_grounding</code></td>
-<td style="text-align: left;">1.1.0</td>
+<td style="text-align: left;">1.6.0 (v20.1: every finding carries <code>gate</code>; ROC year-months, <code>[IU]/mL</code>, name + sex identity lines, the bundled LRABR abbreviations, see "<a href="#content-gates">Content gates</a>"); 1.4.0 (v17.4: the <a href="#ig-defined-values">IG-defined value</a> exemption narrowed to fixed / pattern, invariant literals and the example identity of a national payer / authority organization; example hospitals etc. no longer exempt; <code>fhir_validate_bundle</code> 1.29.0, <code>fhir_validate_resource</code> 1.26.0, <code>fhir_finalize_bundle</code> 1.18.0, <code>fhir_finalize_resource</code> 1.23.0, <code>fhir_author_resources</code> / <code>fhir_assemble_bundle</code> 1.19.0 follow; output without <code>source_text</code> unchanged); 1.1.0</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_check_completeness</code></td>
 <td style="text-align: left;">1.1.1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_check_fact_coverage</code></td>
+<td style="text-align: left;">1.1.0 (v20.1 item 4: name / address text, conclusion, phone, the text of a coded CodeableConcept are structured; units compared separately; numbers / dates only in the element the attribute names; negation / uncertainty cues scoped, never across a field label, "No." is no negation; suggested child paths fixed. 1.0.0: v18 R3 / v20 R4 fact contract check, see "<a href="#fact-coverage">Fact coverage</a>")</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_release_check</code></td>
+<td style="text-align: left;">1.1.0 (v20.1: only blocking content errors stop the release, advisory ones count in <code>content.advisory_errors</code>; neither targets nor facts → <code>incomplete-input</code>, see "<a href="#content-gates">Content gates</a>"); 1.0.1 (a missing target no fact names → <code>missing-target</code>, next fix); 1.0.0 (v18 R4 + v20 R1: release gate with the completeness check, see "<a href="#release-check">Release check</a>")</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_author_resources</code></td>
@@ -3740,7 +4641,15 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_authoring_fields</code></td>
-<td style="text-align: left;">1.2.0 (record links: a backbone linking another record resource of the same IG (<code>Encounter.diagnosis</code>) is a field with its children and a <code>{condition: {ref}}</code> example, a direct reference to one is in <code>more</code> with <code>targets</code>; the size budget covers the whole response, new <code>response_chars</code>); 1.1.0 (defaults are <code>auto</code> only on required elements; optional ones show the conventional value as a hint; 1.0.0: the profile's writing form)</td>
+<td style="text-align: left;">1.4.0 (v20 R5: <code>Condition.verificationStatus</code> / <code>Observation.interpretation</code> / <code>MedicationRequest.category</code> are record-derivable fields — <code>source: "derived"</code> no longer <code>auto</code>, <code>format</code> names the derivation rule and the record cue, listed wherever the profile allows them; before, interpretation / category were auto "MCP derives it" although the composer never derived them); 1.2.0 (record links: a backbone linking another record resource of the same IG (<code>Encounter.diagnosis</code>) is a field with its children and a <code>{condition: {ref}}</code> example, a direct reference to one is in <code>more</code> with <code>targets</code>; the size budget covers the whole response, new <code>response_chars</code>); 1.1.0 (defaults are <code>auto</code> only on required elements; optional ones show the conventional value as a hint; 1.0.0: the profile's writing form)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_get_minimal_skeleton</code></td>
+<td style="text-align: left;">1.7.0 (v20 R5: a required <code>Condition.verificationStatus</code> / <code>Observation.interpretation</code> / <code>MedicationRequest.category</code> whose binding holds the rule's codes is <code>derivable</code> with how = <code>derive from the record: &lt;rule&gt; (record cue: &lt;cue&gt;)</code>, winning over example constants and workflow defaults); 1.6.0 (v17.4: the strict example rule — identity resources and identity / contact elements are no longer example <code>ig-constant</code>s but <code>record</code>; only profile fixed / pattern, workflow codes of non-identity resources and the example identity of a national payer / authority organization remain, see "<a href="#ig-structure">value sources</a>"); 1.6.0 (v17.4: the strict example rule — identity resources and identity / contact elements are no longer example <code>ig-constant</code>s but <code>record</code>; only profile fixed / pattern, workflow codes of non-identity resources and the example identity of a national payer / authority organization remain, see "<a href="#ig-structure">value sources</a>"); 1.5.0 (v19: the discriminator element of a required slice (e.g. the section code) is in the skeleton even when the profile makes it optional; a slice's child is required when the unsliced element is; a Narrative is <code>{status, div}</code>; a choice that allows a coded type is written as that type; a required coding slice's own required binding decides the codes / system; a slice's pinned values complete the existing coding instead of adding a second one); 1.2.0 (v16.2: a short profile id also resolves in the IG's dependency packages (<code>AMBIGUOUS_ARTIFACT</code> with candidates when it names several); the codes of a small binding always carry their display (<code>code=display</code>), also at compact levels); 1.1.0 (v16.1: <code>slices</code> expands the skeleton's slicing, <code>literals</code>, lookups for ValueSet-restricted codes — see "<a href="#ig-structure">IG structure</a>")</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_get_bundle_form</code></td>
+<td style="text-align: left;">1.2.0 (profile invariants turned into <code>choose_one</code> / <code>required_if</code> / <code>format</code> / Bundle-level rules from their FHIRPath, unparsed ones attached as <code>rules</code>, see "<a href="#bundle-form">Prefilled form</a>"); 1.1.0 (evaluation feedback: no identity data from IG examples, datatype rules, every entry linked, <code>self_check</code>, see "<a href="#bundle-form">Prefilled form</a>"); 1.0.1 (release v1: no empty arrays; without entries <code>entry</code> is omitted and a note says to pass <code>entries</code>); 1.0.0 (v19 R2: prefilled form of a Bundle profile, see "<a href="#bundle-form">Prefilled form</a>")</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_bundle_blueprint</code>, <code>fhir_get_minimal_skeleton</code></td>
@@ -3812,7 +4721,7 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
       <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": [], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      <script src="../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../../javascripts/lang-switch.js"></script>
       

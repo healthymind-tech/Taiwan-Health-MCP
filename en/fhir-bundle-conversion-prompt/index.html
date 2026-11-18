@@ -29,7 +29,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -2524,7 +2524,7 @@ For each resource in the sorted order, repeat a–e below. **Efficiency tip**: t
 - Read the returned `unresolved`: **it must be empty**. An unresolved reference means some `&quot;&lt;Type&gt;/&lt;key&gt;&quot;` matched no entry → go back and fix it (usually a misspelled key or a record you forgot to convert), then reassemble.
 
 **Step 6 — Validate the whole package**
-- `fhir_validate_bundle(bundle=&lt;the bundle from the previous step&gt;)`. Read each entry's `valid`, `referenceIssues` and `checked_fully`.
+- `fhir_validate_bundle(bundle=&lt;the bundle from the previous step&gt;)`. Read each entry's `valid`, `referenceIssues` and `checked_fully`, plus `extended_findings` (fix every `severity: &quot;error&quot;` item as its `fix` says; these are not in `issues`).
   - All valid with no referenceIssues → done. If `checked_fully: false`, list `profiles_unchecked` / `valuesets_unchecked` (profiles / ValueSets that could not be checked) in your delivery notes and do not claim full validation.
   - Otherwise fix only the problematic records (return to Phase 2 and finalize those), then rebuild and revalidate.
 
@@ -2610,7 +2610,7 @@ Begin with Step 0.
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
         <script src="../../javascripts/lang-switch.js"></script>
       
